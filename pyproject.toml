@@ -43,7 +43,7 @@ dependencies = [
     "jinja2>=2.11.3",
     "requests",
     "requests_kerberos",
-    "jira>=3.8.0"
+    "jira>=3.5.0"
 ]
 
 [project.optional-dependencies]

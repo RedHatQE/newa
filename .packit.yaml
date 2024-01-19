@@ -51,7 +51,6 @@ jobs:
     release_suffix: "{PACKIT_PROJECT_BRANCH}"
     actions:
       create-archive:
-        - hatch run docs:man
         - hatch build -t sdist
         - bash -c "ls dist/newa-*.tar.gz"
       get-current-version:
@@ -68,11 +67,10 @@ jobs:
     enable_net: false
     list_on_homepage: true
     preserve_project: true
-    owner: "@teemtee"
+    owner: "@RedHatQE"
     project: newa
     actions:
       create-archive:
-        - hatch run docs:man
         - hatch build -t sdist
         - bash -c "ls dist/newa-*.tar.gz"
       get-current-version:
