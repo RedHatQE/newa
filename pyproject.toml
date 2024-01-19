@@ -7,7 +7,6 @@ name = "newa"
 dynamic = ["version"]
 description = "newa"
 readme = "README.md"
-# TODO: provide correct values
 license = "Apache-2.0"
 license-files = { paths = ["LICENSE.txt"] }
 requires-python = ">=3.9"
@@ -24,9 +23,10 @@ maintainers = [
     { name = "Miroslav Vadkerti", email = "mvadkert@redhat.com" },
     { name = "Milos Prchlik", email = "mprchlik@redhat.com" },
 ]
+
 keywords = [
     "testing",
-    ]
+]
 # classifiers = [
 #    "License :: OSI Approved :: MIT License",
 #    "Natural Language :: English",
