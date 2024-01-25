@@ -8,15 +8,24 @@ dynamic = ["version"]
 description = "newa"
 readme = "README.md"
 # TODO: provide correct values
-# license = "MIT"
-# license-files = { paths = ["LICENSE"] }
-# requires-python = ">=3.9"
-# authors = [
-#     { name = "...", email = "..." },
-#     ]
-# maintainers = [
-#     { name = "...", email = "..." },
-#     ]
+license = "Apache-2.0"
+license-files = { paths = ["LICENSE.txt"] }
+requires-python = ">=3.9"
+authors = [
+    { name = "Karel Srot", email = "ksrot@redhat.com" },
+    { name = "Patrik Kis", email = "ksrotpkisredhat.com" },
+    { name = "Karel Srot", email = "ksrot@redhat.com" },
+    { name = "Miroslav Vadkerti", email = "mvadkert@redhat.com" },
+    { name = "Milos Prchlik", email = "mprchlik@redhat.com" },
+]
+
+maintainers = [
+    { name = "Karel Srot", email = "ksrot@redhat.com" },
+    { name = "Patrik Kis", email = "ksrotpkisredhat.com" },
+    { name = "Karel Srot", email = "ksrot@redhat.com" },
+    { name = "Miroslav Vadkerti", email = "mvadkert@redhat.com" },
+    { name = "Milos Prchlik", email = "mprchlik@redhat.com" },
+]
 keywords = [
     "testing",
     ]
