@@ -21,7 +21,7 @@ authors = [
 
 maintainers = [
     { name = "Karel Srot", email = "ksrot@redhat.com" },
-    { name = "Patrik Kis", email = "ksrotpkisredhat.com" },
+    { name = "Patrik Kis", email = "pkis@redhat.com" },
     { name = "Karel Srot", email = "ksrot@redhat.com" },
     { name = "Miroslav Vadkerti", email = "mvadkert@redhat.com" },
     { name = "Milos Prchlik", email = "mprchlik@redhat.com" },
