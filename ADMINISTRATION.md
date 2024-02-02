@@ -1,1 +1,6 @@
-IyBBZG1pbmlzdHJhdGlvbiBHdWlkZQoKVGhpcyByZXBvc2l0b3J5IGlzIG1hbmFnZWQgYnkgUmVkIEhhdCB1c2luZyBJbmZyYXN0cnVjdHVyZSBBcyBDb2RlLgpBZG1pbmlzdHJhdGlvbiBhY2Nlc3MgaXMgcHJvaGliaXRlZC4KCklmIHlvdSBuZWVkIGNoYW5nZXMgdG8gdGhlIHJlcG9zaXRvcnksIHBsZWFzZSBzZWUgdGhlIFtpbmZyYXN0cnVjdHVyZSByZXBvc2l0b3J5XShodHRwczovL3VybC5jb3JwLnJlZGhhdC5jb20vcXVhbGl0eS1pbm5vdmF0b3JzLWluZnJhc3RydWN0dXJlKS4K
+# Administration Guide
+
+This repository is managed by Red Hat using Infrastructure As Code.
+Administration access is prohibited.
+
+If you need changes to the repository, please see the [infrastructure repository](https://url.corp.redhat.com/quality-innovators-infrastructure).
