@@ -21,6 +21,8 @@ repos:
       - id: mypy
         additional_dependencies:
           - "click>=8.0.3,!=8.1.4"
+          - "attrs>=20.3.0"
+          - "ruamel.yaml>=0.16.6"
         pass_filenames: false
         args: [--config-file=pyproject.toml]
 
