@@ -22,7 +22,7 @@ SerializableT = TypeVar('SerializableT', bound='Serializable')
 def yaml_parser() -> ruamel.yaml.YAML:
     """ Create standardized YAML parser """
 
-    yaml = ruamel.yaml.YAML()
+    yaml = ruamel.yaml.YAML(typ='safe')
 
     yaml.indent(mapping=4, sequence=4, offset=2)
     yaml.default_flow_style = False
