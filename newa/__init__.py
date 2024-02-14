@@ -88,39 +88,23 @@ class Event(Serializable):
 
 
 @define
-class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
+class Erratum(Cloneable, Serializable):
     """ An eratum """
 
-    event: Event = field(  # type: ignore[var-annotated]
-        converter=lambda x: x if isinstance(x, Event) else Event(**x),
-        )
-
     releases: list[str] = field(factory=list)
-
-    @property
-    def id(self) -> str:
-        return f'{self.event.id} @ {self.releases}'
-
-    @classmethod
-    def from_event(cls: type['Erratum'], event: Event) -> 'Erratum':
-        assert event.type_ is EventType.ERRATUM
-
-        return cls(event=event)
+    # builds: list[...] = ...
 
     def fetch_details(self) -> None:
         raise NotImplementedError
 
 
 @define
-class ErratumJob(Cloneable, Serializable):  # type: ignore[no-untyped-def]
-    """ A single erratum job """
+class Job(Cloneable, Serializable):
+    """ A single job """
 
     event: Event = field(  # type: ignore[var-annotated]
         converter=lambda x: x if isinstance(x, Event) else Event(**x),
         )
-    release: str
-
-    # builds: list[...] = ...
 
     # issue: ...
     # recipe: ...
@@ -129,4 +113,17 @@ class ErratumJob(Cloneable, Serializable):  # type: ignore[no-untyped-def]
 
     @property
     def id(self) -> str:
-        return f'{self.event.id} @ {self.release}'
+        raise NotImplementedError
+
+
+@define
+class ErratumJob(Job):
+    """ A single *erratum* job """
+
+    erratum: Erratum = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, Erratum) else Erratum(**x),
+        )
+
+    @property
+    def id(self) -> str:
+        return f'{self.event.id} @ {"+".join(self.erratum.releases)}'

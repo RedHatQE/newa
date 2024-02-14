@@ -43,7 +43,10 @@ class CLIContext:
             yield self.load_erratum_job(self.state_dirpath / child)
 
     def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
-        filepath = self.state_dirpath / f'{filename_prefix}{job.event.id}-{job.release}.yaml'
+        assert len(job.erratum.releases) == 1
+
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.releases[0]}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Erratum job {job.id} written to {filepath}')
@@ -85,14 +88,17 @@ def cmd_event(ctx: CLIContext, errata_ids: tuple[str, ...]) -> None:
 
     for erratum_id in errata_ids:
         event = Event(type_=EventType.ERRATUM, id=erratum_id)
-        erratum = Erratum.from_event(event)
+        job = ErratumJob(event=event, erratum=Erratum())
 
-        # TODO: erratum.fetch_details()
+        # TODO: job.erratum.fetch_details()
         # TODO: populate releases
-        erratum.releases += ['RHEL-8.10.0', 'RHEL-9.4.0']
+        job.erratum.releases += ['RHEL-8.10.0', 'RHEL-9.4.0']
 
-        for release in erratum.releases:
-            erratum_jobs.append(ErratumJob(event=erratum.event, release=release))
+        for release in job.erratum.releases:
+            job_erratum = job.erratum.clone()
+            job_erratum.releases = [release]
+
+            erratum_jobs.append(ErratumJob(event=event, erratum=job_erratum))
 
     ctx.save_erratum_jobs('event-', erratum_jobs)
 
