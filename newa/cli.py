@@ -2,11 +2,12 @@ import logging
 import os.path
 from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import Any
 
 import click
 from attrs import define
 
-from . import Erratum, ErratumJob, Event, EventType, InitialErratum
+from . import Erratum, ErratumConfig, ErratumJob, Event, EventType, InitialErratum, render_template
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -125,14 +126,42 @@ def cmd_jira(ctx: CLIContext) -> None:
 
     for erratum_job in ctx.load_erratum_jobs('event-'):
         # read Jira issue configuration
-        # get list of matching actions
+        config = ErratumConfig.from_yaml_file(Path('component-config.yaml.sample'))
 
-        # for action in actions:
-        # create epic
-        # or create task
-        # or create sutask
-        # if subtask assoc. with recipes
-        # clone object with yaml
+        # TODO: record created/existing issues. Instead of `Any`, maybe something
+        # from the Jira library would be stored. Or just a Jira ticket ID.
+        known_issues: dict[str, Any] = {}
+
+        # Iterate over issue actions. Take one, if it's not possible to finish it,
+        # put it back at the end of the queue.
+        issue_actions = config.issues[:]
+
+        while issue_actions:
+            action = issue_actions.pop(0)
+
+            print(f'* Would create a {action.type.name} issue:')
+            print(f'     summary: {action.summary}')
+            print(f'     summary: {action.description}')
+
+            if action.id in known_issues:
+                raise Exception(f'Issue "{action.id}" is already created!')
+
+            if action.parent and action.parent not in known_issues:
+                print(f'     !! Parent issue, "{action.parent}", is unknown, will try later')
+                print()
+
+                issue_actions.append(action)
+                continue
+
+            print()
+            print(f'     Issue would be assigned to {action.assignee}.')
+            print(f'       rendered: >>{render_template(action.assignee, ERRATUM=erratum_job)}<<')
+            print(f'     Will remember the issue as `{action.id}`.')
+            if action.parent:
+                print(f'     Issue would have issue `{action.parent}` as its parent.')
+            print()
+
+            known_issues[action.id] = True
 
         # erratum_job.issue = ...
         # what's recipe? doesn't it belong to "schedule"?

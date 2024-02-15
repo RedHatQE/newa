@@ -1,9 +1,10 @@
 import io
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 import attrs
+import jinja2
 import ruamel.yaml
 import ruamel.yaml.nodes
 import ruamel.yaml.representer
@@ -38,6 +39,47 @@ def yaml_parser() -> ruamel.yaml.YAML:
     yaml.representer.add_representer(EventType, _represent_enum)
 
     return yaml
+
+
+def default_template_environment() -> jinja2.Environment:
+    """
+    Create a Jinja2 environment with default settings.
+
+    Adds common filters, and enables block trimming and left strip.
+    """
+
+    environment = jinja2.Environment()
+
+    environment.trim_blocks = True
+    environment.lstrip_blocks = True
+
+    return environment
+
+
+def render_template(
+        template: str,
+        environment: Optional[jinja2.Environment] = None,
+        **variables: Any,
+        ) -> str:
+    """
+    Render a template.
+
+    :param template: template to render.
+    :param environment: Jinja2 environment to use.
+    :param variables: variables to pass to the template.
+    """
+
+    environment = environment or default_template_environment()
+
+    try:
+        return environment.from_string(template).render(**variables).strip()
+
+    except jinja2.exceptions.TemplateSyntaxError as exc:
+        raise Exception(
+            f"Could not parse template at line {exc.lineno}.") from exc
+
+    except jinja2.exceptions.TemplateError as exc:
+        raise Exception("Could not render template.") from exc
 
 
 class EventType(Enum):
@@ -141,3 +183,37 @@ class ErratumJob(Job):
     @property
     def id(self) -> str:
         return f'{self.event.id} @ {self.erratum.release}'
+
+
+#
+# Component configuration
+#
+class IssueType(Enum):
+    EPIC = 'epic'
+    TASK = 'task'
+    SUBTASK = 'subtask'
+
+
+class OnRespinAction(Enum):
+    # TODO: what's the default? It would simplify the class a bit.
+    KEEP = 'keep'
+    CLOSE = 'close'
+
+
+@define
+class IssueAction:  # type: ignore[no-untyped-def]
+    summary: str
+    description: str
+    assignee: str
+    id: str
+    on_respin: Optional[OnRespinAction] = field(  # type: ignore[var-annotated]
+        converter=lambda value: OnRespinAction(value) if value else None)
+    type: IssueType = field(converter=IssueType)
+    parent: Optional[str] = None
+
+
+@define
+class ErratumConfig(Serializable):
+    issues: list[IssueAction] = field(  # type: ignore[var-annotated]
+        factory=list, converter=lambda issues: [
+            IssueAction(**issue) for issue in issues])
