@@ -91,7 +91,7 @@ class Event(Serializable):
 class Erratum(Cloneable, Serializable):
     """ An eratum """
 
-    releases: list[str] = field(factory=list)
+    release: str
     # builds: list[...] = ...
 
     def fetch_details(self) -> None:
@@ -126,4 +126,4 @@ class ErratumJob(Job):
 
     @property
     def id(self) -> str:
-        return f'{self.event.id} @ {"+".join(self.erratum.releases)}'
+        return f'{self.event.id} @ {self.erratum.release}'

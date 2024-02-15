@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 from attrs import define
 
-from . import Erratum, ErratumJob, Event, EventType
+from . import ErratumJob
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -43,10 +43,8 @@ class CLIContext:
             yield self.load_erratum_job(self.state_dirpath / child)
 
     def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
-        assert len(job.erratum.releases) == 1
-
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.releases[0]}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Erratum job {job.id} written to {filepath}')
@@ -75,32 +73,18 @@ def main(click_context: click.Context, state_dir: str) -> None:
 
 
 @main.command(name='event')
-@click.option(
-    '-e', '--erratum', 'errata_ids',
-    multiple=True,
-    required=True,
-    )
+# @click.option(
+#    '-e', '--erratum', 'errata_ids',
+#    multiple=True,
+#    required=True,
+#    )
 @click.pass_obj
-def cmd_event(ctx: CLIContext, errata_ids: tuple[str, ...]) -> None:
+def cmd_event(ctx: CLIContext) -> None:
     ctx.enter_command('event')
 
-    erratum_jobs: list[ErratumJob] = []
+    for erratum_job in ctx.load_erratum_jobs('erratum-'):
 
-    for erratum_id in errata_ids:
-        event = Event(type_=EventType.ERRATUM, id=erratum_id)
-        job = ErratumJob(event=event, erratum=Erratum())
-
-        # TODO: job.erratum.fetch_details()
-        # TODO: populate releases
-        job.erratum.releases += ['RHEL-8.10.0', 'RHEL-9.4.0']
-
-        for release in job.erratum.releases:
-            job_erratum = job.erratum.clone()
-            job_erratum.releases = [release]
-
-            erratum_jobs.append(ErratumJob(event=event, erratum=job_erratum))
-
-    ctx.save_erratum_jobs('event-', erratum_jobs)
+        ctx.save_erratum_job('event-', erratum_job)
 
 
 @main.command(name='jira')
