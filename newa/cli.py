@@ -93,7 +93,7 @@ def main(click_context: click.Context, state_dir: str) -> None:
     multiple=True,
     )
 @click.pass_obj
-def cmd_event(ctx: CLIContext, errata_ids: tuple[str, ...]) -> None:
+def cmd_event(ctx: CLIContext) -> None:
     ctx.enter_command('event')
 
     if errata_ids:
