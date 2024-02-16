@@ -88,6 +88,20 @@ class Event(Serializable):
 
 
 @define
+class InitialErratum(Serializable):
+    """
+    An initial erratum as an input.
+
+    It does not track releases, just the initial event. It will be expanded
+    into corresponding :py:class:`ErratumJob` instances.
+    """
+
+    event: Event = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, Event) else Event(**x),
+        )
+
+
+@define
 class Erratum(Cloneable, Serializable):
     """ An eratum """
 

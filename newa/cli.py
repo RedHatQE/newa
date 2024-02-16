@@ -6,7 +6,7 @@ from pathlib import Path
 import click
 from attrs import define
 
-from . import ErratumJob
+from . import Erratum, ErratumJob, Event, EventType, InitialErratum
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -27,6 +27,20 @@ class CLIContext:
         self.logger.handlers[0].formatter = logging.Formatter(
             f'[%(asctime)s] [{command.ljust(8, " ")}] %(message)s',
             )
+
+    def load_initial_erratum(self, filepath: Path) -> InitialErratum:
+        erratum = InitialErratum.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered initial erratum {erratum.event.id} in {filepath}')
+
+        return erratum
+
+    def load_initial_errata(self, filename_prefix: str) -> Iterator[InitialErratum]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_initial_erratum(self.state_dirpath / child)
 
     def load_erratum_job(self, filepath: Path) -> ErratumJob:
         job = ErratumJob.from_yaml_file(filepath)
@@ -73,18 +87,35 @@ def main(click_context: click.Context, state_dir: str) -> None:
 
 
 @main.command(name='event')
-# @click.option(
-#    '-e', '--erratum', 'errata_ids',
-#    multiple=True,
-#    required=True,
-#    )
+@click.option(
+    '-e', '--erratum', 'errata_ids',
+    multiple=True,
+    )
 @click.pass_obj
-def cmd_event(ctx: CLIContext) -> None:
+def cmd_event(ctx: CLIContext, errata_ids: tuple[str, ...]) -> None:
     ctx.enter_command('event')
 
-    for erratum_job in ctx.load_erratum_jobs('erratum-'):
+    if errata_ids:
+        for erratum_id in errata_ids:
+            event = Event(type_=EventType.ERRATUM, id=erratum_id)
 
-        ctx.save_erratum_job('event-', erratum_job)
+            # fetch erratum details, namely releases
+            releases = ['RHEL-8.10.0', 'RHEL-9.4.0']
+
+            for release in releases:
+                erratum_job = ErratumJob(event=event, erratum=Erratum(release=release))
+
+                ctx.save_erratum_job('event-', erratum_job)
+
+    else:
+        for erratum in ctx.load_initial_errata('init-'):
+            # fetch erratum details, namely releases
+            releases = ['RHEL-8.10.0', 'RHEL-9.4.0']
+
+            for release in releases:
+                erratum_job = ErratumJob(event=erratum.event, erratum=Erratum(release=release))
+
+                ctx.save_erratum_job('event-', erratum_job)
 
 
 @main.command(name='jira')
