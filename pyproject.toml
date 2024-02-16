@@ -37,13 +37,15 @@ keywords = [
 #    "Operating System :: POSIX :: Linux",
 #    ]
 dependencies = [
-    "click>=8.0.3,!=8.1.4"
+    "click>=8.0.3,!=8.1.4",
+    "attrs>=20.3.0",
+    "ruamel.yaml>=0.16.6"
 ]
 
 [project.optional-dependencies]
 
 [project.scripts]
-newa = "newa:main"
+newa = "newa.cli:main"
 
 [project.urls]
 # TODO: provide URL
