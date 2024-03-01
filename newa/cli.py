@@ -146,8 +146,8 @@ def cmd_jira(ctx: CLIContext) -> None:
             if action.id in known_issues:
                 raise Exception(f'Issue "{action.id}" is already created!')
 
-            if action.parent and action.parent not in known_issues:
-                print(f'     !! Parent issue, "{action.parent}", is unknown, will try later')
+            if action.parent_id and action.parent_id not in known_issues:
+                print(f'     !! Parent issue, "{action.parent_id}", is unknown, will try later')
                 print()
 
                 issue_actions.append(action)
@@ -157,8 +157,8 @@ def cmd_jira(ctx: CLIContext) -> None:
             print(f'     Issue would be assigned to {action.assignee}.')
             print(f'       rendered: >>{render_template(action.assignee, ERRATUM=erratum_job)}<<')
             print(f'     Will remember the issue as `{action.id}`.')
-            if action.parent:
-                print(f'     Issue would have issue `{action.parent}` as its parent.')
+            if action.parent_id:
+                print(f'     Issue would have issue `{action.parent_id}` as its parent.')
             print()
 
             known_issues[action.id] = True

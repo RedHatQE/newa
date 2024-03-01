@@ -209,7 +209,7 @@ class IssueAction:  # type: ignore[no-untyped-def]
     on_respin: Optional[OnRespinAction] = field(  # type: ignore[var-annotated]
         converter=lambda value: OnRespinAction(value) if value else None)
     type: IssueType = field(converter=IssueType)
-    parent: Optional[str] = None
+    parent_id: Optional[str] = None
 
 
 @define
