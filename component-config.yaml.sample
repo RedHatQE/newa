@@ -44,6 +44,6 @@ issues:
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
    id: subtask_regression
-   parent: errata_task
+   parent_id: errata_task
    on_respin: close
    job_recipe: https://path/to/recipe.yaml

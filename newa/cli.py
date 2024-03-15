@@ -1,3 +1,4 @@
+import itertools
 import logging
 import os.path
 from collections.abc import Iterable, Iterator
@@ -81,7 +82,7 @@ class CLIContext:
 
     def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.issue}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Jira job {job.id} written to {filepath}')
@@ -142,14 +143,8 @@ def cmd_event(ctx: CLIContext, errata_ids: tuple[str, ...]) -> None:
 def cmd_jira(ctx: CLIContext) -> None:
     ctx.enter_command('jira')
 
-    # This is just to provide fake Jira IDs until we can obtain real ones
-    def jira_issue_identifier() -> str:
-        num = 1
-        while True:
-            yield f'NEWA-{num}'
-            num += 1
-
-    jira_id_gen = jira_issue_identifier()
+    # this is here temporarily so we generate fake Jira issue IDs
+    jira_id_gen = itertools.count(start=1)
 
     for erratum_job in ctx.load_erratum_jobs('event-'):
         # read Jira issue configuration
@@ -191,7 +186,7 @@ def cmd_jira(ctx: CLIContext) -> None:
             known_issues[action.id] = True
 
             # create a fake Issue object for now
-            issue = Issue(issue=next(jira_id_gen))
+            issue = Issue(id=f'NEWA-{next(jira_id_gen)}')
 
             if action.job_recipe:
                 print(

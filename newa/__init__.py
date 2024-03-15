@@ -148,7 +148,7 @@ class Erratum(Cloneable, Serializable):
     """ An eratum """
 
     release: str
-    builds: list[str] = []
+    builds: list[str] = field(factory=list)
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -158,7 +158,7 @@ class Erratum(Cloneable, Serializable):
 class Issue(Cloneable, Serializable):
     """ A Jira issue """
 
-    issue: str
+    id: str
 
     def fetch_details(self) -> None:
         raise NotImplementedError
