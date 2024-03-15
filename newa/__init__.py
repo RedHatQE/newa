@@ -148,7 +148,27 @@ class Erratum(Cloneable, Serializable):
     """ An eratum """
 
     release: str
-    # builds: list[...] = ...
+    builds: list[str] = []
+
+    def fetch_details(self) -> None:
+        raise NotImplementedError
+
+
+@define
+class Issue(Cloneable, Serializable):
+    """ A Jira issue """
+
+    issue: str
+
+    def fetch_details(self) -> None:
+        raise NotImplementedError
+
+
+@define
+class Recipe(Cloneable, Serializable):
+    """ A job recipe """
+
+    url: str
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -162,7 +182,7 @@ class Job(Cloneable, Serializable):
         converter=lambda x: x if isinstance(x, Event) else Event(**x),
         )
 
-    # issue: ...
+    # jira: ...
     # recipe: ...
     # test_job: ...
     # job_result: ...
@@ -185,9 +205,28 @@ class ErratumJob(Job):
         return f'{self.event.id} @ {self.erratum.release}'
 
 
+@define
+class JiraJob(ErratumJob):
+    """ A single *jira* job """
+
+    jira: Issue = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, Issue) else Issue(**x),
+        )
+
+    recipe: Recipe = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, Recipe) else Recipe(**x),
+        )
+
+    @property
+    def id(self) -> str:
+        return f'{self.event.id} @ {self.erratum.release}'
+
+
 #
 # Component configuration
 #
+
+
 class IssueType(Enum):
     EPIC = 'epic'
     TASK = 'task'
@@ -210,6 +249,7 @@ class IssueAction:  # type: ignore[no-untyped-def]
         converter=lambda value: OnRespinAction(value) if value else None)
     type: IssueType = field(converter=IssueType)
     parent_id: Optional[str] = None
+    job_recipe: Optional[str] = None
 
 
 @define

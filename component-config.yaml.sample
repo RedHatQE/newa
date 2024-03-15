@@ -38,3 +38,12 @@ issues:
    id: subtask_rpminspect
    parent_id: errata_task
    on_respin: close
+
+ - summary: "regression testing"
+   description: "Run automated tests"
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   type: subtask
+   id: subtask_regression
+   parent: errata_task
+   on_respin: close
+   job_recipe: https://path/to/recipe.yaml
