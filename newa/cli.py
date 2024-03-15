@@ -7,7 +7,18 @@ from typing import Any
 import click
 from attrs import define
 
-from . import Erratum, ErratumConfig, ErratumJob, Event, EventType, InitialErratum, render_template
+from . import (
+    Erratum,
+    ErratumConfig,
+    ErratumJob,
+    Event,
+    EventType,
+    InitialErratum,
+    Issue,
+    JiraJob,
+    Recipe,
+    render_template
+)
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -68,6 +79,13 @@ class CLIContext:
         for job in jobs:
             self.save_erratum_job(filename_prefix, job)
 
+    def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.issue}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Jira job {job.id} written to {filepath}')
+
 
 @click.group(chain=True)
 @click.option(
@@ -124,6 +142,15 @@ def cmd_event(ctx: CLIContext, errata_ids: tuple[str, ...]) -> None:
 def cmd_jira(ctx: CLIContext) -> None:
     ctx.enter_command('jira')
 
+    # This is just to provide fake Jira IDs until we can obtain real ones
+    def jira_issue_identifier() -> str:
+        num = 1
+        while True:
+            yield f'NEWA-{num}'
+            num += 1
+
+    jira_id_gen = jira_issue_identifier()
+
     for erratum_job in ctx.load_erratum_jobs('event-'):
         # read Jira issue configuration
         config = ErratumConfig.from_yaml_file(Path('component-config.yaml.sample'))
@@ -142,6 +169,7 @@ def cmd_jira(ctx: CLIContext) -> None:
             print(f'* Would create a {action.type.name} issue:')
             print(f'     summary: {action.summary}')
             print(f'     summary: {action.description}')
+            print()
 
             if action.id in known_issues:
                 raise Exception(f'Issue "{action.id}" is already created!')
@@ -153,7 +181,6 @@ def cmd_jira(ctx: CLIContext) -> None:
                 issue_actions.append(action)
                 continue
 
-            print()
             print(f'     Issue would be assigned to {action.assignee}.')
             print(f'       rendered: >>{render_template(action.assignee, ERRATUM=erratum_job)}<<')
             print(f'     Will remember the issue as `{action.id}`.')
@@ -163,11 +190,19 @@ def cmd_jira(ctx: CLIContext) -> None:
 
             known_issues[action.id] = True
 
-        # erratum_job.issue = ...
-        # what's recipe? doesn't it belong to "schedule"?
-        # recipe = new JobRecipe(url)
+            # create a fake Issue object for now
+            issue = Issue(issue=next(jira_id_gen))
 
-        ctx.save_erratum_job('jira-', erratum_job)
+            if action.job_recipe:
+                print(
+                    f'* Would kick automated job for issue {action.type.name} based on recipe from {action.job_recipe}:')
+                print()
+
+                jira_job = JiraJob(event=erratum_job.event,
+                                   erratum=erratum_job.erratum,
+                                   jira=issue,
+                                   recipe=Recipe(url=action.job_recipe))
+                ctx.save_jira_job('jira-', jira_job)
 
 
 @main.command(name='schedule')
