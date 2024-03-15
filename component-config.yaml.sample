@@ -1,10 +1,11 @@
 issues:
+
  - summary: "Errata respin {{ ERRATUM.respin_count }}"
    description: "{{ ERRATUM.srpms }}"
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: task
    id: errata_task
-   parent: errata_epic
+   parent_id: errata_epic
    on_respin: close
 
  - summary: "Testing ER#{{ ERRATUM.event.id }} {{ ERRATUM.summary }}"
@@ -19,7 +20,7 @@ issues:
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
    id: subtask_filelist
-   parent: errata_task
+   parent_id: errata_task
    on_respin: close
 
  - summary: "SPEC file review"
@@ -27,7 +28,7 @@ issues:
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
    id: subtask_spec
-   parent: errata_task
+   parent_id: errata_task
    on_respin: close
 
  - summary: "rpminspect review"
@@ -35,5 +36,5 @@ issues:
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
    id: subtask_rpminspect
-   parent: errata_task
+   parent_id: errata_task
    on_respin: close
