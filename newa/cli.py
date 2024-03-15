@@ -18,8 +18,8 @@ from . import (
     Issue,
     JiraJob,
     Recipe,
-    render_template
-)
+    render_template,
+    )
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -190,7 +190,8 @@ def cmd_jira(ctx: CLIContext) -> None:
 
             if action.job_recipe:
                 print(
-                    f'* Would kick automated job for issue {action.type.name} based on recipe from {action.job_recipe}:')
+                    f'* Would kick automated job for issue {action.type.name}'
+                    f'based on recipe from {action.job_recipe}:')
                 print()
 
                 jira_job = JiraJob(event=erratum_job.event,
