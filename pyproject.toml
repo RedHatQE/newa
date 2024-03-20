@@ -76,6 +76,7 @@ dependencies = [
     "ruff",
     "mypy",
     "pytest",
+    "pytest-cov",
     "pre-commit",
     # prevent conflict between types-requests and urllib3
     "types-requests<2.31.0.7; python_version < '3.10'",
@@ -87,17 +88,20 @@ lint = ["autopep8 {args:.}", "ruff --fix {args:.}"]
 type = ["mypy {args:newa}"]
 check = ["lint", "type"]
 
-# TODO: disabled unit tests until later
-#
-# unit = "pytest -vvv -ra --showlocals tests/unit"
-#
-# [tool.hatch.envs.test]
-# template = "dev"
-# description = "Run scripts with multiple Python versions"
-#
-# [[tool.hatch.envs.test.matrix]]
-# python = ["3.9", "3.11", "3.12"]
-#
+# Tests
+unit = "pytest -vvv -ra --showlocals tests/unit"
+cov = [
+    "coverage run --source=newa -m pytest -vvv tests",
+    "coverage report"
+]
+
+[tool.hatch.envs.test]
+template = "dev"
+description = "Run scripts with multiple Python versions"
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.9", "3.11", "3.12"]
+
 # [tool.hatch.envs.docs]
 # dependencies = ["tmt[docs]"]
 
