@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import time
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Optional, TypeVar, Union
 
 import attrs
 import jinja2
@@ -99,6 +100,50 @@ def krb_get_request(url: str, attempts: int = 5, delay: int = 5) -> Any:
         attempts -= 1
 
     raise Exception(f"GET request to {url} failed")
+
+
+def eval_test(
+        test: str,
+        environment: Optional[jinja2.Environment] = None,
+        **variables: Any,
+        ) -> bool:
+    """
+    Evaluate a test expression.
+
+    :param test: expressio to evaluate. It must be a Jinja2-compatible expression.
+    :param environment: Jinja2 environment to use.
+    :param variables: variables to pass to the template.
+    :returns: whether the expression evaluated to true-ish value.
+    """
+
+    environment = environment or default_template_environment()
+
+    def _test_erratum(obj: Union[Event, ErratumJob]) -> bool:
+        if isinstance(obj, Event):
+            return obj.type_ is EventType.ERRATUM
+
+        if isinstance(obj, ErratumJob):
+            return obj.event.type_ is EventType.ERRATUM
+
+        raise Exception(f"Unsupported type in 'erratum' test: {type(obj)}")
+
+    def _test_match(s: str, pattern: str) -> bool:
+        return re.match(pattern, s) is not None
+
+    environment.tests['erratum'] = _test_erratum
+    environment.tests['match'] = _test_match
+
+    try:
+        outcome = render_template(
+            f'{{% if {test} %}}true{{% else %}}false{{% endif %}}',
+            environment=environment,
+            **variables,
+            )
+
+    except Exception as exc:
+        raise Exception(f"Could not evaluate test '{test}'") from exc
+
+    return bool(outcome == 'true')
 
 
 class EventType(Enum):
