@@ -1,4 +1,5 @@
 import io
+import os
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
@@ -9,6 +10,7 @@ import ruamel.yaml
 import ruamel.yaml.nodes
 import ruamel.yaml.representer
 from attrs import define, field
+from jira import JIRA
 
 if TYPE_CHECKING:
     from typing_extensions import Self, TypeAlias
@@ -257,3 +259,20 @@ class ErratumConfig(Serializable):
     issues: list[IssueAction] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
+
+
+@define
+class JiraHandler:
+    """ An interface to Jira instance """
+
+    connection: JIRA
+
+    def __init__(self) -> None:
+        # TODO: In the future both both Jira url and token will be sourced
+        # from newa config.
+        try:
+            url = os.environ["JIRA_URL"]
+            token = os.environ["JIRA_TOKEN"]
+        except KeyError as e:
+            raise ValueError(f"{'and'.join(e.args)} not set!") from None
+        self.connection = JIRA(url, token_auth=token)
