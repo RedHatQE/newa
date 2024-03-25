@@ -26,6 +26,8 @@ from typing import (
 
 import attrs
 import jinja2
+import jira
+import jira.client
 import requests
 import ruamel.yaml
 import ruamel.yaml.nodes
@@ -35,6 +37,8 @@ from attrs import define, field, frozen, validators
 from requests_kerberos import HTTPKerberosAuth
 
 if TYPE_CHECKING:
+    from typing import ClassVar
+
     from typing_extensions import Self, TypeAlias
 
     ErratumId: TypeAlias = str
@@ -752,3 +756,127 @@ class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
     issues: list[IssueAction] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
+
+
+@frozen
+class IssueHandler:
+    """ An interface to Jira instance """
+
+    connection: jira.JIRA = field(init=False)
+    project: str = field()
+
+    # We assume that all projects have the following two custom fields mapped
+    # as follows.
+    custom_field_map: ClassVar[dict[str, str]] = {
+        "field_epic_link": "customfield_12311140",
+        "field_epic_name": "customfield_12311141",
+        }
+
+    # Each project can have different semantics of issue status.
+    transitions: dict[str, list[str]] = field()
+
+    # TODO: Until we have a dedicated newa config, we'll setup JIRA connection
+    # via environment variables NEWA_JIRA_URL and NEWA_JIRA_TOKEN
+    @connection.default  # pyright: ignore [reportAttributeAccessIssue]
+    def _connection_factory(self) -> jira.JIRA:
+        if "NEWA_JIRA_URL" not in os.environ:
+            raise Exception("NEWA_JIRA_URL envvar is required.")
+        if "NEWA_JIRA_TOKEN" not in os.environ:
+            raise Exception("NEWA_JIRA_TOKEN envvar is required.")
+        return jira.JIRA(os.environ["NEWA_JIRA_URL"], token_auth=os.environ["NEWA_JIRA_TOKEN"])
+
+    def get_details(self, issue: Issue) -> jira.Issue:
+        """ Return issue details """
+
+        try:
+            return self.connection.issue(issue.id)
+        except jira.JIRAError as e:
+            raise Exception(f"Jira issue {issue} not found!") from e
+
+    def search_open_issues(self, query: str) -> tuple[jira.client.ResultList[jira.Issue], str]:
+        """ Search for issues that are not closed (returns subset of fields, only) """
+
+        fields = ["summary", "description", "status", "resolution"]
+
+        query = \
+            f"({query}) AND " + \
+            f"project = '{self.project}' AND " + \
+            f"status not in ({','.join(self.transitions["closed"])})"
+
+        # Result is always the right type with json_result=False (pyright just doesn't know that).
+        return self.connection.search_issues(query, fields=fields, json_result=False), query
+
+    def create_epic(self, data: dict[str, Any]) -> Issue:
+        """ Create Epic """
+
+        data |= {
+            "issuetype": {"name": "Epic"},
+            IssueHandler.custom_field_map["field_epic_name"]: data["summary"],
+            }
+        return self._create_issue(data)
+
+    def create_task(self, data: dict[str, Any], epic: Optional[Issue] = None) -> Issue:
+        """ Create Task """
+
+        data |= {"issuetype": {"name": "Task"}}
+        if epic:
+            data |= {IssueHandler.custom_field_map["field_epic_link"]: epic.id}
+        return self._create_issue(data)
+
+    def create_subtask(self, data: dict[str, Any], task: Issue) -> Issue:
+        """ Create Subask """
+
+        data |= {
+            "issuetype": {"name": "Sub-task"},
+            "parent": {"key": task.id},
+            }
+        return self._create_issue(data)
+
+    def _create_issue(self, data: dict[str, Any]) -> Issue:
+        """ Create generic issue (label it with NEWA) """
+
+        data |= {"project": {"key": self.project}}
+
+        try:
+            jira_issue = self.connection.create_issue(data)
+            jira_issue.update(fields={"labels": [*jira_issue.fields.labels, 'NEWA']})
+            return Issue(jira_issue.key)
+        except jira.JIRAError as e:
+            raise Exception("Unable to create issue!") from e
+
+    def comment_issue(self, issue: Issue, comment: str) -> None:
+        """ Add comment to issue """
+
+        try:
+            self.connection.add_comment(issue.id, comment)
+        except jira.JIRAError as e:
+            raise Exception(f"Unable to add a comment to issue {issue}!") from e
+
+    def update_description(self, issue: Issue, description: str) -> None:
+        """ Update issue description """
+
+        try:
+            self.get_details(issue).update(fields={"description": description})
+        except jira.JIRAError as e:
+            raise Exception(f"Unable to modify issue {issue}!") from e
+
+    def drop_obsoleted_issue(self, issue: Issue, obsoleted_by: Issue) -> None:
+        """ Close obsoleted issue and link a new one """
+
+        obsoleting_comment = \
+            "This issue was automatically closed as " + \
+            f"{self.transitions["dropped"][0]} by NEWA " + \
+            f"(obsoleted by {obsoleted_by}."
+
+        try:
+            self.connection.create_issue_link(type="relates to",
+                                              inwardIssue=issue.id,
+                                              outwardIssue=obsoleted_by.id,
+                                              comment={
+                                                  "body": obsoleting_comment,
+                                                  "visbility": None,
+                                                  })
+            self.connection.transition_issue(issue.id,
+                                             transition=self.transitions["dropped"][0])
+        except jira.JIRAError as e:
+            raise Exception(f"Unable to close issue {issue}!") from e
