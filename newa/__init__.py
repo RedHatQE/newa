@@ -175,6 +175,21 @@ class Recipe(Cloneable, Serializable):
 
 
 @define
+class Request(Cloneable, Serializable):
+    """ A test job request configuration """
+
+    id: str
+    context: Optional[dict] = {}
+    environment: Optional[dict] = {}
+    git_url: Optional[str] = ''
+    git_ref: Optional[str] = ''
+    tmt_path: Optional[str] = ''
+
+    def fetch_details(self) -> None:
+        raise NotImplementedError
+
+
+@define
 class Job(Cloneable, Serializable):
     """ A single job """
 
@@ -202,7 +217,7 @@ class ErratumJob(Job):
 
     @property
     def id(self) -> str:
-        return f'{self.event.id} @ {self.erratum.release}'
+        return f'E: {self.event.id} @ {self.erratum.release}'
 
 
 @define
@@ -219,7 +234,20 @@ class JiraJob(ErratumJob):
 
     @property
     def id(self) -> str:
-        return f'{self.event.id} @ {self.erratum.release}'
+        return f'J: {self.event.id} @ {self.erratum.release} - {self.jira.id}'
+
+
+@define
+class RequestJob(JiraJob):
+    """ A single *request* to be scheduled for execution """
+
+    request  = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, Request) else Request(**x),
+        )
+
+    @property
+    def id(self) -> str:
+        return f'R: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
 
 
 #
