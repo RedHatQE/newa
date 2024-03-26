@@ -112,30 +112,27 @@ def main(click_context: click.Context, state_dir: str) -> None:
     multiple=True,
     )
 @click.pass_obj
-def cmd_event(ctx: CLIContext, errata_ids: tuple[str, ...]) -> None:
+def cmd_event(ctx: CLIContext, errata_ids: list[str]) -> None:
     ctx.enter_command('event')
 
-    if errata_ids:
-        for erratum_id in errata_ids:
-            event = Event(type_=EventType.ERRATUM, id=erratum_id)
+    # Errata IDs were not given, try to load them from init- files.
+    if not errata_ids:
+        errata_ids = [e.event.id for e in ctx.load_initial_errata('init-')]
 
-            # fetch erratum details, namely releases
-            releases = ['RHEL-8.10.0', 'RHEL-9.4.0']
+    # Abort if there are still no errata IDs.
+    if not errata_ids:
+        raise Exception('Missing errata IDs!')
 
-            for release in releases:
-                erratum_job = ErratumJob(event=event, erratum=Erratum(release=release))
+    for erratum_id in errata_ids:
+        event = Event(type_=EventType.ERRATUM, id=erratum_id)
 
-                ctx.save_erratum_job('event-', erratum_job)
+        # fetch erratum details (TODO: releases for now)
+        errata = Erratum.from_errata_tool(event)
 
-    else:
-        for erratum in ctx.load_initial_errata('init-'):
-            # fetch erratum details, namely releases
-            releases = ['RHEL-8.10.0', 'RHEL-9.4.0']
+        for erratum in errata:
+            erratum_job = ErratumJob(event=event, erratum=erratum)
 
-            for release in releases:
-                erratum_job = ErratumJob(event=erratum.event, erratum=Erratum(release=release))
-
-                ctx.save_erratum_job('event-', erratum_job)
+            ctx.save_erratum_job('event-', erratum_job)
 
 
 @main.command(name='jira')
