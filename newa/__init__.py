@@ -110,7 +110,7 @@ def eval_test(
     """
     Evaluate a test expression.
 
-    :param test: expressio to evaluate. It must be a Jinja2-compatible expression.
+    :param test: expression to evaluate. It must be a Jinja2-compatible expression.
     :param environment: Jinja2 environment to use.
     :param variables: variables to pass to the template.
     :returns: whether the expression evaluated to true-ish value.
