@@ -118,7 +118,9 @@ python_version = "3.9"
 files = ["newa/"]
 
 [[tool.mypy.overrides]]
-module = []
+module = [
+    "jira.*"
+]
 ignore_missing_imports = true
 
 [tool.autopep8]
