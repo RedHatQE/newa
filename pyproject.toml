@@ -40,7 +40,8 @@ dependencies = [
     "click>=8.0.3,!=8.1.4",
     "attrs>=20.3.0",
     "ruamel.yaml>=0.16.6",
-    "jinja2>=2.11.3"
+    "jinja2>=2.11.3",
+    "jira>=3.8.0"
 ]
 
 [project.optional-dependencies]
@@ -117,7 +118,9 @@ python_version = "3.9"
 files = ["newa/"]
 
 [[tool.mypy.overrides]]
-module = []
+module = [
+    "jira.*"
+]
 ignore_missing_imports = true
 
 [tool.autopep8]
