@@ -160,7 +160,7 @@ class ErrataTool:
     # url via environment variable NEWA_ET_URL
     url: str = field(validator=validators.matches_re("^https?://.+$"))
 
-    @url.default # pyright: ignore
+    @url.default  # pyright: ignore [reportAttributeAccessIssue]
     def _url_factory(self) -> str:
         if "NEWA_ET_URL" in os.environ:
             return os.environ["NEWA_ET_URL"]
