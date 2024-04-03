@@ -24,6 +24,10 @@ repos:
           - "attrs>=20.3.0"
           - "ruamel.yaml>=0.16.6"
           - "jinja2>=2.11.3"
+          # prevent conflict between types-requests and urllib3
+          - "types-requests<2.31.0.7; python_version < '3.10'"
+          - "types-requests; python_version >= '3.10'"
+
         pass_filenames: false
         args: [--config-file=pyproject.toml]
 

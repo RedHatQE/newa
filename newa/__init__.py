@@ -1,14 +1,20 @@
+from __future__ import annotations
+
 import io
+import os
+import time
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 import attrs
 import jinja2
+import requests
 import ruamel.yaml
 import ruamel.yaml.nodes
 import ruamel.yaml.representer
-from attrs import define, field
+from attrs import define, field, frozen, validators
+from requests_kerberos import HTTPKerberosAuth
 
 if TYPE_CHECKING:
     from typing_extensions import Self, TypeAlias
@@ -82,6 +88,19 @@ def render_template(
         raise Exception("Could not render template.") from exc
 
 
+def krb_get_request(url: str, attempts: int = 5, delay: int = 5) -> Any:
+    """ Generic GET request using Kerberos authentication """
+
+    while attempts:
+        r = requests.get(url, auth=HTTPKerberosAuth(delegate=True))
+        if r.status_code == 200:
+            return r.json()
+        time.sleep(delay)
+        attempts -= 1
+
+    raise Exception(f"GET request to {url} failed")
+
+
 class EventType(Enum):
     """ Event types """
 
@@ -92,7 +111,7 @@ class EventType(Enum):
 class Cloneable:
     """ A class whose instances can be cloned """
 
-    def clone(self) -> 'Self':
+    def clone(self) -> Self:
         return attrs.evolve(self)
 
 
@@ -126,7 +145,33 @@ class Event(Serializable):
     """ A triggering event of Newa pipeline """
 
     type_: EventType = field(converter=EventType)
-    id: 'ErratumId'
+    id: ErratumId
+
+
+@frozen
+class ErrataTool:
+    """
+    Interface to Errata Tool instance
+
+    Its only purpose is to serve information about an erratum and its builds.
+    """
+
+    # TODO: Until we have a dedicated newa config, we'll setup ET instance
+    # url via environment variable NEWA_ET_URL
+    url: str = field(validator=validators.matches_re("^https?://.+$"))
+
+    @url.default  # pyright: ignore [reportAttributeAccessIssue]
+    def _url_factory(self) -> str:
+        if "NEWA_ET_URL" in os.environ:
+            return os.environ["NEWA_ET_URL"]
+        raise Exception("NEWA_ET_URL envvar is required.")
+
+    # TODO: Not used at this point because we only consume builds now
+    def fetch_info(self, erratum_id: str) -> Any:
+        return krb_get_request(f"{self.url}/advisory/{erratum_id}.json")
+
+    def fetch_releases(self, erratum_id: str) -> Any:
+        return krb_get_request(f"{self.url}/advisory/{erratum_id}/builds.json")
 
 
 @define
@@ -145,13 +190,63 @@ class InitialErratum(Serializable):
 
 @define
 class Erratum(Cloneable, Serializable):
-    """ An eratum """
+    """
+    An eratum
 
+    Represents a set of builds targetting a single release.
+    """
+
+    # TODO: We might need to add more in the future.
     release: str
     builds: list[str] = field(factory=list)
 
-    def fetch_details(self) -> None:
-        raise NotImplementedError
+    @classmethod
+    def from_errata_tool(cls, event: Event) -> list[Erratum]:
+        """
+        Creates a list of Erratum instances based on given errata ID
+
+        Errata is split into one or more instances of an erratum. There is one
+        for each release included in errata. Each errata has a single release
+        set - it is either regular one or ASYNC. An errata with a regular
+        release (e.g. RHEL-9.0.0.Z.EUS) will result into a single erratatum.
+        On the other hand an errata with ASYNC release might result into one
+        or more instances of erratum.
+        """
+
+        errata = []
+
+        # TODO: We might need to assert QE (or later) state. There is no point
+        # in fetching errata in NEW_FILES where builds need not to be present.
+
+        # In QE state there is are zero or more builds in an erratum, each
+        # contains one or more packages, e.g.:
+        # {
+        #   "RHEL-9.0.0.Z.EUS": [
+        #     {
+        #       "scap-security-guide-0.1.72-1.el9_3": {
+        #          ...
+        #     }
+        #   ]
+        #   "RHEL-9.2.0.Z.EUS": [
+        #     {
+        #       "scap-security-guide-0.1.72-1.el9_3": {
+        #          ...
+        #     }
+        #   ]
+        # }
+
+        releases_json = ErrataTool().fetch_releases(event.id)
+        for release in releases_json:
+            builds = []
+            builds_json = releases_json[release]
+            for item in builds_json:
+                builds += list(item.keys())
+            if builds:
+                errata.append(cls(release, builds))
+            else:
+                raise Exception(f"No builds found in ER#{event.id}")
+
+        return errata
 
 
 @define
@@ -169,9 +264,6 @@ class Recipe(Cloneable, Serializable):
     """ A job recipe """
 
     url: str
-
-    def fetch_details(self) -> None:
-        raise NotImplementedError
 
 
 @define
