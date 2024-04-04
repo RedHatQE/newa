@@ -1,0 +1,10 @@
+summary: demo testplan
+
+discover:
+    how: shell
+    tests:
+      - name: execution context test
+        test: echo PLANET=${PLANET} CITY=${CITY} color=$@{color}
+
+execute:
+    how: tmt

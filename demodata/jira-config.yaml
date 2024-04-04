@@ -1,0 +1,25 @@
+issues:
+
+ - summary: "Testing ER#{{ ERRATUM.event.id }} {{ ERRATUM.summary }}"
+   description: "{{ ERRATUM.url }}"
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   type: epic
+   id: errata_epic
+   on_respin: keep
+
+ - summary: "Errata respin {{ ERRATUM.respin_count }}"
+   description: "{{ ERRATUM.srpms }}"
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   type: task
+   id: errata_task
+   parent_id: errata_epic
+   on_respin: close
+
+ - summary: "Demo test"
+   description: "Run demo test"
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   type: subtask
+   id: subtask_demo
+   parent_id: errata_task
+   on_respin: close
+   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/ks_execute_job/demodata/recipe.yaml
