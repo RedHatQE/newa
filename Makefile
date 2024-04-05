@@ -16,7 +16,7 @@ endef
 ##@ Utils
 
 system/fedora: .FORCE  ## Install Fedora system requirements (needs sudo)
-	sudo dnf -y install krb5-devel
+	sudo dnf -y install krb5-devel gcc python3-devel
 
 # See https://www.thapaliya.com/en/writings/well-documented-makefiles/ for details.
 reverse = $(if $(1),$(call reverse,$(wordlist 2,$(words $(1)),$(1)))) $(firstword $(1))
