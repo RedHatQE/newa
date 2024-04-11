@@ -18,6 +18,8 @@ from . import (
     Issue,
     JiraJob,
     Recipe,
+    RecipeConfig,
+    RequestJob,
     render_template,
     )
 
@@ -69,6 +71,20 @@ class CLIContext:
 
             yield self.load_erratum_job(self.state_dirpath / child)
 
+    def load_jira_job(self, filepath: Path) -> JiraJob:
+        job = JiraJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered jira job {job.id} in {filepath}')
+
+        return job
+
+    def load_jira_jobs(self, filename_prefix: str) -> Iterator[JiraJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_jira_job(self.state_dirpath / child)
+
     def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
         filepath = self.state_dirpath / \
             f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
@@ -86,6 +102,13 @@ class CLIContext:
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Jira job {job.id} written to {filepath}')
+
+    def save_request_job(self, filename_prefix: str, job: RequestJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Request job {job.id} written to {filepath}')
 
 
 @click.group(chain=True)
@@ -203,12 +226,22 @@ def cmd_jira(ctx: CLIContext) -> None:
 def cmd_schedule(ctx: CLIContext) -> None:
     ctx.enter_command('schedule')
 
-    for erratum_job in ctx.load_erratum_jobs('jira-'):
-        # prepare  parameters based on errata details (environment variables)
-        # generate all relevant test jobs using the recipe
-        # prepares a list of JobExec objects
+    for jira_job in ctx.load_jira_jobs('jira-'):
+        # prepare parameters based on the recipe from recipe.url
+        # generate all relevant test request using the recipe data
+        # prepare a list of Request objects
 
-        ctx.save_erratum_job('schedule-', erratum_job)
+        config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
+
+        # create few fake Issue objects for now
+        for request in config.build_requests():
+            request_job = RequestJob(
+                event=jira_job.event,
+                erratum=jira_job.erratum,
+                jira=jira_job.jira,
+                recipe=jira_job.recipe,
+                request=request)
+            ctx.save_request_job('request-', request_job)
 
 
 @main.command(name='execute')

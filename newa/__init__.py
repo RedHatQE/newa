@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+import copy
 import io
+import itertools
 import os
 import re
 import time
+from collections.abc import Iterator
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Literal,
+    Optional,
+    TypedDict,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+    )
 
 import attrs
 import jinja2
@@ -14,6 +28,7 @@ import requests
 import ruamel.yaml
 import ruamel.yaml.nodes
 import ruamel.yaml.representer
+import urllib3.response
 from attrs import define, field, frozen, validators
 from requests_kerberos import HTTPKerberosAuth
 
@@ -21,6 +36,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self, TypeAlias
 
     ErratumId: TypeAlias = str
+    JSON: TypeAlias = Any
 
 
 T = TypeVar('T')
@@ -89,13 +105,71 @@ def render_template(
         raise Exception("Could not render template.") from exc
 
 
-def krb_get_request(url: str, attempts: int = 5, delay: int = 5) -> Any:
-    """ Generic GET request using Kerberos authentication """
+class ResponseContentType(Enum):
+    TEXT = 'text'
+    JSON = 'json'
+    RAW = 'raw'
+    BINARY = 'binary'
 
+
+@overload
+def get_request(
+        *,
+        url: str,
+        krb: bool = False,
+        attempts: int = 5,
+        delay: int = 5,
+        response_content: Literal[ResponseContentType.TEXT]) -> str:
+    pass
+
+
+@overload
+def get_request(
+        *,
+        url: str,
+        krb: bool = False,
+        attempts: int = 5,
+        delay: int = 5,
+        response_content: Literal[ResponseContentType.BINARY]) -> bytes:
+    pass
+
+
+@overload
+def get_request(
+        *,
+        url: str,
+        krb: bool = False,
+        attempts: int = 5,
+        delay: int = 5,
+        response_content: Literal[ResponseContentType.JSON]) -> JSON:
+    pass
+
+
+@overload
+def get_request(
+        *,
+        url: str,
+        krb: bool = False,
+        attempts: int = 5,
+        delay: int = 5,
+        response_content: Literal[ResponseContentType.RAW]) -> urllib3.response.HTTPResponse:
+    pass
+
+
+def get_request(
+        url: str,
+        krb: bool = False,
+        attempts: int = 5,
+        delay: int = 5,
+        response_content: ResponseContentType = ResponseContentType.TEXT) -> Any:
+    """ Generic GET request, optionally using Kerberos authentication """
     while attempts:
-        r = requests.get(url, auth=HTTPKerberosAuth(delegate=True))
+        r = requests.get(url, auth=HTTPKerberosAuth(delegate=True)) if krb else requests.get(url)
         if r.status_code == 200:
-            return r.json()
+            response = getattr(r, response_content.value)
+            if callable(response):
+                return response()
+            return response
         time.sleep(delay)
         attempts -= 1
 
@@ -184,6 +258,11 @@ class Serializable:
     def from_yaml_file(cls: type[SerializableT], filepath: Path) -> SerializableT:
         return cls.from_yaml(filepath.read_text())
 
+    @classmethod
+    def from_yaml_url(cls: type[SerializableT], url: str) -> SerializableT:
+        r = get_request(url=url, response_content=ResponseContentType.TEXT)
+        return cls.from_yaml(r)
+
 
 @define
 class Event(Serializable):
@@ -212,11 +291,17 @@ class ErrataTool:
         raise Exception("NEWA_ET_URL envvar is required.")
 
     # TODO: Not used at this point because we only consume builds now
-    def fetch_info(self, erratum_id: str) -> Any:
-        return krb_get_request(f"{self.url}/advisory/{erratum_id}.json")
+    def fetch_info(self, erratum_id: str) -> JSON:
+        return get_request(
+            url=f"{self.url}/advisory/{erratum_id}.json",
+            krb=True,
+            response_content=ResponseContentType.JSON)
 
-    def fetch_releases(self, erratum_id: str) -> Any:
-        return krb_get_request(f"{self.url}/advisory/{erratum_id}/builds.json")
+    def fetch_releases(self, erratum_id: str) -> JSON:
+        return get_request(
+            url=f"{self.url}/advisory/{erratum_id}/builds.json",
+            krb=True,
+            response_content=ResponseContentType.JSON)
 
 
 @define
@@ -311,6 +396,95 @@ class Recipe(Cloneable, Serializable):
     url: str
 
 
+# A tmt context for a recipe, dimension -> value mapping.
+RecipeContext = dict[str, str]
+
+# An environment for e recipe, name -> value mapping.
+RecipeEnvironment = dict[str, str]
+
+
+class RawRecipeConfigDimension(TypedDict, total=False):
+    context: RecipeContext
+    environment: RecipeEnvironment
+    git_url: Optional[str]
+    git_ref: Optional[str]
+
+
+_RecipeConfigDimensionKey = Literal['context', 'environment', 'git_url', 'git_ref']
+
+
+# A list of recipe config dimensions, as stored in a recipe config file.
+RawRecipeConfigDimensions = dict[str, list[RawRecipeConfigDimension]]
+
+
+@define
+class RecipeConfig(Cloneable, Serializable):
+    """ A job recipe configuration """
+
+    fixtures: RawRecipeConfigDimension = field(
+        factory=cast(Callable[[], RawRecipeConfigDimension], dict))
+    dimensions: RawRecipeConfigDimensions = field(
+        factory=cast(Callable[[], RawRecipeConfigDimensions], dict))
+
+    def build_requests(self) -> Iterator[Request]:
+        # this is here to generate unique recipe IDs
+        recipe_id_gen = itertools.count(start=1)
+
+        # get all options from dimentions
+        options: list[list[RawRecipeConfigDimension]] = []
+        for dimension in self.dimensions:
+            options.append(self.dimensions[dimension])
+        # generate combinations
+        combinations = list(itertools.product(*options))
+        # extend each combination with fixtures
+        for i in range(len(combinations)):
+            combinations[i] = (self.fixtures,) + (combinations[i])
+
+        # Note: moved into its own function to avoid being indented too much;
+        # mypy needs to be silenced because we use `key` variable instead of
+        # literal keys defined in the corresponding typeddicts. And being nested
+        # too much, autopep8 was reformatting and misplacing `type: ignore`.
+        def _merge_key(
+                dest: RawRecipeConfigDimension,
+                src: RawRecipeConfigDimension,
+                key: str) -> None:
+            if key not in dest:
+                # we need to do a deep copy so we won't corrupt the original data
+                dest[key] = copy.deepcopy(src[key])  # type: ignore[literal-required]
+            elif isinstance(dest[key], dict) and isinstance(src[key], dict):  # type: ignore[literal-required]
+                dest[key].update(src[key])  # type: ignore[literal-required]
+            else:
+                raise Exception(f"Don't know how to merge record type {key}")
+
+        def merge_combination_data(
+                combination: tuple[RawRecipeConfigDimension, ...]) -> RawRecipeConfigDimension:
+            merged: RawRecipeConfigDimension = {}
+            for record in combination:
+                for key in record:
+                    _merge_key(merged, record, key)
+            return merged
+
+        # now for each combination merge data from individual dimensions
+        merged_combinations = list(map(merge_combination_data, combinations))
+        for combination in merged_combinations:
+            yield Request(id=f'REQ-{next(recipe_id_gen)}', **combination)
+
+
+@define
+class Request(Cloneable, Serializable):
+    """ A test job request configuration """
+
+    id: str
+    context: RecipeContext = field(factory=dict)
+    environment: RecipeEnvironment = field(factory=dict)
+    git_url: Optional[str] = None
+    git_ref: Optional[str] = None
+    tmt_path: Optional[str] = None
+
+    def fetch_details(self) -> None:
+        raise NotImplementedError
+
+
 @define
 class Job(Cloneable, Serializable):
     """ A single job """
@@ -339,7 +513,7 @@ class ErratumJob(Job):
 
     @property
     def id(self) -> str:
-        return f'{self.event.id} @ {self.erratum.release}'
+        return f'E: {self.event.id} @ {self.erratum.release}'
 
 
 @define
@@ -356,7 +530,20 @@ class JiraJob(ErratumJob):
 
     @property
     def id(self) -> str:
-        return f'{self.event.id} @ {self.erratum.release}'
+        return f'J: {self.event.id} @ {self.erratum.release} - {self.jira.id}'
+
+
+@define
+class RequestJob(JiraJob):
+    """ A single *request* to be scheduled for execution """
+
+    request = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, Request) else Request(**x),
+        )
+
+    @property
+    def id(self) -> str:
+        return f'R: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
 
 
 #
