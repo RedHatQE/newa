@@ -1,3 +1,5 @@
+import datetime
+import itertools
 import logging
 import multiprocessing
 import os.path
@@ -26,6 +28,7 @@ from . import (
     RawRecipeConfigDimension,
     Recipe,
     RecipeConfig,
+    ReportPortal,
     ScheduleJob,
     Settings,
     eval_test,
@@ -108,6 +111,20 @@ class CLIContext:
                 continue
 
             yield self.load_schedule_job(self.state_dirpath / child)
+
+    def load_execute_job(self, filepath: Path) -> ExecuteJob:
+        job = ExecuteJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered execute job {job.id} in {filepath}')
+
+        return job
+
+    def load_execute_jobs(self, filename_prefix: str) -> Iterator[ExecuteJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_execute_job(self.state_dirpath / child)
 
     def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
         filepath = self.state_dirpath / \
@@ -374,7 +391,7 @@ def cmd_schedule(ctx: CLIContext) -> None:
         requests = list(config.build_requests(initial_config))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
-        # create few fake Issue objects for now
+        # create ScheduleJob object for each request
         for request in requests:
             schedule_job = ScheduleJob(
                 event=jira_job.event,
@@ -388,7 +405,7 @@ def cmd_schedule(ctx: CLIContext) -> None:
 @main.command(name='execute')
 @click.option(
     '--workers',
-    default=4,
+    default=8,
     )
 @click.pass_obj
 def cmd_execute(ctx: CLIContext, workers: int) -> None:
@@ -422,6 +439,8 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     log('processing request...')
     # read request details
     schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
+    # we define request.seed here to have it unique for each iteration
+    schedule_job.request.seed = datetime.datetime.now(datetime.timezone.utc).timestamp()
     log('initiating TF request')
     tf_request = schedule_job.request.initiate_tf_request()
     # tf_request = TFRequest(
@@ -442,7 +461,9 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         jira=schedule_job.jira,
         recipe=schedule_job.recipe,
         request=schedule_job.request,
-        execution=Execution(return_code=0, artifacts_url=tf_request.details['run']['artifacts']),
+        execution=Execution(return_code=0,
+                            artifacts_url=tf_request.details['run']['artifacts'],
+                            newa_hash=schedule_job.request.get_hash()),
         )
     execute_job.to_yaml_file(
         schedule_file.parent /
@@ -457,7 +478,42 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
 def cmd_report(ctx: CLIContext) -> None:
     ctx.enter_command('report')
 
-    for _ in ctx.load_erratum_jobs('execute-'):
-        pass
-        # read yaml details
-        # update Jira issue with job result
+    jira_request_mapping: dict[str, dict[str, list[str]]] = {}
+    rp = ReportPortal(url=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', ''),
+                      token=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN', ''),
+                      project=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT', ''))
+
+    # process each stored execute file
+    for execute_job in ctx.load_execute_jobs('execute-'):
+        jira_id = execute_job.jira.id
+        request_id = execute_job.request.id
+        newa_hash = execute_job.execution.newa_hash
+        if jira_id not in jira_request_mapping:
+            jira_request_mapping[jira_id] = {}
+        # for each Jira and request ID we build a list of RP launches
+        jira_request_mapping[jira_id][request_id] = []
+        jira_request_mapping[jira_id][request_id].extend(
+            rp.find_launches_by_attr('newa_hash', newa_hash),
+            )
+    print(jira_request_mapping)
+
+    # proceed with RP launch merge
+    for jira_id in jira_request_mapping:
+        to_merge = []
+        description = f'{jira_id}: {len(jira_request_mapping[jira_id])} job requests in total:\n'
+        for request in jira_request_mapping[jira_id]:
+            if len(jira_request_mapping[jira_id][request]):
+                description += f'  {request}: COMPLETED\n'
+                to_merge.extend(jira_request_mapping[jira_id][request])
+            else:
+                description += f'  {request}: MISSING\n'
+        print(description)
+        print(to_merge)
+        if not len(to_merge):
+            ctx.logger.error('Failed to find any related ReportPortal launches')
+        else:
+            if len(to_merge) > 1:
+                final_launch = rp.merge_launches(to_merge, "ksrot_newa_merged", description, {})
+            else:
+                final_launch = to_merge[0]
+            ctx.logger.info(f'RP launch url: {rp.get_launch_url(final_launch)}')

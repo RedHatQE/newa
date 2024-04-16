@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import itertools
 import os
@@ -291,6 +292,10 @@ class Cloneable:
 class Serializable:
     """ A class whose instances can be serialized into YAML """
 
+    def get_hash(self) -> str:
+        # use only first 12 characters
+        return hashlib.sha256(self.to_yaml().encode('utf-8')).hexdigest()[:12]
+
     def to_yaml(self) -> str:
         output = io.StringIO()
 
@@ -521,6 +526,7 @@ class RecipeConfig(Cloneable, Serializable):
 
         # now for each combination merge data from individual dimensions
         merged_combinations = list(map(merge_combination_data, combinations))
+        total = len(merged_combinations)
         for combination in merged_combinations:
             # before creating a Request check if there is a condition present and evaluate it
             condition = combination.get('when', '')
@@ -533,7 +539,8 @@ class RecipeConfig(Cloneable, Serializable):
                     CONTEXT=combination['context'])
                 if not test_result:
                     continue
-            yield Request(id=f'REQ-{next(recipe_id_gen)}', **combination)
+            yield Request(id=f'REQ-{next(recipe_id_gen)}.{total}',
+                          **combination)
 
 
 @define
@@ -550,6 +557,7 @@ class Request(Cloneable, Serializable):
     plan: Optional[str] = None
     # TODO: 'when' not really needed, adding it to silent the linter
     when: Optional[str] = None
+    seed: Optional[str] = ''
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -561,6 +569,22 @@ class Request(Cloneable, Serializable):
         command: list[str] = [
             'testing-farm', 'request', '--no-wait',
             ]
+        rp_token = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN', None)
+        rp_url = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', None)
+        if rp_token and rp_url:
+            command += [
+                '--tmt-environment',
+                f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN={rp_token}',
+                '--tmt-environment',
+                f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL={rp_url}',
+                '--tmt-environment',
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT=baseosqe',
+                '--tmt-environment',
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH=ksrot_newa',
+                '--tmt-environment',
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=true',
+                '--context', f'newa_hash={self.get_hash()}',
+                ]
         # check compose
         if not self.compose:
             raise Exception('ERROR: compose is not specified for the request')
@@ -634,8 +658,9 @@ class TFRequest(Cloneable, Serializable):
 class Execution(Cloneable, Serializable):
     """ A test job execution """
 
-    return_code: Optional[int] = None
+    return_code: Optional[int] = 0
     artifacts_url: Optional[str] = None
+    newa_hash: str = ''
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -755,6 +780,7 @@ class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
 
+<<<<<<< HEAD
 
 @frozen
 class IssueHandler:
@@ -968,3 +994,76 @@ class IssueHandler:
                                              transition=self.transitions["dropped"][0])
         except jira.JIRAError as e:
             raise Exception(f"Cannot close issue {issue}!") from e
+
+#
+# ReportPortal communication
+#
+
+@define
+class ReportPortal:
+
+    token: str
+    url: str
+    project: str
+
+    def get_launch_url(self, launch_id: str) -> str:
+        return f"{self.url}/ui/#{self.project}/launches/all/{launch_id}"
+
+    def get_request(self,
+                    path: str,
+                    params: Optional[dict[str, str]] = None,
+                    version: int = 1) -> JSON:
+        base_url = f'{self.url}/api/v{version}/{self.project}/{path.lstrip("/")}'
+        get_params = '&'.join([f'{k}={v}' for (k, v) in params.items()]) if params else ''
+        url = f'{base_url}?{get_params}'
+        headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
+        req = requests.get(url, headers=headers)
+        if req.status_code == 200:
+            return req.json()
+        return None
+
+    def post_request(self,
+                     path: str,
+                     json: JSON,
+                     version: int = 1) -> JSON:
+        url = f'{self.url}/api/v{version}/{self.project}/{path.lstrip("/")}'
+        headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
+        req = requests.post(url, headers=headers, json=json)
+        if req.status_code == 200:
+            return req.json()
+        return None
+
+    def find_launches_by_attr(self, attr: str, value: str) -> list[str]:
+        """ Searches for RP launching having the respective attribute=value set. """
+        path = '/launch'
+        params = {'filter.has.compositeAttribute': f'{attr}:{value}'}
+        data = self.get_request(path, params)
+        if not data:
+            return []
+        return [launch['id'] for launch in data['content']]
+
+    def merge_launches(self,
+                       launch_ids: list[str],
+                       launch_name: str,
+                       description: str,
+                       attributes: Optional[dict[str, str]] = None) -> str:
+        query_data: JSON = {
+            "attributes": [],
+            'description': description,
+            'name': launch_name,
+            "mergeType": "BASIC",
+            'mode': 'DEFAULT',
+            "extendSuitesDescription": 'false',
+            "launches": launch_ids,
+            }
+        if attributes:
+            for key, value in attributes.items():
+                query_data['attributes'].append({"key": key.strip(), "value": value.strip()})
+        print(query_data)
+        print(f'Merging launches: {launch_ids}')
+        data = self.post_request('/launch/merge', json=query_data)
+        if data:
+            print('Launches successfully merged')
+            return str(data['id'])
+        print('Failed to merge launches')
+        return ''

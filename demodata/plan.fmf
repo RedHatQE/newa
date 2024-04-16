@@ -1,10 +1,23 @@
-summary: demo testplan
-
-discover:
-    how: shell
-    tests:
-      - name: execution context test
-        test: echo PLANET=${PLANET} CITY=${CITY} color=$@{color}
-
 execute:
     how: tmt
+
+report:
+    how: reportportal
+
+/plan1:
+  summary: demo testplan 1
+
+  discover:
+    how: shell
+    tests:
+     - name: execution context test 1
+       test: echo PLANET=${PLANET} CITY=${CITY} color=$@{color}
+
+/plan2:
+  summary: demo testplan 2
+
+  discover:
+    how: shell
+    tests:
+     - name: execution context test 2
+       test: echo PLANET=${PLANET} CITY=${CITY} color=$@{color}
