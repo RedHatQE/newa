@@ -1,0 +1,22 @@
+fixtures:
+    git_url: https://github.com/RedHatQE/newa.git
+    git_ref: main
+    context:
+        tier: 1
+    environment:
+        DESCRIPTION: "This is a test recipe"
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
+       - context:
+             arch: aarch64
+    fips:
+       - context:
+             fips: yes
+         environment:
+             FIPS: "FIPS ENABLED"
+       - context:
+             fips: no
+         environment:
+             FIPS: "FIPS NOT ENABLED"
