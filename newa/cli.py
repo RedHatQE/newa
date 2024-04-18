@@ -479,6 +479,7 @@ def cmd_report(ctx: CLIContext) -> None:
     ctx.enter_command('report')
 
     jira_request_mapping: dict[str, dict[str, list[str]]] = {}
+    jira_launch_name_mapping: dict[str, str] = {}
     rp = ReportPortal(url=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', ''),
                       token=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN', ''),
                       project=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT', ''))
@@ -490,6 +491,13 @@ def cmd_report(ctx: CLIContext) -> None:
         newa_hash = execute_job.execution.newa_hash
         if jira_id not in jira_request_mapping:
             jira_request_mapping[jira_id] = {}
+            # FIXME
+            # for now, we construct launch name for a merged launch based on the recipe name
+            jira_launch_name_mapping[jira_id] = os.path.splitext(
+                os.path.basename(
+                    execute_job.recipe.url,
+                    ),
+                )[0]
         # for each Jira and request ID we build a list of RP launches
         jira_request_mapping[jira_id][request_id] = []
         jira_request_mapping[jira_id][request_id].extend(
@@ -513,7 +521,8 @@ def cmd_report(ctx: CLIContext) -> None:
             ctx.logger.error('Failed to find any related ReportPortal launches')
         else:
             if len(to_merge) > 1:
-                final_launch = rp.merge_launches(to_merge, "ksrot_newa_merged", description, {})
+                final_launch = rp.merge_launches(
+                    to_merge, jira_launch_name_mapping[jira_id], description, {})
             else:
                 final_launch = to_merge[0]
             ctx.logger.info(f'RP launch url: {rp.get_launch_url(final_launch)}')
