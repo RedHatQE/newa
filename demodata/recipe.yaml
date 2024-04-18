@@ -1,0 +1,19 @@
+fixtures:
+  environment:
+    PLANET: Earth
+
+  git_url: https://github.com/RedHatQE/newa.git
+  git_ref: ks_execute_job
+  tmt_path: demodata
+
+dimensions:
+  cities:
+    - environment:
+        CITY: Brno
+    - environment:
+        CITY: Boston
+  colors:
+    - context:
+        color: red
+    - context:
+        color: blue

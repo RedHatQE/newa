@@ -1,7 +1,10 @@
 import itertools
 import logging
+import multiprocessing
 import os.path
+import time
 from collections.abc import Iterable, Iterator
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +17,15 @@ from . import (
     ErratumJob,
     Event,
     EventType,
+    ExecuteJob,
+    Execution,
     InitialErratum,
     Issue,
     JiraJob,
+    RawRecipeConfigDimension,
     Recipe,
     RecipeConfig,
-    RequestJob,
+    ScheduleJob,
     render_template,
     )
 
@@ -85,6 +91,20 @@ class CLIContext:
 
             yield self.load_jira_job(self.state_dirpath / child)
 
+    def load_schedule_job(self, filepath: Path) -> ScheduleJob:
+        job = ScheduleJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered schedule job {job.id} in {filepath}')
+
+        return job
+
+    def load_schedule_jobs(self, filename_prefix: str) -> Iterator[ScheduleJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_schedule_job(self.state_dirpath / child)
+
     def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
         filepath = self.state_dirpath / \
             f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
@@ -103,12 +123,19 @@ class CLIContext:
         job.to_yaml_file(filepath)
         self.logger.info(f'Jira job {job.id} written to {filepath}')
 
-    def save_request_job(self, filename_prefix: str, job: RequestJob) -> None:
+    def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
         filepath = self.state_dirpath / \
             f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
 
         job.to_yaml_file(filepath)
-        self.logger.info(f'Request job {job.id} written to {filepath}')
+        self.logger.info(f'Schedule job {job.id} written to {filepath}')
+
+    def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Execute job {job.id} written to {filepath}')
 
 
 @click.group(chain=True)
@@ -159,8 +186,12 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str]) -> None:
 
 
 @main.command(name='jira')
+@click.option(
+    '--issue-config',
+    default='component-config.yaml.sample',
+    )
 @click.pass_obj
-def cmd_jira(ctx: CLIContext) -> None:
+def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
     ctx.enter_command('jira')
 
     # this is here temporarily so we generate fake Jira issue IDs
@@ -168,7 +199,7 @@ def cmd_jira(ctx: CLIContext) -> None:
 
     for erratum_job in ctx.load_erratum_jobs('event-'):
         # read Jira issue configuration
-        config = ErratumConfig.from_yaml_file(Path('component-config.yaml.sample'))
+        config = ErratumConfig.from_yaml_file(Path(os.path.expandvars(issue_config)))
 
         # TODO: record created/existing issues. Instead of `Any`, maybe something
         # from the Jira library would be stored. Or just a Jira ticket ID.
@@ -231,30 +262,87 @@ def cmd_schedule(ctx: CLIContext) -> None:
         # generate all relevant test request using the recipe data
         # prepare a list of Request objects
 
+        # identify compose to be used
+        # just a dump conversion for now
+        compose = jira_job.erratum.release.rstrip('.GA') + '-Nightly'
+        initial_config = RawRecipeConfigDimension(compose=compose)
+
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
+        # build requests
+        requests = config.build_requests(initial_config)
 
         # create few fake Issue objects for now
-        for request in config.build_requests():
-            request_job = RequestJob(
+        for request in requests:
+            schedule_job = ScheduleJob(
                 event=jira_job.event,
                 erratum=jira_job.erratum,
                 jira=jira_job.jira,
                 recipe=jira_job.recipe,
                 request=request)
-            ctx.save_request_job('request-', request_job)
+            ctx.save_schedule_job('schedule-', schedule_job)
 
 
 @main.command(name='execute')
+@click.option(
+    '--workers',
+    default=4,
+    )
 @click.pass_obj
-def cmd_execute(ctx: CLIContext) -> None:
+def cmd_execute(ctx: CLIContext, workers: int) -> None:
     ctx.enter_command('execute')
 
-    for erratum_job in ctx.load_erratum_jobs('schedule-'):
-        # worker = new Executor(yaml)
-        # run() returns result object
-        # result = worker.run()
+    if not os.environ.get("TESTING_FARM_API_TOKEN"):
+        raise ValueError("TESTING_FARM_API_TOKEN not set!")
 
-        ctx.save_erratum_job('execute-', erratum_job)
+    # get a list of files to be scheduled so that they can be distributed across workers
+    schedule_list = [
+        ctx.state_dirpath / child.name
+        for child in ctx.state_dirpath.iterdir()
+        if child.name.startswith('schedule-')]
+
+    worker_pool = multiprocessing.Pool(workers)
+    for _ in worker_pool.map(worker, schedule_list):
+        # small sleep to avoid race conditions inside tmt code
+        time.sleep(0.1)
+
+    print('Done')
+
+
+def worker(schedule_file: Path) -> None:
+
+    log = partial(print, schedule_file.name)
+
+    log('processing request...')
+    # read request details
+    schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
+    log('initiating TF request')
+    tf_request = schedule_job.request.initiate_tf_request()
+    # tf_request = TFRequest(
+    #    api='https://api.dev.testing-farm.io/v0.1/requests/519f5c01-46b6-47c9-a055-aecaa32e6a20',
+    #    uuid='519f5c01-46b6-47c9-a055-aecaa32e6a20')
+    log(f'TF request filed with uuid {tf_request.uuid}')
+    finished = False
+    delay = int(os.environ.get("NEWA_REQUEST_RECHECK_DELAY", 60))
+    while not finished:
+        time.sleep(delay)
+        tf_request.fetch_details()
+        state = tf_request.details['state']
+        log(f'TF reqest {tf_request.uuid} state: {state}')
+        finished = state in ['complete', 'error']
+    execute_job = ExecuteJob(
+        event=schedule_job.event,
+        erratum=schedule_job.erratum,
+        jira=schedule_job.jira,
+        recipe=schedule_job.recipe,
+        request=schedule_job.request,
+        execution=Execution(return_code=0, artifacts_url=tf_request.details['run']['artifacts']),
+        )
+    execute_job.to_yaml_file(
+        schedule_file.parent /
+        schedule_file.name.replace(
+            'schedule-',
+            'execute-'))
+    log(f'finished with result: {tf_request.details["result"]["overall"]}')
 
 
 @main.command(name='report')

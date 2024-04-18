@@ -5,6 +5,7 @@ import io
 import itertools
 import os
 import re
+import subprocess
 import time
 from collections.abc import Iterator
 from enum import Enum
@@ -406,6 +407,7 @@ RecipeEnvironment = dict[str, str]
 class RawRecipeConfigDimension(TypedDict, total=False):
     context: RecipeContext
     environment: RecipeEnvironment
+    compose: Optional[str]
     git_url: Optional[str]
     git_ref: Optional[str]
 
@@ -426,7 +428,7 @@ class RecipeConfig(Cloneable, Serializable):
     dimensions: RawRecipeConfigDimensions = field(
         factory=cast(Callable[[], RawRecipeConfigDimensions], dict))
 
-    def build_requests(self) -> Iterator[Request]:
+    def build_requests(self, initial_config: RawRecipeConfigDimension) -> Iterator[Request]:
         # this is here to generate unique recipe IDs
         recipe_id_gen = itertools.count(start=1)
 
@@ -458,7 +460,7 @@ class RecipeConfig(Cloneable, Serializable):
 
         def merge_combination_data(
                 combination: tuple[RawRecipeConfigDimension, ...]) -> RawRecipeConfigDimension:
-            merged: RawRecipeConfigDimension = {}
+            merged = copy.deepcopy(initial_config)
             for record in combination:
                 for key in record:
                     _merge_key(merged, record, key)
@@ -477,9 +479,97 @@ class Request(Cloneable, Serializable):
     id: str
     context: RecipeContext = field(factory=dict)
     environment: RecipeEnvironment = field(factory=dict)
+    compose: Optional[str] = None
     git_url: Optional[str] = None
     git_ref: Optional[str] = None
     tmt_path: Optional[str] = None
+    plan: Optional[str] = None
+
+    def fetch_details(self) -> None:
+        raise NotImplementedError
+
+    def generate_tf_exec_command(self) -> tuple[list[str], dict[str, str]]:
+        environment: dict[str, str] = {
+            'NO_COLOR': 'yes',
+            }
+        command: list[str] = [
+            'testing-farm', 'request', '--no-wait',
+            ]
+        # check compose
+        if not self.compose:
+            raise Exception('ERROR: compose is not specified for the request')
+        command += ['--compose', self.compose]
+        # process git_url
+        if not self.git_url:
+            raise Exception('ERROR: git_url is not specified for the request')
+        command += ['--git-url', self.git_url]
+        # process git_ref
+        if self.git_ref:
+            command += ['--git-ref', self.git_ref]
+        # process tmt_path
+        if self.tmt_path:
+            command += ['--path', self.tmt_path]
+        # process plan
+        if self.plan:
+            command += ['--plan', self.plan]
+        # process context
+        if self.context:
+            for k, v in self.context.items():
+                command += ['-c', f'{k}="{v}"']
+        # process environment
+        if self.environment:
+            for k, v in self.environment.items():
+                command += ['-e', f'{k}="{v}"']
+
+        return command, environment
+
+    def initiate_tf_request(self) -> TFRequest:
+        command, environment = self.generate_tf_exec_command()
+        # extend current envvars with the ones from the generated command
+        env = copy.deepcopy(os.environ)
+        env.update(environment)
+        if not command:
+            raise Exception("Failed to generate testing-farm command")
+        try:
+            process = subprocess.run(
+                ' '.join(command),
+                env=env,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                shell=True)
+            output = process.stdout
+        except subprocess.CalledProcessError as e:
+            output = e.stdout
+        r = re.search(' api [^h]*(https://[\\S]*)\x1b', output)
+        if not r:
+            raise Exception(f"TF request failed:\n{output}\n")
+        api = r.group(1).strip()
+        request_uuid = api.split('/')[-1]
+        return TFRequest(api=api, uuid=request_uuid)
+
+
+@define
+class TFRequest(Cloneable, Serializable):
+    """ A class representing plain Testing Farm request """
+
+    api: str
+    uuid: str
+    details: Optional[dict[str, Any]] = None
+
+    def fetch_details(self) -> None:
+        self.details = get_request(
+            url=self.api,
+            response_content=ResponseContentType.JSON)
+
+
+@define
+class Execution(Cloneable, Serializable):
+    """ A test job execution """
+
+    return_code: Optional[int] = None
+    artifacts_url: Optional[str] = None
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -534,7 +624,7 @@ class JiraJob(ErratumJob):
 
 
 @define
-class RequestJob(JiraJob):
+class ScheduleJob(JiraJob):
     """ A single *request* to be scheduled for execution """
 
     request = field(  # type: ignore[var-annotated]
@@ -543,7 +633,20 @@ class RequestJob(JiraJob):
 
     @property
     def id(self) -> str:
-        return f'R: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
+        return f'S: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
+
+
+@define
+class ExecuteJob(ScheduleJob):
+    """ A single *request* to be scheduled for execution """
+
+    execution = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, Execution) else Execution(**x),
+        )
+
+    @property
+    def id(self) -> str:
+        return f'X: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
 
 
 #
