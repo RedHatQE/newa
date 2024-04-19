@@ -12,7 +12,7 @@ import click
 from attrs import define
 
 from . import (
-    Erratum,
+    ErrataTool,
     ErratumConfig,
     ErratumJob,
     Event,
@@ -26,6 +26,7 @@ from . import (
     Recipe,
     RecipeConfig,
     ScheduleJob,
+    Settings,
     render_template,
     )
 
@@ -40,6 +41,7 @@ class CLIContext:
     """ State information about one Newa pipeline invocation """
 
     logger: logging.Logger
+    settings: Settings
 
     # Path to directory with state files
     state_dirpath: Path
@@ -143,9 +145,14 @@ class CLIContext:
     '--state-dir',
     default='$PWD/state',
     )
+@click.option(
+    '--conf-file',
+    default='$HOME/.newa',
+    )
 @click.pass_context
-def main(click_context: click.Context, state_dir: str) -> None:
+def main(click_context: click.Context, state_dir: str, conf_file: str) -> None:
     ctx = CLIContext(
+        settings=Settings.load(Path(os.path.expandvars(conf_file))),
         logger=logging.getLogger(),
         state_dirpath=Path(os.path.expandvars(state_dir)),
         )
@@ -173,11 +180,15 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str]) -> None:
     if not errata_ids:
         raise Exception('Missing errata IDs!')
 
+    et_url = ctx.settings.et_url
+    if not et_url:
+        raise Exception('Errata Tool URL is not configured!')
+
     for erratum_id in errata_ids:
         event = Event(type_=EventType.ERRATUM, id=erratum_id)
 
         # fetch erratum details (TODO: releases for now)
-        errata = Erratum.from_errata_tool(event)
+        errata = ErrataTool(url=et_url).get_errata(event)
 
         for erratum in errata:
             erratum_job = ErratumJob(event=event, erratum=erratum)
@@ -291,24 +302,28 @@ def cmd_schedule(ctx: CLIContext) -> None:
 def cmd_execute(ctx: CLIContext, workers: int) -> None:
     ctx.enter_command('execute')
 
-    if not os.environ.get("TESTING_FARM_API_TOKEN"):
+    tf_token = ctx.settings.tf_token
+    if not tf_token:
         raise ValueError("TESTING_FARM_API_TOKEN not set!")
+    # make TESTING_FARM_API_TOKEN available to workers as envvar if it has been
+    # defined only though the settings file
+    os.environ["TESTING_FARM_API_TOKEN"] = tf_token
 
     # get a list of files to be scheduled so that they can be distributed across workers
     schedule_list = [
-        ctx.state_dirpath / child.name
+        (ctx, ctx.state_dirpath / child.name)
         for child in ctx.state_dirpath.iterdir()
         if child.name.startswith('schedule-')]
 
     worker_pool = multiprocessing.Pool(workers)
-    for _ in worker_pool.map(worker, schedule_list):
+    for _ in worker_pool.starmap(worker, schedule_list):
         # small sleep to avoid race conditions inside tmt code
         time.sleep(0.1)
 
     print('Done')
 
 
-def worker(schedule_file: Path) -> None:
+def worker(ctx: CLIContext, schedule_file: Path) -> None:
 
     log = partial(print, schedule_file.name)
 
@@ -322,7 +337,7 @@ def worker(schedule_file: Path) -> None:
     #    uuid='519f5c01-46b6-47c9-a055-aecaa32e6a20')
     log(f'TF request filed with uuid {tf_request.uuid}')
     finished = False
-    delay = int(os.environ.get("NEWA_REQUEST_RECHECK_DELAY", 60))
+    delay = int(ctx.settings.tf_recheck_delay)
     while not finished:
         time.sleep(delay)
         tf_request.fetch_details()
