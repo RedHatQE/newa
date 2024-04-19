@@ -474,15 +474,21 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
 
 
 @main.command(name='report')
+@click.option(
+    '--rp-project',
+    default='',
+    )
 @click.pass_obj
-def cmd_report(ctx: CLIContext) -> None:
+def cmd_report(ctx: CLIContext, rp_project: str) -> None:
     ctx.enter_command('report')
 
     jira_request_mapping: dict[str, dict[str, list[str]]] = {}
     jira_launch_name_mapping: dict[str, str] = {}
+    if not rp_project:
+        rp_project = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT', '')
     rp = ReportPortal(url=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', ''),
                       token=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN', ''),
-                      project=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT', ''))
+                      project=rp_project)
 
     # process each stored execute file
     for execute_job in ctx.load_execute_jobs('execute-'):
