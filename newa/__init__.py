@@ -8,6 +8,7 @@ import re
 import subprocess
 import time
 from collections.abc import Iterator
+from configparser import ConfigParser
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 
 T = TypeVar('T')
 SerializableT = TypeVar('SerializableT', bound='Serializable')
+SettingsT = TypeVar('SettingsT', bound='Settings')
 
 
 def yaml_parser() -> ruamel.yaml.YAML:
@@ -104,6 +106,52 @@ def render_template(
 
     except jinja2.exceptions.TemplateError as exc:
         raise Exception("Could not render template.") from exc
+
+
+@define
+class Settings:
+    """ Class storing newa settings """
+
+    et_url: str = ''
+    rp_url: str = ''
+    rp_token: str = ''
+    rp_project: str = ''
+    jira_url: str = ''
+    jira_token: str = ''
+    jira_project: str = ''
+    tf_token: str = ''
+    tf_recheck_delay: str = ''
+
+    def get(self, key: str, default: str = '') -> str:
+        return str(getattr(self, key, default))
+
+    @classmethod
+    def load(cls: type[SettingsT], config_file: Path) -> Settings:
+        cp = ConfigParser()
+        cp.read(config_file)
+
+        def _get(
+                cp: ConfigParser,
+                path: str,
+                envvar: str,
+                default: Optional[str] = '') -> str:
+            section, key = path.split('/', 1)
+            # first attemp to read environment variable
+            env = os.environ.get(envvar, None) if envvar else None
+            # then attempt to use the value from config file, use fallback value otherwise
+            return env if env else cp.get(section, key, fallback=str(default))
+
+        return Settings(
+            et_url=_get(cp, 'erratatool/url', 'NEWA_ET_URL'),
+            rp_url=_get(cp, 'reportportal/url', 'NEWA_REPORTPORTAL_URL'),
+            rp_token=_get(cp, 'reportportal/token', 'NEWA_REPORTPORTAL_TOKEN'),
+            rp_project=_get(cp, 'reportportal/project', 'NEWA_REPORTPORTAL_PROJECT'),
+            jira_project=_get(cp, 'jira/project', 'NEWA_JIRA_PROJECT'),
+            jira_url=_get(cp, 'jira/url', 'NEWA_JIRA_URL'),
+            jira_token=_get(cp, 'jira/token', 'NEWA_JIRA_TOKEN'),
+            tf_token=_get(cp, 'testingfarm/token', 'TESTING_FARM_API_TOKEN'),
+            tf_recheck_delay=_get(cp, 'testingfarm/recheck_delay', 'NEWA_TF_RECHECK_DELAY', "60"),
+            )
 
 
 class ResponseContentType(Enum):
@@ -281,15 +329,7 @@ class ErrataTool:
     Its only purpose is to serve information about an erratum and its builds.
     """
 
-    # TODO: Until we have a dedicated newa config, we'll setup ET instance
-    # url via environment variable NEWA_ET_URL
     url: str = field(validator=validators.matches_re("^https?://.+$"))
-
-    @url.default  # pyright: ignore [reportAttributeAccessIssue]
-    def _url_factory(self) -> str:
-        if "NEWA_ET_URL" in os.environ:
-            return os.environ["NEWA_ET_URL"]
-        raise Exception("NEWA_ET_URL envvar is required.")
 
     # TODO: Not used at this point because we only consume builds now
     def fetch_info(self, erratum_id: str) -> JSON:
@@ -304,35 +344,7 @@ class ErrataTool:
             krb=True,
             response_content=ResponseContentType.JSON)
 
-
-@define
-class InitialErratum(Serializable):
-    """
-    An initial erratum as an input.
-
-    It does not track releases, just the initial event. It will be expanded
-    into corresponding :py:class:`ErratumJob` instances.
-    """
-
-    event: Event = field(  # type: ignore[var-annotated]
-        converter=lambda x: x if isinstance(x, Event) else Event(**x),
-        )
-
-
-@define
-class Erratum(Cloneable, Serializable):
-    """
-    An eratum
-
-    Represents a set of builds targetting a single release.
-    """
-
-    # TODO: We might need to add more in the future.
-    release: str
-    builds: list[str] = field(factory=list)
-
-    @classmethod
-    def from_errata_tool(cls, event: Event) -> list[Erratum]:
+    def get_errata(self, event: Event) -> list[Erratum]:
         """
         Creates a list of Erratum instances based on given errata ID
 
@@ -366,18 +378,45 @@ class Erratum(Cloneable, Serializable):
         #   ]
         # }
 
-        releases_json = ErrataTool().fetch_releases(event.id)
+        releases_json = self.fetch_releases(event.id)
         for release in releases_json:
             builds = []
             builds_json = releases_json[release]
             for item in builds_json:
                 builds += list(item.keys())
             if builds:
-                errata.append(cls(release, builds))
+                errata.append(Erratum(release, builds))
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
         return errata
+
+
+@define
+class InitialErratum(Serializable):
+    """
+    An initial erratum as an input.
+
+    It does not track releases, just the initial event. It will be expanded
+    into corresponding :py:class:`ErratumJob` instances.
+    """
+
+    event: Event = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, Event) else Event(**x),
+        )
+
+
+@define
+class Erratum(Cloneable, Serializable):
+    """
+    An eratum
+
+    Represents a set of builds targetting a single release.
+    """
+
+    # TODO: We might need to add more in the future.
+    release: str
+    builds: list[str] = field(factory=list)
 
 
 @define

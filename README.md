@@ -13,6 +13,39 @@ Newa!
 $
 ```
 
+## NEWA configuration file
+
+By default, NEWA settings is loaded from file `$HOME/.newa`.
+
+Below is an example of such a file.
+```
+[erratatool]
+url = https://..
+[jira]
+url = https://...
+token = *JIRATOKEN*
+[reportportal]
+url = https://...
+token = *RP_TOKEN*
+project = my_personal
+[testingfarm]
+token = *TESTING_FARM_API_TOKEN*
+recheck_delay = 120
+```
+
+This settings can be overriden by environment variables that takes precedence.
+```
+NEWA_ET_URL
+NEWA_JIRA_URL
+NEWA_JIRA_TOKEN
+NEWA_JIRA_PROJECT
+NEWA_REPORTPORTAL_URL
+NEWA_REPORTPORTAL_TOKEN
+NEWA_REPORTPORTAL_PROJECT
+TESTING_FARM_API_TOKEN
+NEWA_TF_RECHECK_DELAY
+```
+
 ## Architecture
 
 ### Subcommand `event`
