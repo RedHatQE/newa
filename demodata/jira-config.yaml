@@ -17,6 +17,7 @@ issues:
 
  - summary: "Demo test"
    description: "Run demo test"
+   when: EVENT is erratum
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
    id: subtask_demo

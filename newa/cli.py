@@ -27,6 +27,7 @@ from . import (
     RecipeConfig,
     ScheduleJob,
     Settings,
+    eval_test,
     render_template,
     )
 
@@ -223,10 +224,23 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
         while issue_actions:
             action = issue_actions.pop(0)
 
-            print(f'* Would create a {action.type.name} issue:')
+            print(f'* Processing create a {action.type.name} issue:')
             print(f'     summary: {action.summary}')
             print(f'     summary: {action.description}')
             print()
+
+            if action.when:
+                print(f'     Checking issue config condition: {action.when}')
+                test_result = eval_test(
+                    action.when,
+                    JOB=erratum_job,
+                    EVENT=erratum_job.event,
+                    ERRATUM=erratum_job.erratum)
+                if test_result:
+                    print('       OK, proceeding...')
+                else:
+                    print('       FAILED, skipping...')
+                    continue
 
             if action.id in known_issues:
                 raise Exception(f'Issue "{action.id}" is already created!')
@@ -280,7 +294,8 @@ def cmd_schedule(ctx: CLIContext) -> None:
 
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
         # build requests
-        requests = config.build_requests(initial_config)
+        requests = list(config.build_requests(initial_config))
+        ctx.logger.info(f'{len(requests)} requests have been generated')
 
         # create few fake Issue objects for now
         for request in requests:

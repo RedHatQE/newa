@@ -449,9 +449,10 @@ class RawRecipeConfigDimension(TypedDict, total=False):
     compose: Optional[str]
     git_url: Optional[str]
     git_ref: Optional[str]
+    when: Optional[str]
 
 
-_RecipeConfigDimensionKey = Literal['context', 'environment', 'git_url', 'git_ref']
+_RecipeConfigDimensionKey = Literal['context', 'environment', 'git_url', 'git_ref', 'when']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.
@@ -489,13 +490,21 @@ class RecipeConfig(Cloneable, Serializable):
                 dest: RawRecipeConfigDimension,
                 src: RawRecipeConfigDimension,
                 key: str) -> None:
-            if key not in dest:
+            # instruct how individual attributes should be merged
+            # attribute 'when' needs special treatment as we are joining conditions with 'and'
+            if key == 'when' and ("when" not in dest) and src["when"]:
+                dest['when'] = f'( {src["when"]} )'
+            elif key == 'when' and dest["when"] and src["when"]:
+                dest['when'] += f' and ( {src["when"]} )'
+            elif key not in dest:
                 # we need to do a deep copy so we won't corrupt the original data
                 dest[key] = copy.deepcopy(src[key])  # type: ignore[literal-required]
             elif isinstance(dest[key], dict) and isinstance(src[key], dict):  # type: ignore[literal-required]
                 dest[key].update(src[key])  # type: ignore[literal-required]
+            elif isinstance(dest[key], list) and isinstance(src[key], list):  # type: ignore[literal-required]
+                dest[key].extend(src[key])  # type: ignore[literal-required]
             else:
-                raise Exception(f"Don't know how to merge record type {key}")
+                raise Exception(f"Don't know how to merge record type '{key}'")
 
         def merge_combination_data(
                 combination: tuple[RawRecipeConfigDimension, ...]) -> RawRecipeConfigDimension:
@@ -508,6 +517,17 @@ class RecipeConfig(Cloneable, Serializable):
         # now for each combination merge data from individual dimensions
         merged_combinations = list(map(merge_combination_data, combinations))
         for combination in merged_combinations:
+            # before creating a Request check if there is a condition present and evaluate it
+            condition = combination.get('when', '')
+            if condition:
+                # we will expose COMPOSE, ENVIRONMENT, CONTEXT to evaluate a condition
+                test_result = eval_test(
+                    condition,
+                    COMPOSE=combination['compose'],
+                    ENVIRONMENT=combination['environment'],
+                    CONTEXT=combination['context'])
+                if not test_result:
+                    continue
             yield Request(id=f'REQ-{next(recipe_id_gen)}', **combination)
 
 
@@ -523,6 +543,8 @@ class Request(Cloneable, Serializable):
     git_ref: Optional[str] = None
     tmt_path: Optional[str] = None
     plan: Optional[str] = None
+    # 'when' not really needed, addit it to silent the linter
+    when: Optional[str] = None
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -716,6 +738,7 @@ class IssueAction:  # type: ignore[no-untyped-def]
     type: IssueType = field(converter=IssueType)
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
+    when: Optional[str] = None
 
 
 @define
