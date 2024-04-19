@@ -479,14 +479,20 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     default='',
     )
 @click.pass_obj
-def cmd_report(ctx: CLIContext, rp_project: str) -> None:
+@click.option(
+    '--rp-url',
+    default='',
+    )
+def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     ctx.enter_command('report')
 
     jira_request_mapping: dict[str, dict[str, list[str]]] = {}
     jira_launch_name_mapping: dict[str, str] = {}
     if not rp_project:
         rp_project = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT', '')
-    rp = ReportPortal(url=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', ''),
+    if not rp_url:
+        rp_url = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', '')
+    rp = ReportPortal(url=rp_url,
                       token=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN', ''),
                       project=rp_project)
 
