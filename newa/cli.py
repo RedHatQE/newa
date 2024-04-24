@@ -188,7 +188,6 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str]) -> None:
     for erratum_id in errata_ids:
         event = Event(type_=EventType.ERRATUM, id=erratum_id)
 
-        # fetch erratum details (TODO: releases for now)
         errata = ErrataTool(url=et_url).get_errata(event)
 
         for erratum in errata:

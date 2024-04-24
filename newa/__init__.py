@@ -323,15 +323,10 @@ class Event(Serializable):
 
 @frozen
 class ErrataTool:
-    """
-    Interface to Errata Tool instance
-
-    Its only purpose is to serve information about an erratum and its builds.
-    """
+    """ Interface to Errata Tool instance """
 
     url: str = field(validator=validators.matches_re("^https?://.+$"))
 
-    # TODO: Not used at this point because we only consume builds now
     def fetch_info(self, erratum_id: str) -> JSON:
         return get_request(
             url=f"{self.url}/advisory/{erratum_id}.json",
@@ -358,9 +353,6 @@ class ErrataTool:
 
         errata = []
 
-        # TODO: We might need to assert QE (or later) state. There is no point
-        # in fetching errata in NEW_FILES where builds need not to be present.
-
         # In QE state there is are zero or more builds in an erratum, each
         # contains one or more packages, e.g.:
         # {
@@ -378,6 +370,7 @@ class ErrataTool:
         #   ]
         # }
 
+        info_json = self.fetch_info(event.id)
         releases_json = self.fetch_releases(event.id)
         for release in releases_json:
             builds = []
@@ -385,7 +378,14 @@ class ErrataTool:
             for item in builds_json:
                 builds += list(item.keys())
             if builds:
-                errata.append(Erratum(release, builds))
+                # ErrataTool tracks assignee by their e-mail but we only want the username.
+                assignee = info_json["people"]["assigned_to"].rsplit('@')[0]
+                errata.append(Erratum(id=event.id,
+                                      respin_count=int(info_json["respin_count"]),
+                                      summary=info_json["synopsis"],
+                                      people_assigned_to=assignee,
+                                      release=release,
+                                      builds=builds))
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
@@ -414,9 +414,12 @@ class Erratum(Cloneable, Serializable):
     Represents a set of builds targetting a single release.
     """
 
-    # TODO: We might need to add more in the future.
-    release: str
-    builds: list[str] = field(factory=list)
+    id: str = field()
+    respin_count: int = field(repr=False)
+    summary: str = field(repr=False)
+    people_assigned_to: str = field(repr=False)
+    release: str = field()
+    builds: list[str] = field(factory=list, repr=lambda val: ','.join(sorted(val)))
 
 
 @define
