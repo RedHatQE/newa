@@ -421,12 +421,12 @@ class Erratum(Cloneable, Serializable):
 
 @define
 class Issue(Cloneable, Serializable):
-    """ A Jira issue """
+    """ Issue - a key in Jira (eg. NEWA-123) """
 
-    id: str
+    id: str = field()
 
-    def fetch_details(self) -> None:
-        raise NotImplementedError
+    def __str__(self) -> str:
+        return self.id
 
 
 @define
