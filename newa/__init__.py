@@ -543,7 +543,7 @@ class Request(Cloneable, Serializable):
     git_ref: Optional[str] = None
     tmt_path: Optional[str] = None
     plan: Optional[str] = None
-    # 'when' not really needed, addit it to silent the linter
+    # TODO: 'when' not really needed, adding it to silent the linter
     when: Optional[str] = None
 
     def fetch_details(self) -> None:
