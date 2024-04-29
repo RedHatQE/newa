@@ -419,7 +419,7 @@ class Erratum(Cloneable, Serializable):
     summary: str = field(repr=False)
     people_assigned_to: str = field(repr=False)
     release: str = field()
-    builds: list[str] = field(factory=list, repr=lambda val: ','.join(sorted(val)))
+    builds: list[str] = field(factory=list)
 
 
 @define
@@ -745,7 +745,10 @@ class IssueAction:  # type: ignore[no-untyped-def]
 
 
 @define
-class ErratumConfig(Serializable):
+class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
+
+    project: str = field()
+    transitions: dict[str, list[str]] = field()
     issues: list[IssueAction] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])

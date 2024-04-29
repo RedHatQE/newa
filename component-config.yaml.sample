@@ -1,15 +1,25 @@
+project: BASEQESEC
+
+transitions:
+  closed:
+    - Done
+    - Dropped
+    - Completed
+  dropped:
+    - Dropped
+
 issues:
 
- - summary: "Errata respin {{ ERRATUM.respin_count }}"
-   description: "{{ ERRATUM.srpms }}"
+ - summary: "Errata Workflow Checklist {% if ERRATUM.respin_count > 0 %}(respin {{ ERRATUM.respin_count }}){% endif %}"
+   description: "Task tracking particular respin of errata."
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: task
    id: errata_task
    parent_id: errata_epic
    on_respin: close
 
- - summary: "Testing ER#{{ ERRATUM.event.id }} {{ ERRATUM.summary }}"
-   description: "{{ ERRATUM.url }}"
+ - summary: "Testing ER#{{ ERRATUM.id }} {{ ERRATUM.summary }} ({{ERRATUM.release}})"
+   description: "Epic tracking all work on errata related to a specific release."
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: epic
    id: errata_epic
