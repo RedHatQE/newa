@@ -762,8 +762,12 @@ class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
 class IssueHandler:
     """ An interface to Jira instance """
 
-    connection: jira.JIRA = field(init=False)
+    url: str = field()
+    token: str = field()
     project: str = field()
+
+    # Each project can have different semantics of issue status.
+    transitions: dict[str, list[str]] = field()
 
     # We assume that all projects have the following two custom fields mapped
     # as follows.
@@ -772,24 +776,17 @@ class IssueHandler:
         "field_epic_name": "customfield_12311141",
         }
 
-    # Each project can have different semantics of issue status.
-    transitions: dict[str, list[str]] = field()
+    _connection: jira.JIRA = field(init=False)
 
-    # TODO: Until we have a dedicated newa config, we'll setup JIRA connection
-    # via environment variables NEWA_JIRA_URL and NEWA_JIRA_TOKEN
-    @connection.default  # pyright: ignore [reportAttributeAccessIssue]
+    @_connection.default  # pyright: ignore [reportAttributeAccessIssue]
     def _connection_factory(self) -> jira.JIRA:
-        if "NEWA_JIRA_URL" not in os.environ:
-            raise Exception("NEWA_JIRA_URL envvar is required.")
-        if "NEWA_JIRA_TOKEN" not in os.environ:
-            raise Exception("NEWA_JIRA_TOKEN envvar is required.")
-        return jira.JIRA(os.environ["NEWA_JIRA_URL"], token_auth=os.environ["NEWA_JIRA_TOKEN"])
+        return jira.JIRA(self.url, token_auth=self.token)
 
     def get_details(self, issue: Issue) -> jira.Issue:
         """ Return issue details """
 
         try:
-            return self.connection.issue(issue.id)
+            return self._connection.issue(issue.id)
         except jira.JIRAError as e:
             raise Exception(f"Jira issue {issue} not found!") from e
 
@@ -804,7 +801,7 @@ class IssueHandler:
             f"status not in ({','.join(self.transitions["closed"])})"
 
         # Result is always the right type with json_result=False (pyright just doesn't know that).
-        return self.connection.search_issues(query, fields=fields, json_result=False), query
+        return self._connection.search_issues(query, fields=fields, json_result=False), query
 
     def create_epic(self, data: dict[str, Any]) -> Issue:
         """ Create Epic """
@@ -838,7 +835,7 @@ class IssueHandler:
         data |= {"project": {"key": self.project}}
 
         try:
-            jira_issue = self.connection.create_issue(data)
+            jira_issue = self._connection.create_issue(data)
             jira_issue.update(fields={"labels": [*jira_issue.fields.labels, 'NEWA']})
             return Issue(jira_issue.key)
         except jira.JIRAError as e:
@@ -848,7 +845,7 @@ class IssueHandler:
         """ Add comment to issue """
 
         try:
-            self.connection.add_comment(issue.id, comment)
+            self._connection.add_comment(issue.id, comment)
         except jira.JIRAError as e:
             raise Exception(f"Unable to add a comment to issue {issue}!") from e
 
@@ -869,14 +866,14 @@ class IssueHandler:
             f"(obsoleted by {obsoleted_by}."
 
         try:
-            self.connection.create_issue_link(type="relates to",
-                                              inwardIssue=issue.id,
-                                              outwardIssue=obsoleted_by.id,
-                                              comment={
-                                                  "body": obsoleting_comment,
-                                                  "visbility": None,
-                                                  })
-            self.connection.transition_issue(issue.id,
-                                             transition=self.transitions["dropped"][0])
+            self._connection.create_issue_link(type="relates to",
+                                               inwardIssue=issue.id,
+                                               outwardIssue=obsoleted_by.id,
+                                               comment={
+                                                   "body": obsoleting_comment,
+                                                   "visbility": None,
+                                                   })
+            self._connection.transition_issue(issue.id,
+                                              transition=self.transitions["dropped"][0])
         except jira.JIRAError as e:
             raise Exception(f"Unable to close issue {issue}!") from e

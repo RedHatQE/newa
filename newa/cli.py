@@ -207,12 +207,20 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str]) -> None:
 def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
     ctx.enter_command('jira')
 
+    jira_url = ctx.settings.jira_url
+    if not jira_url:
+        raise Exception('Jira URL is not configured!')
+
+    jira_token = ctx.settings.jira_token
+    if not jira_token:
+        raise Exception('Jira URL is not configured!')
+
     for erratum_job in ctx.load_erratum_jobs('event-'):
 
         # read Jira issue configuration
         config = ErratumConfig.from_yaml_file(Path(os.path.expandvars(issue_config)))
 
-        jira = IssueHandler(config.project, config.transitions)
+        jira = IssueHandler(jira_url, jira_token, config.project, config.transitions)
         ctx.logger.info(f"Initialized {jira}")
 
         # All issue action from the configuration.
