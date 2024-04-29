@@ -5,13 +5,18 @@ import pytest
 from click.testing import CliRunner
 
 import newa
-from newa import cli
+from newa import Settings, cli
 
 
 @pytest.fixture()
 def mock_clicontext(tmp_path):
     """ Return a CLIContext object with mocked logger and temp dirpath"""
-    return cli.CLIContext(logger=mock.MagicMock(), state_dirpath=tmp_path)
+    return cli.CLIContext(
+        logger=mock.MagicMock(),
+        settings=Settings(
+            et_url='http://dummy.et.url.com',
+            ),
+        state_dirpath=tmp_path)
 
 
 @pytest.fixture()
