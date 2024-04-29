@@ -5,7 +5,7 @@ from newa import RecipeConfig
 
 def test_recipeconfig_ok():
     config = RecipeConfig.from_yaml_file(Path('tests/unit/data/sample_recipe.yaml').absolute())
-    reqs = list(config.build_requests())
+    reqs = list(config.build_requests({}))
 
     # Check generated requests are correct
     assert len(reqs) == 4
