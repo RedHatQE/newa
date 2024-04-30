@@ -4,11 +4,12 @@ import copy
 import hashlib
 import io
 import itertools
+import logging
 import os
 import re
 import subprocess
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from configparser import ConfigParser
 from enum import Enum
 from pathlib import Path
@@ -557,20 +558,22 @@ class Request(Cloneable, Serializable):
     plan: Optional[str] = None
     # TODO: 'when' not really needed, adding it to silent the linter
     when: Optional[str] = None
+    # the purpose of 'seed' is to make each object unique as we will
+    # compute a hash of object YAML and use it as a identifier in RP
     seed: Optional[str] = ''
 
     def fetch_details(self) -> None:
         raise NotImplementedError
 
-    def generate_tf_exec_command(self) -> tuple[list[str], dict[str, str]]:
+    def generate_tf_exec_command(self, ctx: CLIContext) -> tuple[list[str], dict[str, str]]:
         environment: dict[str, str] = {
             'NO_COLOR': 'yes',
             }
         command: list[str] = [
             'testing-farm', 'request', '--no-wait',
             ]
-        rp_token = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN', None)
-        rp_url = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', None)
+        rp_token = ctx.settings.rp_token
+        rp_url = ctx.settings.rp_url
         if rp_token and rp_url:
             command += [
                 '--tmt-environment',
@@ -613,8 +616,8 @@ class Request(Cloneable, Serializable):
 
         return command, environment
 
-    def initiate_tf_request(self) -> TFRequest:
-        command, environment = self.generate_tf_exec_command()
+    def initiate_tf_request(self, ctx: CLIContext) -> TFRequest:
+        command, environment = self.generate_tf_exec_command(ctx)
         # extend current envvars with the ones from the generated command
         env = copy.deepcopy(os.environ)
         env.update(environment)
@@ -1067,3 +1070,121 @@ class ReportPortal:
             return str(data['id'])
         print('Failed to merge launches')
         return ''
+
+
+@define
+class CLIContext:
+    """ State information about one Newa pipeline invocation """
+
+    logger: logging.Logger
+    settings: Settings
+    # Path to directory with state files
+    state_dirpath: Path
+    seed: Optional[str] = ''
+
+    def enter_command(self, command: str) -> None:
+        self.logger.handlers[0].formatter = logging.Formatter(
+            f'[%(asctime)s] [{command.ljust(8, " ")}] %(message)s',
+            )
+
+    def load_initial_erratum(self, filepath: Path) -> InitialErratum:
+        erratum = InitialErratum.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered initial erratum {erratum.event.id} in {filepath}')
+
+        return erratum
+
+    def load_initial_errata(self, filename_prefix: str) -> Iterator[InitialErratum]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_initial_erratum(self.state_dirpath / child)
+
+    def load_erratum_job(self, filepath: Path) -> ErratumJob:
+        job = ErratumJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered erratum job {job.id} in {filepath}')
+
+        return job
+
+    def load_erratum_jobs(self, filename_prefix: str) -> Iterator[ErratumJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_erratum_job(self.state_dirpath / child)
+
+    def load_jira_job(self, filepath: Path) -> JiraJob:
+        job = JiraJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered jira job {job.id} in {filepath}')
+
+        return job
+
+    def load_jira_jobs(self, filename_prefix: str) -> Iterator[JiraJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_jira_job(self.state_dirpath / child)
+
+    def load_schedule_job(self, filepath: Path) -> ScheduleJob:
+        job = ScheduleJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered schedule job {job.id} in {filepath}')
+
+        return job
+
+    def load_schedule_jobs(self, filename_prefix: str) -> Iterator[ScheduleJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_schedule_job(self.state_dirpath / child)
+
+    def load_execute_job(self, filepath: Path) -> ExecuteJob:
+        job = ExecuteJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered execute job {job.id} in {filepath}')
+
+        return job
+
+    def load_execute_jobs(self, filename_prefix: str) -> Iterator[ExecuteJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_execute_job(self.state_dirpath / child)
+
+    def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Erratum job {job.id} written to {filepath}')
+
+    def save_erratum_jobs(self, filename_prefix: str, jobs: Iterable[ErratumJob]) -> None:
+        for job in jobs:
+            self.save_erratum_job(filename_prefix, job)
+
+    def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Jira job {job.id} written to {filepath}')
+
+    def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Schedule job {job.id} written to {filepath}')
+
+    def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Execute job {job.id} written to {filepath}')

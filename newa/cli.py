@@ -4,14 +4,13 @@ import logging
 import multiprocessing
 import os.path
 import time
-from collections.abc import Iterable, Iterator
 from functools import partial
 from pathlib import Path
 
 import click
-from attrs import define
 
 from . import (
+    CLIContext,
     ErrataTool,
     ErratumConfig,
     ErratumJob,
@@ -19,7 +18,6 @@ from . import (
     EventType,
     ExecuteJob,
     Execution,
-    InitialErratum,
     Issue,
     IssueHandler,
     IssueType,
@@ -39,124 +37,6 @@ logging.basicConfig(
     format='%(asctime)s %(message)s',
     datefmt='%m/%d/%Y %I:%M:%S %p',
     level=logging.INFO)
-
-
-@define
-class CLIContext:
-    """ State information about one Newa pipeline invocation """
-
-    logger: logging.Logger
-    settings: Settings
-
-    # Path to directory with state files
-    state_dirpath: Path
-
-    def enter_command(self, command: str) -> None:
-        self.logger.handlers[0].formatter = logging.Formatter(
-            f'[%(asctime)s] [{command.ljust(8, " ")}] %(message)s',
-            )
-
-    def load_initial_erratum(self, filepath: Path) -> InitialErratum:
-        erratum = InitialErratum.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered initial erratum {erratum.event.id} in {filepath}')
-
-        return erratum
-
-    def load_initial_errata(self, filename_prefix: str) -> Iterator[InitialErratum]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_initial_erratum(self.state_dirpath / child)
-
-    def load_erratum_job(self, filepath: Path) -> ErratumJob:
-        job = ErratumJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered erratum job {job.id} in {filepath}')
-
-        return job
-
-    def load_erratum_jobs(self, filename_prefix: str) -> Iterator[ErratumJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_erratum_job(self.state_dirpath / child)
-
-    def load_jira_job(self, filepath: Path) -> JiraJob:
-        job = JiraJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered jira job {job.id} in {filepath}')
-
-        return job
-
-    def load_jira_jobs(self, filename_prefix: str) -> Iterator[JiraJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_jira_job(self.state_dirpath / child)
-
-    def load_schedule_job(self, filepath: Path) -> ScheduleJob:
-        job = ScheduleJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered schedule job {job.id} in {filepath}')
-
-        return job
-
-    def load_schedule_jobs(self, filename_prefix: str) -> Iterator[ScheduleJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_schedule_job(self.state_dirpath / child)
-
-    def load_execute_job(self, filepath: Path) -> ExecuteJob:
-        job = ExecuteJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered execute job {job.id} in {filepath}')
-
-        return job
-
-    def load_execute_jobs(self, filename_prefix: str) -> Iterator[ExecuteJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_execute_job(self.state_dirpath / child)
-
-    def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Erratum job {job.id} written to {filepath}')
-
-    def save_erratum_jobs(self, filename_prefix: str, jobs: Iterable[ErratumJob]) -> None:
-        for job in jobs:
-            self.save_erratum_job(filename_prefix, job)
-
-    def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Jira job {job.id} written to {filepath}')
-
-    def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Schedule job {job.id} written to {filepath}')
-
-    def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Execute job {job.id} written to {filepath}')
 
 
 @click.group(chain=True)
@@ -411,6 +291,8 @@ def cmd_schedule(ctx: CLIContext) -> None:
 def cmd_execute(ctx: CLIContext, workers: int) -> None:
     ctx.enter_command('execute')
 
+    # set 'seed' unique for this execution
+    ctx.seed = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
     tf_token = ctx.settings.tf_token
     if not tf_token:
         raise ValueError("TESTING_FARM_API_TOKEN not set!")
@@ -439,10 +321,10 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     log('processing request...')
     # read request details
     schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
-    # we define request.seed here to have it unique for each iteration
-    schedule_job.request.seed = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    # set request.seed which is shared accross all TF requests for a given execution
+    schedule_job.request.seed = ctx.seed
     log('initiating TF request')
-    tf_request = schedule_job.request.initiate_tf_request()
+    tf_request = schedule_job.request.initiate_tf_request(ctx)
     # tf_request = TFRequest(
     #    api='https://api.dev.testing-farm.io/v0.1/requests/519f5c01-46b6-47c9-a055-aecaa32e6a20',
     #    uuid='519f5c01-46b6-47c9-a055-aecaa32e6a20')
@@ -515,7 +397,6 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
         jira_request_mapping[jira_id][request_id].extend(
             rp.find_launches_by_attr('newa_hash', newa_hash),
             )
-    print(jira_request_mapping)
 
     # proceed with RP launch merge
     for jira_id in jira_request_mapping:
@@ -527,8 +408,6 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
                 to_merge.extend(jira_request_mapping[jira_id][request])
             else:
                 description += f'  {request}: MISSING\n'
-        print(description)
-        print(to_merge)
         if not len(to_merge):
             ctx.logger.error('Failed to find any related ReportPortal launches')
         else:
