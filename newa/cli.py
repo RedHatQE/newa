@@ -274,8 +274,8 @@ def cmd_schedule(ctx: CLIContext) -> None:
 
         # assign each Request the respective batch_id
         # let's use hash of state_dirpath and Jira job ID for now.
-        batch_id = hashlib.sha256(f'{ctx.state_dirpath}: {jira_job.id}'.encode()
-                                 ).hexdigest()[:12]
+        batch_id = hashlib.sha256(f'{ctx.state_dirpath}: {jira_job.id}'.encode(),
+                                  ).hexdigest()[:12]
         # create ScheduleJob object for each request
         for request in requests:
             request.batch_id = batch_id
