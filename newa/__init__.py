@@ -760,8 +760,9 @@ class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
 
 @frozen
 class IssueHandler:
-    """ An interface to Jira instance """
+    """ An interface to Jira instance handling a specific ErratumJob """
 
+    erratum_job: ErratumJob = field()
     url: str = field()
     token: str = field()
     project: str = field()
@@ -776,104 +777,146 @@ class IssueHandler:
         "field_epic_name": "customfield_12311141",
         }
 
-    _connection: jira.JIRA = field(init=False)
+    # NEWA identifiers related to ErratumJob
+    #
+    # 1. issues of all respins
+    partial_newa_id: str = field(init=False)
 
-    @_connection.default  # pyright: ignore [reportAttributeAccessIssue]
-    def _connection_factory(self) -> jira.JIRA:
+    # 2. issues of the current respin
+    newa_id: str = field(init=False)
+
+    # Actual Jira connection.
+    connection: jira.JIRA = field(init=False)
+
+    # NEWA label
+    newa_label: ClassVar[str] = "NEWA"
+
+    @partial_newa_id.default  # pyright: ignore [reportAttributeAccessIssue]
+    def partial_newa_id_factory(self) -> str:
+        return f"{IssueHandler.newa_label}: {self.erratum_job.id}"
+
+    @newa_id.default  # pyright: ignore [reportAttributeAccessIssue]
+    def _newa_id_factory(self) -> str:
+        return f"{IssueHandler.newa_label}: {self.erratum_job.id} " + \
+            f"({', '.join(sorted(self.erratum_job.erratum.builds))})"
+
+    @connection.default  # pyright: ignore [reportAttributeAccessIssue]
+    def connection_factory(self) -> jira.JIRA:
         return jira.JIRA(self.url, token_auth=self.token)
 
     def get_details(self, issue: Issue) -> jira.Issue:
         """ Return issue details """
 
         try:
-            return self._connection.issue(issue.id)
+            return self.connection.issue(issue.id)
         except jira.JIRAError as e:
             raise Exception(f"Jira issue {issue} not found!") from e
 
-    def search_open_issues(self, query: str) -> tuple[jira.client.ResultList[jira.Issue], str]:
-        """ Search for issues that are not closed (returns subset of fields, only) """
+    def get_open_issues(self,
+                        summary: str,
+                        all_respins: bool = False) -> jira.client.ResultList[jira.Issue]:
+        """
+        Get issues related to erratum job with given summary
+
+        Unless all_respins is defined only issues related to the last respin are returned.
+        """
 
         fields = ["summary", "description", "status", "resolution"]
 
+        newa_description = self.partial_newa_id if all_respins else self.newa_id
+
         query = \
-            f"({query}) AND " + \
-            f"project = '{self.project}' AND " + \
-            f"status not in ({','.join(self.transitions["closed"])})"
+            f"project = '{self.project}' AND labels in ({IssueHandler.newa_label}) AND " + \
+            f"summary ~ '{summary}' AND description ~ '{newa_description}' AND " + \
+            f"status not in ({','.join(self.transitions['closed'])})"
 
         # Result is always the right type with json_result=False (pyright just doesn't know that).
-        return self._connection.search_issues(query, fields=fields, json_result=False), query
+        return self.connection.search_issues(query, fields=fields, json_result=False)
 
-    def create_epic(self, data: dict[str, Any]) -> Issue:
-        """ Create Epic """
+    def create_issue(self,
+                     issue_type: IssueType,
+                     summary: str,
+                     description: str,
+                     assignee: str,
+                     parent: Issue | None) -> Issue:
+        """ Create issue """
 
-        data |= {
-            "issuetype": {"name": "Epic"},
-            IssueHandler.custom_field_map["field_epic_name"]: data["summary"],
+        data = {
+            "project": {"key": self.project},
+            "summary": summary,
+            "description": f"{self.newa_id}\n\n{description}",
+            "assignee": {"name": assignee},
             }
-        return self._create_issue(data)
 
-    def create_task(self, data: dict[str, Any], epic: Optional[Issue] = None) -> Issue:
-        """ Create Task """
+        if issue_type == IssueType.EPIC:
+            data |= {
+                "issuetype": {"name": "Epic"},
+                IssueHandler.custom_field_map["field_epic_name"]: data["summary"],
+                }
+        elif issue_type == IssueType.TASK:
+            data |= {"issuetype": {"name": "Task"}}
+            if parent:
+                data |= {IssueHandler.custom_field_map["field_epic_link"]: parent.id}
+        elif issue_type == IssueType.SUBTASK:
+            if not parent:
+                raise Exception("Missing task while creating sub-task!")
 
-        data |= {"issuetype": {"name": "Task"}}
-        if epic:
-            data |= {IssueHandler.custom_field_map["field_epic_link"]: epic.id}
-        return self._create_issue(data)
-
-    def create_subtask(self, data: dict[str, Any], task: Issue) -> Issue:
-        """ Create Subask """
-
-        data |= {
-            "issuetype": {"name": "Sub-task"},
-            "parent": {"key": task.id},
-            }
-        return self._create_issue(data)
-
-    def _create_issue(self, data: dict[str, Any]) -> Issue:
-        """ Create generic issue (label it with NEWA) """
-
-        data |= {"project": {"key": self.project}}
+            data |= {
+                "issuetype": {"name": "Sub-task"},
+                "parent": {"key": parent.id},
+                }
+        else:
+            raise Exception(f"Unknown issue type {issue_type}!")
 
         try:
-            jira_issue = self._connection.create_issue(data)
+            jira_issue = self.connection.create_issue(data)
             jira_issue.update(fields={"labels": [*jira_issue.fields.labels, 'NEWA']})
             return Issue(jira_issue.key)
         except jira.JIRAError as e:
             raise Exception("Unable to create issue!") from e
 
+    def refresh_issue(self, issue: Issue) -> None:
+        """ Update NEWA identifier of issue """
+
+        description = self.get_details(issue).fields.description
+
+        if isinstance(description, str) and self.partial_newa_id not in description:
+            raise Exception(f"Issue {issue} is missing NEWA identifier!")
+
+        if isinstance(description, str) and self.newa_id not in description:
+            new_description = re.sub(f"^{IssueHandler.newa_label}: .*\n",
+                                     f"{self.newa_id}\n", description)
+            try:
+                self.get_details(issue).update(fields={"description": new_description})
+                self.comment_issue(issue, "This issue was automatically refreshed by NEWA.")
+            except jira.JIRAError as e:
+                raise Exception(f"Unable to modify issue {issue}!") from e
+
     def comment_issue(self, issue: Issue, comment: str) -> None:
         """ Add comment to issue """
 
         try:
-            self._connection.add_comment(issue.id, comment)
+            self.connection.add_comment(issue.id, comment)
         except jira.JIRAError as e:
             raise Exception(f"Unable to add a comment to issue {issue}!") from e
-
-    def update_description(self, issue: Issue, description: str) -> None:
-        """ Update issue description """
-
-        try:
-            self.get_details(issue).update(fields={"description": description})
-        except jira.JIRAError as e:
-            raise Exception(f"Unable to modify issue {issue}!") from e
 
     def drop_obsoleted_issue(self, issue: Issue, obsoleted_by: Issue) -> None:
         """ Close obsoleted issue and link a new one """
 
         obsoleting_comment = \
             "This issue was automatically closed as " + \
-            f"{self.transitions["dropped"][0]} by NEWA " + \
-            f"(obsoleted by {obsoleted_by}."
+            f"{self.transitions['dropped'][0]} by NEWA " + \
+            f"(obsoleted by {obsoleted_by})."
 
         try:
-            self._connection.create_issue_link(type="relates to",
-                                               inwardIssue=issue.id,
-                                               outwardIssue=obsoleted_by.id,
-                                               comment={
+            self.connection.create_issue_link(type="relates to",
+                                              inwardIssue=issue.id,
+                                              outwardIssue=obsoleted_by.id,
+                                              comment={
                                                    "body": obsoleting_comment,
                                                    "visbility": None,
-                                                   })
-            self._connection.transition_issue(issue.id,
-                                              transition=self.transitions["dropped"][0])
+                                                  })
+            self.connection.transition_issue(issue.id,
+                                             transition=self.transitions["dropped"][0])
         except jira.JIRAError as e:
             raise Exception(f"Unable to close issue {issue}!") from e

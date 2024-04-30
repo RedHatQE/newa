@@ -1,7 +1,6 @@
 import logging
 import multiprocessing
 import os.path
-import re
 import time
 from collections.abc import Iterable, Iterator
 from functools import partial
@@ -21,7 +20,6 @@ from . import (
     InitialErratum,
     Issue,
     IssueHandler,
-    IssueType,
     JiraJob,
     OnRespinAction,
     RawRecipeConfigDimension,
@@ -220,7 +218,7 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
         # read Jira issue configuration
         config = ErratumConfig.from_yaml_file(Path(os.path.expandvars(issue_config)))
 
-        jira = IssueHandler(jira_url, jira_token, config.project, config.transitions)
+        jira = IssueHandler(erratum_job, jira_url, jira_token, config.project, config.transitions)
         ctx.logger.info(f"Initialized {jira}")
 
         # All issue action from the configuration.
@@ -238,26 +236,18 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
         while issue_actions:
             action = issue_actions.pop(0)
 
-            ctx.logger.info(f"Processing {action.id} for the current respin")
+            ctx.logger.info(f"Processing {action.id}")
 
-            if action.when:
-                ctx.logger.info(f'  Checking issue config condition: {action.when}')
-                test_result = eval_test(
-                    action.when,
-                    JOB=erratum_job,
-                    EVENT=erratum_job.event,
-                    ERRATUM=erratum_job.erratum)
-                if not test_result:
-                    print('  Skipped')
-                    continue
+            if action.when and not eval_test(action.when,
+                                             JOB=erratum_job,
+                                             EVENT=erratum_job.event,
+                                             ERRATUM=erratum_job.erratum):
+                ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
+                continue
 
             rendered_summary = render_template(action.summary, ERRATUM=erratum_job.erratum)
             rendered_description = render_template(action.description, ERRATUM=erratum_job.erratum)
             rendered_assignee = render_template(action.assignee, ERRATUM=erratum_job.erratum)
-
-            ctx.logger.info(f"  summary     = {rendered_summary}")
-            ctx.logger.info(f"  description = {rendered_description}")
-            ctx.logger.info(f"  assignee    = {rendered_assignee}")
 
             # Detect that action has parent available (if applicable), if we went trough the
             # actions already and parent was not found, we abort.
@@ -268,56 +258,24 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                     raise Exception(f"Parent {action.parent_id} for {action.id} not found!")
 
                 endless_loop_check[action.id] = queue_length
-                ctx.logger.info(f"  skipped for now (parent {action.parent_id} not yet found)")
+                ctx.logger.info(f"Skipped for now (parent {action.parent_id} not yet found)")
 
                 issue_actions.append(action)
                 continue
 
-            # Find existing issues related to erratum_job and action.id.
-            #
-            # We re looking for issues such that:
-            #
-            # 1) summary matches rendered_summary (e.g. Errata filelist check) and
-            # 2) description contains "NEWA: erratum_job.partial_id"
-            #    (e.g. NEWA: E: 130704 @ RHEL-8.8.0.Z.EUS)
-            query = \
-                f"summary ~ '{rendered_summary}' and " + \
-                f"description ~ 'NEWA: {erratum_job.partial_id}'"
+            # Find existing issues related to erratum_job and action
+            search_result = jira.get_open_issues(rendered_summary, all_respins=True)
 
-            search_result, query = jira.search_open_issues(query)
-            ctx.logger.info(f"  query       = '{query}'")
-
-            # Issues related to the curent respin (new issues).
+            # Issues related to the curent respin and previous one(s).
             new_issues: list[Issue] = []
-
-            # Issues related to the previous respin(s) (old issues).
             old_issues: list[Issue] = []
-
-            # Identification of the current respin.
-            #
-            # NEWA: erratum_job.id
-            # e.g. NEWA: E: 130704 @ RHEL-8.8.0.Z.EUS @ libreswan-4.9-3.el8_8.1
-            #
-            # Identifcation is always in the issue description.
-            identifier = f"NEWA: {erratum_job.id}"
             for jira_issue in search_result:
-                ctx.logger.info(
-                    f"  checking    = {
-                        jira_issue.key} ({
-                        jira_issue.fields.summary}, {
-                        jira_issue.fields.status} {
-                        jira_issue.fields.resolution})")
+                ctx.logger.info(f"Checking {jira_issue.key}")
 
                 desc = jira_issue.fields.description
 
-                # We found relevant issue in Jira, it is either related to the
-                # current respin (new) or not (old).
-                #
-                # 1) If the issue is new, we won't create it again.
-                if isinstance(desc, str) and identifier in desc:
+                if isinstance(desc, str) and jira.newa_id in desc:
                     new_issues.append(Issue(jira_issue.key))
-
-                # 2) If it is old, we store it for further processing later.
                 else:
                     old_issues.append(Issue(jira_issue.key))
 
@@ -326,40 +284,21 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 new_issues.extend(old_issues)
                 old_issues = []
 
-                # TODO: We might want to add comment when issue is re-used.
-
-            # New issues processing.
+            # Processing new issues.
             #
             # 1. Either there is no new issue (it does not exist yet - we need to crate it).
             if len(new_issues) == 0:
+                parent = None
+                if action.parent_id:
+                    parent = processed_actions.get(action.parent_id, None)
 
-                # Description consists of aforementioned identificationerratum followed the
-                # actual description.
-                data = {
-                    "summary": rendered_summary,
-                    "description": f"{identifier}\n\n{rendered_description}",
-                    "assignee": {"name": rendered_assignee},
-                    }
-
-                # Notice that processed_actions[action.parent_id] always contains parent
-                # issue id at this point (but pyright does not know that and report errors).
-                if action.type == IssueType.EPIC:
-                    issue = jira.create_epic(data)
-                elif action.type == IssueType.TASK:
-                    if action.parent_id:
-                        issue = jira.create_task(data, epic=processed_actions[action.parent_id])
-                    else:
-                        raise Exception("Missing epic for task!")
-                elif action.type == IssueType.SUBTASK:
-                    if action.parent_id:
-                        issue = jira.create_subtask(data, task=processed_actions[action.parent_id])
-                    else:
-                        raise Exception("Missing task for sub-task!")
-                else:
-                    raise Exception(f"Invalid {action.type.name} value ({action.type})!")
+                issue = jira.create_issue(action.type,
+                                          rendered_summary,
+                                          rendered_description,
+                                          rendered_assignee,
+                                          parent)
 
                 if action.job_recipe:
-                    ctx.logger.info(f"  recipe      = {action.job_recipe}")
                     jira_job = JiraJob(event=erratum_job.event,
                                        erratum=erratum_job.erratum,
                                        jira=issue,
@@ -369,7 +308,7 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 processed_actions[action.id] = issue
 
                 new_issues.append(issue)
-                ctx.logger.info(f"  new issue   = {issue.id} (created)")
+                ctx.logger.info(f"New issue {issue.id} created")
 
             # Or there is exactly one new issue (already created or re-used old issue).
             elif len(new_issues) == 1:
@@ -377,35 +316,20 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 processed_actions[action.id] = issue
 
                 # If the old issue was reused, re-fresh it.
-                description = jira.get_details(issue).fields.description
-
-                if isinstance(description, str) and f"NEWA: {
-                        erratum_job.partial_id}" not in description:
-                    raise Exception(f"Issue {issue} is missing NEWA identifier!")
-
-                if isinstance(description, str) and f"NEWA: {erratum_job.id}" not in description:
-                    jira.update_description(issue, re.sub("^NEWA: .*\n",
-                                                          f"NEWA: {erratum_job.id}\n",
-                                                          description))
-                    jira.comment_issue(issue,
-                                       "This issue was automatically refreshed by NEWA.")
-                    ctx.logger.info(f"  new issue   = {issue} (re-used updated)")
-
-                ctx.logger.info(f"  new issue   = {issue} (re-used as is)")
+                jira.refresh_issue(issue)
+                ctx.logger.info(f"Issue {issue} re-used")
 
             # But if there are more than one new issues we encountered error.
             else:
-                raise Exception(f"More than one {action.id} exist for the current respin " +
-                                f"({new_issues})!")
+                raise Exception(f"More than one new {action.id} found ({new_issues})!")
 
-            # Old issues processing. We expect old issues that are to be closed (if any).
+            # Processing old issues - we only expect old issues that are to be closed (if any).
             if old_issues:
                 if action.on_respin != OnRespinAction.CLOSE:
-                    raise Exception(f"Invalid respin action {action.on_respin} for issues " +
-                                    f"from the previous respin ({old_issues})!")
+                    raise Exception(f"Invalid respin action {action.on_respin} for {old_issues}!")
                 for issue in old_issues:
                     jira.drop_obsoleted_issue(issue, obsoleted_by=processed_actions[action.id])
-                    ctx.logger.info(f"  old issue   = {issue.id} (closed)")
+                    ctx.logger.info(f"Old issue {issue} closed")
 
 
 @main.command(name='schedule')
