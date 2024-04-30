@@ -589,7 +589,7 @@ class Request(Cloneable, Serializable):
                 'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH=ksrot_newa',
                 '--tmt-environment',
                 'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=true',
-                '--context', f'newa_hash={self.get_hash(ctx.timestamp)}',
+                '--context', f'newa_batch={self.get_hash(ctx.timestamp)}',
                 ]
         # check compose
         if not self.compose:

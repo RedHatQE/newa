@@ -391,13 +391,13 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
                 )[0]
         # for each Jira and request ID we build a list of RP launches
         jira_request_mapping[jira_id][request_id] = rp.find_launches_by_attr(
-            'newa_hash', execute_job.execution.batch_id)
+            'newa_batch', execute_job.execution.batch_id)
 
     # proceed with RP launch merge
     for jira_id in jira_request_mapping:
         to_merge = []
         description = f'{jira_id}: {len(jira_request_mapping[jira_id])} job requests in total:\n'
-        for request in jira_request_mapping[jira_id]:
+        for request in sorted(jira_request_mapping[jira_id].keys()):
             if len(jira_request_mapping[jira_id][request]):
                 description += f'  {request}: COMPLETED\n'
                 to_merge.extend(jira_request_mapping[jira_id][request])
