@@ -569,7 +569,7 @@ class Request(Cloneable, Serializable):
             'NO_COLOR': 'yes',
             }
         command: list[str] = [
-            'etesting-farm', 'request', '--no-wait',
+            'testing-farm', 'request', '--no-wait',
             ]
         rp_token = ctx.settings.rp_token
         rp_url = ctx.settings.rp_url
