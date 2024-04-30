@@ -293,10 +293,6 @@ class Cloneable:
 class Serializable:
     """ A class whose instances can be serialized into YAML """
 
-    def get_hash(self) -> str:
-        # use only first 12 characters
-        return hashlib.sha256(self.to_yaml().encode('utf-8')).hexdigest()[:12]
-
     def to_yaml(self) -> str:
         output = io.StringIO()
 
@@ -561,6 +557,9 @@ class Request(Cloneable, Serializable):
     # the purpose of 'seed' is to make each object unique as we will
     # compute a hash of object YAML and use it as a identifier in RP
     seed: Optional[str] = ''
+    # the purpose of 'batch_id' is to identify Requests executed in the
+    # same batch for the purpose of reporting and RP launch merging
+    batch_id: Optional[str] = ''
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -570,7 +569,7 @@ class Request(Cloneable, Serializable):
             'NO_COLOR': 'yes',
             }
         command: list[str] = [
-            'testing-farm', 'request', '--no-wait',
+            'etesting-farm', 'request', '--no-wait',
             ]
         rp_token = ctx.settings.rp_token
         rp_url = ctx.settings.rp_url
@@ -586,7 +585,7 @@ class Request(Cloneable, Serializable):
                 'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH=ksrot_newa',
                 '--tmt-environment',
                 'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=true',
-                '--context', f'newa_hash={self.get_hash()}',
+                '--context', f'newa_hash={self.get_newa_hash(ctx.timestamp)}',
                 ]
         # check compose
         if not self.compose:
@@ -641,6 +640,11 @@ class Request(Cloneable, Serializable):
         api = r.group(1).strip()
         request_uuid = api.split('/')[-1]
         return TFRequest(api=api, uuid=request_uuid)
+
+    def get_newa_hash(self, seed: str) -> str:
+        return hashlib.sha256(
+            f'{self.batch_id}-{seed}'.encode(),
+            ).hexdigest()[:12]
 
 
 @define
@@ -1080,7 +1084,7 @@ class CLIContext:
     settings: Settings
     # Path to directory with state files
     state_dirpath: Path
-    seed: Optional[str] = ''
+    timestamp: str = ''
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(

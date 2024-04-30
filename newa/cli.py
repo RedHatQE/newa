@@ -271,8 +271,11 @@ def cmd_schedule(ctx: CLIContext) -> None:
         requests = list(config.build_requests(initial_config))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
+        # assign each Request the respective batch_id, us Jira issue ID for now.
+        batch_id = jira_job.id
         # create ScheduleJob object for each request
         for request in requests:
+            request.batch_id = batch_id
             schedule_job = ScheduleJob(
                 event=jira_job.event,
                 erratum=jira_job.erratum,
@@ -291,8 +294,8 @@ def cmd_schedule(ctx: CLIContext) -> None:
 def cmd_execute(ctx: CLIContext, workers: int) -> None:
     ctx.enter_command('execute')
 
-    # set 'seed' unique for this execution
-    ctx.seed = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    # store timestamp of this execution
+    ctx.timestamp = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
     tf_token = ctx.settings.tf_token
     if not tf_token:
         raise ValueError("TESTING_FARM_API_TOKEN not set!")
@@ -321,14 +324,15 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     log('processing request...')
     # read request details
     schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
-    # set request.seed which is shared accross all TF requests for a given execution
-    schedule_job.request.seed = ctx.seed
+    newa_hash = schedule_job.request.get_newa_hash(ctx.timestamp)
+
     log('initiating TF request')
     tf_request = schedule_job.request.initiate_tf_request(ctx)
     # tf_request = TFRequest(
     #    api='https://api.dev.testing-farm.io/v0.1/requests/519f5c01-46b6-47c9-a055-aecaa32e6a20',
     #    uuid='519f5c01-46b6-47c9-a055-aecaa32e6a20')
     log(f'TF request filed with uuid {tf_request.uuid}')
+
     finished = False
     delay = int(ctx.settings.tf_recheck_delay)
     while not finished:
@@ -345,7 +349,7 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         request=schedule_job.request,
         execution=Execution(return_code=0,
                             artifacts_url=tf_request.details['run']['artifacts'],
-                            newa_hash=schedule_job.request.get_hash()),
+                            newa_hash=newa_hash),
         )
     execute_job.to_yaml_file(
         schedule_file.parent /
