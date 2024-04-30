@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import itertools
 import logging
 import multiprocessing
@@ -271,8 +272,10 @@ def cmd_schedule(ctx: CLIContext) -> None:
         requests = list(config.build_requests(initial_config))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
-        # assign each Request the respective batch_id, us Jira issue ID for now.
-        batch_id = jira_job.id
+        # assign each Request the respective batch_id
+        # let's use hash of state_dirpath and Jira job ID for now.
+        batch_id = hashlib.sha256(f'{ctx.state_dirpath}: {jira_job.id}'.encode()
+                                 ).hexdigest()[:12]
         # create ScheduleJob object for each request
         for request in requests:
             request.batch_id = batch_id
