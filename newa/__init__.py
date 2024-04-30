@@ -293,6 +293,10 @@ class Cloneable:
 class Serializable:
     """ A class whose instances can be serialized into YAML """
 
+    def get_hash(self, seed: str = '') -> str:
+        # use only first 12 characters
+        return hashlib.sha256(f'{seed}{self.to_yaml()}'.encode()).hexdigest()[:12]
+
     def to_yaml(self) -> str:
         output = io.StringIO()
 
@@ -585,7 +589,7 @@ class Request(Cloneable, Serializable):
                 'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH=ksrot_newa',
                 '--tmt-environment',
                 'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=true',
-                '--context', f'newa_hash={self.get_newa_hash(ctx.timestamp)}',
+                '--context', f'newa_hash={self.get_hash(ctx.timestamp)}',
                 ]
         # check compose
         if not self.compose:
@@ -641,11 +645,6 @@ class Request(Cloneable, Serializable):
         request_uuid = api.split('/')[-1]
         return TFRequest(api=api, uuid=request_uuid)
 
-    def get_newa_hash(self, seed: str) -> str:
-        return hashlib.sha256(
-            f'{self.batch_id}-{seed}'.encode(),
-            ).hexdigest()[:12]
-
 
 @define
 class TFRequest(Cloneable, Serializable):
@@ -667,7 +666,7 @@ class Execution(Cloneable, Serializable):
 
     return_code: Optional[int] = 0
     artifacts_url: Optional[str] = None
-    newa_hash: str = ''
+    batch_id: str = ''
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -1066,7 +1065,6 @@ class ReportPortal:
         if attributes:
             for key, value in attributes.items():
                 query_data['attributes'].append({"key": key.strip(), "value": value.strip()})
-        print(query_data)
         print(f'Merging launches: {launch_ids}')
         data = self.post_request('/launch/merge', json=query_data)
         if data:

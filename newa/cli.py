@@ -1,5 +1,4 @@
 import datetime
-import hashlib
 import itertools
 import logging
 import multiprocessing
@@ -272,13 +271,8 @@ def cmd_schedule(ctx: CLIContext) -> None:
         requests = list(config.build_requests(initial_config))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
-        # assign each Request the respective batch_id
-        # let's use hash of state_dirpath and Jira job ID for now.
-        batch_id = hashlib.sha256(f'{ctx.state_dirpath}: {jira_job.id}'.encode(),
-                                  ).hexdigest()[:12]
         # create ScheduleJob object for each request
         for request in requests:
-            request.batch_id = batch_id
             schedule_job = ScheduleJob(
                 event=jira_job.event,
                 erratum=jira_job.erratum,
@@ -327,13 +321,9 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     log('processing request...')
     # read request details
     schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
-    newa_hash = schedule_job.request.get_newa_hash(ctx.timestamp)
 
     log('initiating TF request')
     tf_request = schedule_job.request.initiate_tf_request(ctx)
-    # tf_request = TFRequest(
-    #    api='https://api.dev.testing-farm.io/v0.1/requests/519f5c01-46b6-47c9-a055-aecaa32e6a20',
-    #    uuid='519f5c01-46b6-47c9-a055-aecaa32e6a20')
     log(f'TF request filed with uuid {tf_request.uuid}')
 
     finished = False
@@ -352,7 +342,7 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         request=schedule_job.request,
         execution=Execution(return_code=0,
                             artifacts_url=tf_request.details['run']['artifacts'],
-                            newa_hash=newa_hash),
+                            batch_id=schedule_job.request.get_hash(ctx.timestamp)),
         )
     execute_job.to_yaml_file(
         schedule_file.parent /
@@ -378,18 +368,18 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     jira_request_mapping: dict[str, dict[str, list[str]]] = {}
     jira_launch_name_mapping: dict[str, str] = {}
     if not rp_project:
-        rp_project = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT', '')
+        rp_project = ctx.settings.rp_project
     if not rp_url:
-        rp_url = os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', '')
+        rp_url = ctx.settings.rp_url
     rp = ReportPortal(url=rp_url,
-                      token=os.environ.get('TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN', ''),
+                      token=ctx.settings.rp_token,
                       project=rp_project)
 
     # process each stored execute file
     for execute_job in ctx.load_execute_jobs('execute-'):
         jira_id = execute_job.jira.id
         request_id = execute_job.request.id
-        newa_hash = execute_job.execution.newa_hash
+        # it is sufficient to process each Jira issue only once
         if jira_id not in jira_request_mapping:
             jira_request_mapping[jira_id] = {}
             # FIXME
@@ -400,10 +390,8 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
                     ),
                 )[0]
         # for each Jira and request ID we build a list of RP launches
-        jira_request_mapping[jira_id][request_id] = []
-        jira_request_mapping[jira_id][request_id].extend(
-            rp.find_launches_by_attr('newa_hash', newa_hash),
-            )
+        jira_request_mapping[jira_id][request_id] = rp.find_launches_by_attr(
+            'newa_hash', execute_job.execution.batch_id)
 
     # proceed with RP launch merge
     for jira_id in jira_request_mapping:
