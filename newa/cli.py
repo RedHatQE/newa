@@ -20,6 +20,7 @@ from . import (
     InitialErratum,
     Issue,
     IssueHandler,
+    IssueType,
     JiraJob,
     OnRespinAction,
     RawRecipeConfigDimension,
@@ -264,20 +265,37 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 continue
 
             # Find existing issues related to erratum_job and action
-            search_result = jira.get_open_issues(rendered_summary, all_respins=True)
+            search_result = jira.get_open_issues(action, all_respins=True)
 
             # Issues related to the curent respin and previous one(s).
             new_issues: list[Issue] = []
             old_issues: list[Issue] = []
-            for jira_issue in search_result:
-                ctx.logger.info(f"Checking {jira_issue.key}")
+            for jira_issue_key, jira_issue in search_result.items():
+                ctx.logger.info(f"Checking {jira_issue_key}")
 
-                desc = jira_issue.fields.description
+                # In general, issue is new (relevant to the current respin) if it has newa_id
+                # of this action in the description. Otherwise, it is old (relevant to the
+                # previous respins).
+                #
+                # However, it might happen that we encounter subtask issue that is new but its
+                # original parent task got dropped (by human mistake, newa would never do that).
+                # By this time new parent task already exists. Unfortunately, Jira REST API does
+                # not allow updating 'parent' field [1] and hence we cannot re-use the issue with
+                # updated parent - we need to handle it as an old one (unless it has KEEP on_respin
+                # action it will get dropped and new one is created with the proper parent).
+                #
+                # [1] https://jira.atlassian.com/browse/JRASERVER-68763
+                is_new = False
+                if jira.newa_id(action) in jira_issue["description"] \
+                        and (action.type != IssueType.SUBTASK
+                             or not action.parent_id
+                             or processed_actions[action.parent_id].id == jira_issue["parent"]):
+                    is_new = True
 
-                if isinstance(desc, str) and jira.newa_id in desc:
-                    new_issues.append(Issue(jira_issue.key))
+                if is_new:
+                    new_issues.append(Issue(jira_issue_key))
                 else:
-                    old_issues.append(Issue(jira_issue.key))
+                    old_issues.append(Issue(jira_issue_key))
 
             # Old issue(s) can be re-used for the current respin.
             if old_issues and action.on_respin == OnRespinAction.KEEP:
@@ -286,13 +304,13 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
 
             # Processing new issues.
             #
-            # 1. Either there is no new issue (it does not exist yet - we need to crate it).
-            if len(new_issues) == 0:
+            # 1. Either there is no new issue (it does not exist yet - we need to create it).
+            if not new_issues:
                 parent = None
                 if action.parent_id:
                     parent = processed_actions.get(action.parent_id, None)
 
-                issue = jira.create_issue(action.type,
+                issue = jira.create_issue(action,
                                           rendered_summary,
                                           rendered_description,
                                           rendered_assignee,
@@ -316,7 +334,8 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 processed_actions[action.id] = issue
 
                 # If the old issue was reused, re-fresh it.
-                jira.refresh_issue(issue)
+                parent = processed_actions[action.parent_id] if action.parent_id else None
+                jira.refresh_issue(action, issue)
                 ctx.logger.info(f"Issue {issue} re-used")
 
             # But if there are more than one new issues we encountered error.
