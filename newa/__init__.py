@@ -736,11 +736,11 @@ class OnRespinAction(Enum):
 class IssueAction:  # type: ignore[no-untyped-def]
     summary: str
     description: str
-    assignee: str
     id: str
     on_respin: Optional[OnRespinAction] = field(  # type: ignore[var-annotated]
         converter=lambda value: OnRespinAction(value) if value else None)
     type: IssueType = field(converter=IssueType)
+    assignee: Optional[str] = None
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
     when: Optional[str] = None
@@ -809,14 +809,19 @@ class IssueHandler:
 
         Notice that Jira user name has various forms, it can be either an e-mail
         address or just an user name or even an user name with some sort of prefix.
+        It is possible that some e-mail addresses don't have Jira user associated,
+        e.g. some mailing lists. In that case empty string is returned.
         """
 
         if assignee_email not in self.user_names:
             assignee_names = [u.name for u in self.connection.search_users(user=assignee_email)]
-            if not assignee_names or len(assignee_names) > 1:
-                raise Exception(f"Exactly one Jira user is expected to match {assignee_email}"
+            if not assignee_names:
+                self.user_names[assignee_email] = ""
+            elif len(assignee_names) == 1:
+                self.user_names[assignee_email] = assignee_names[0]
+            else:
+                raise Exception(f"At most one Jira user is expected to match {assignee_email}"
                                 f"({', '.join(assignee_names)})!")
-            self.user_names[assignee_email] = assignee_names[0]
 
         return self.user_names[assignee_email]
 
@@ -876,16 +881,17 @@ class IssueHandler:
                      action: IssueAction,
                      summary: str,
                      description: str,
-                     assignee_email: str,
-                     parent: Issue | None) -> Issue:
+                     assignee_email: str | None = None,
+                     parent: Issue | None = None) -> Issue:
         """ Create issue """
 
         data = {
             "project": {"key": self.project},
             "summary": summary,
             "description": f"{self.newa_id(action)}\n\n{description}",
-            "assignee": {"name": self.get_user_name(assignee_email)},
             }
+        if assignee_email and self.get_user_name(assignee_email):
+            data |= {"assignee": {"name": self.get_user_name(assignee_email)}}
 
         if action.type == IssueType.EPIC:
             data |= {

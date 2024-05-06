@@ -248,7 +248,10 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
 
             rendered_summary = render_template(action.summary, ERRATUM=erratum_job.erratum)
             rendered_description = render_template(action.description, ERRATUM=erratum_job.erratum)
-            rendered_assignee = render_template(action.assignee, ERRATUM=erratum_job.erratum)
+            if action.assignee:
+                rendered_assignee = render_template(action.assignee, ERRATUM=erratum_job.erratum)
+            else:
+                rendered_assignee = None
 
             # Detect that action has parent available (if applicable), if we went trough the
             # actions already and parent was not found, we abort.
