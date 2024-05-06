@@ -797,10 +797,9 @@ class IssueHandler:
         respin. If 'partial' is defined it defines issues relevant for all respins.
         """
 
-        newa_id = f"{IssueHandler.newa_label} {action.id}: {self.erratum_job.id}"
-
+        newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.erratum_job.id}"
         if not partial:
-            newa_id += f" ({', '.join(sorted(self.erratum_job.erratum.builds))})"
+            newa_id += f" ({', '.join(sorted(self.erratum_job.erratum.builds))}) :::"
 
         return newa_id
 
