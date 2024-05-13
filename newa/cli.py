@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 
 import click
+import jira
 
 from . import (
     CLIContext,
@@ -373,6 +374,14 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     rp = ReportPortal(url=rp_url,
                       token=ctx.settings.rp_token,
                       project=rp_project)
+    # initialize Jira connection as well
+    jira_url = ctx.settings.jira_url
+    if not jira_url:
+        raise Exception('Jira URL is not configured!')
+    jira_token = ctx.settings.jira_token
+    if not jira_token:
+        raise Exception('Jira URL is not configured!')
+    jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
 
     # process each stored execute file
     for execute_job in ctx.load_execute_jobs('execute-'):
@@ -410,4 +419,11 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
                     to_merge, jira_launch_name_mapping[jira_id], description, {})
             else:
                 final_launch = to_merge[0]
-            ctx.logger.info(f'RP launch url: {rp.get_launch_url(final_launch)}')
+            launch_url = rp.get_launch_url(final_launch)
+            ctx.logger.info(f'RP launch url: {launch_url}')
+            # report results back to Jira
+            try:
+                jira_connection.add_comment(jira_id,
+                                            f"NEWA has imported test results to\n{launch_url}")
+            except jira.JIRAError as e:
+                raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
