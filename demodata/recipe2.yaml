@@ -11,10 +11,12 @@ dimensions:
   cities:
     - environment:
         CITY: Brno
+      when: CONTEXT.color is match("blue")
     - environment:
         CITY: Boston
   colors:
     - context:
         color: red
+      when: ENVIRONMENT.CITY is not match("Brno")
     - context:
         color: blue
