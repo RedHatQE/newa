@@ -785,7 +785,6 @@ class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
 
-<<<<<<< HEAD
 
 @frozen
 class IssueHandler:
@@ -1003,6 +1002,7 @@ class IssueHandler:
 #
 # ReportPortal communication
 #
+
 
 @define
 class ReportPortal:

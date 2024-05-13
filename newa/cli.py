@@ -1,5 +1,4 @@
 import datetime
-import itertools
 import logging
 import multiprocessing
 import os.path
