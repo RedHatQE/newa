@@ -558,12 +558,6 @@ class Request(Cloneable, Serializable):
     plan: Optional[str] = None
     # TODO: 'when' not really needed, adding it to silent the linter
     when: Optional[str] = None
-    # the purpose of 'seed' is to make each object unique as we will
-    # compute a hash of object YAML and use it as a identifier in RP
-    seed: Optional[str] = ''
-    # the purpose of 'batch_id' is to identify Requests executed in the
-    # same batch for the purpose of reporting and RP launch merging
-    batch_id: Optional[str] = ''
 
     def fetch_details(self) -> None:
         raise NotImplementedError
