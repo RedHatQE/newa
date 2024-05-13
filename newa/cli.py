@@ -425,5 +425,6 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
             try:
                 jira_connection.add_comment(jira_id,
                                             f"NEWA has imported test results to\n{launch_url}")
+                ctx.logger.info(f'Jira issue {jira_id} was updated with a link to RP launch {final_launch}')
             except jira.JIRAError as e:
                 raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
