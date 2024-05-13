@@ -1,6 +1,16 @@
+project: BASEQESEC
+
+transitions:
+  closed:
+    - Done
+    - Dropped
+    - Completed
+  dropped:
+    - Dropped
+
 issues:
 
- - summary: "Testing ER#{{ ERRATUM.event.id }} {{ ERRATUM.summary }}"
+ - summary: "Testing ER#{{ ERRATUM.id }} {{ ERRATUM.summary }}"
    description: "{{ ERRATUM.url }}"
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: epic
