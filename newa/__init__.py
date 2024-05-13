@@ -527,9 +527,10 @@ class RecipeConfig(Cloneable, Serializable):
 
         # now for each combination merge data from individual dimensions
         merged_combinations = list(map(merge_combination_data, combinations))
-        total = len(merged_combinations)
+        # and filter them evaluating 'when' conditions
+        filtered_combinations = []
         for combination in merged_combinations:
-            # before creating a Request check if there is a condition present and evaluate it
+            # check if there is a condition present and evaluate it
             condition = combination.get('when', '')
             if condition:
                 # we will expose COMPOSE, ENVIRONMENT, CONTEXT to evaluate a condition
@@ -540,6 +541,10 @@ class RecipeConfig(Cloneable, Serializable):
                     CONTEXT=combination['context'])
                 if not test_result:
                     continue
+            filtered_combinations.append(combination)
+        # now build Request instances
+        total = len(filtered_combinations)
+        for combination in filtered_combinations:
             yield Request(id=f'REQ-{next(recipe_id_gen)}.{total}',
                           **combination)
 
