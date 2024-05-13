@@ -26,6 +26,8 @@ from typing import (
 
 import attrs
 import jinja2
+import jira
+import jira.client
 import requests
 import ruamel.yaml
 import ruamel.yaml.nodes
@@ -35,6 +37,8 @@ from attrs import define, field, frozen, validators
 from requests_kerberos import HTTPKerberosAuth
 
 if TYPE_CHECKING:
+    from typing import ClassVar
+
     from typing_extensions import Self, TypeAlias
 
     ErratumId: TypeAlias = str
@@ -323,15 +327,10 @@ class Event(Serializable):
 
 @frozen
 class ErrataTool:
-    """
-    Interface to Errata Tool instance
-
-    Its only purpose is to serve information about an erratum and its builds.
-    """
+    """ Interface to Errata Tool instance """
 
     url: str = field(validator=validators.matches_re("^https?://.+$"))
 
-    # TODO: Not used at this point because we only consume builds now
     def fetch_info(self, erratum_id: str) -> JSON:
         return get_request(
             url=f"{self.url}/advisory/{erratum_id}.json",
@@ -358,9 +357,6 @@ class ErrataTool:
 
         errata = []
 
-        # TODO: We might need to assert QE (or later) state. There is no point
-        # in fetching errata in NEW_FILES where builds need not to be present.
-
         # In QE state there is are zero or more builds in an erratum, each
         # contains one or more packages, e.g.:
         # {
@@ -378,6 +374,7 @@ class ErrataTool:
         #   ]
         # }
 
+        info_json = self.fetch_info(event.id)
         releases_json = self.fetch_releases(event.id)
         for release in releases_json:
             builds = []
@@ -385,7 +382,12 @@ class ErrataTool:
             for item in builds_json:
                 builds += list(item.keys())
             if builds:
-                errata.append(Erratum(release, builds))
+                errata.append(Erratum(id=event.id,
+                                      respin_count=int(info_json["respin_count"]),
+                                      summary=info_json["synopsis"],
+                                      people_assigned_to=info_json["people"]["assigned_to"],
+                                      release=release,
+                                      builds=builds))
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
@@ -414,19 +416,22 @@ class Erratum(Cloneable, Serializable):
     Represents a set of builds targetting a single release.
     """
 
-    # TODO: We might need to add more in the future.
-    release: str
+    id: str = field()
+    respin_count: int = field(repr=False)
+    summary: str = field(repr=False)
+    people_assigned_to: str = field(repr=False)
+    release: str = field()
     builds: list[str] = field(factory=list)
 
 
 @define
 class Issue(Cloneable, Serializable):
-    """ A Jira issue """
+    """ Issue - a key in Jira (eg. NEWA-123) """
 
-    id: str
+    id: str = field()
 
-    def fetch_details(self) -> None:
-        raise NotImplementedError
+    def __str__(self) -> str:
+        return self.id
 
 
 @define
@@ -731,18 +736,235 @@ class OnRespinAction(Enum):
 class IssueAction:  # type: ignore[no-untyped-def]
     summary: str
     description: str
-    assignee: str
     id: str
     on_respin: Optional[OnRespinAction] = field(  # type: ignore[var-annotated]
         converter=lambda value: OnRespinAction(value) if value else None)
     type: IssueType = field(converter=IssueType)
+    assignee: Optional[str] = None
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
     when: Optional[str] = None
 
 
 @define
-class ErratumConfig(Serializable):
+class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
+
+    project: str = field()
+    transitions: dict[str, list[str]] = field()
     issues: list[IssueAction] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
+
+
+@frozen
+class IssueHandler:
+    """ An interface to Jira instance handling a specific ErratumJob """
+
+    erratum_job: ErratumJob = field()
+    url: str = field()
+    token: str = field()
+    project: str = field()
+
+    # Each project can have different semantics of issue status.
+    transitions: dict[str, list[str]] = field()
+
+    # We assume that all projects have the following two custom fields mapped
+    # as follows.
+    custom_field_map: ClassVar[dict[str, str]] = {
+        "field_epic_link": "customfield_12311140",
+        "field_epic_name": "customfield_12311141",
+        }
+
+    # Actual Jira connection.
+    connection: jira.JIRA = field(init=False)
+
+    # Cache of Jira user names mapped to e-mail addresses.
+    user_names: dict[str, str] = field(init=False, default={})
+
+    # NEWA label
+    newa_label: ClassVar[str] = "NEWA"
+
+    @connection.default  # pyright: ignore [reportAttributeAccessIssue]
+    def connection_factory(self) -> jira.JIRA:
+        return jira.JIRA(self.url, token_auth=self.token)
+
+    def newa_id(self, action: IssueAction, partial: bool = False) -> str:
+        """
+        NEWA identifier
+
+        Construct so-called NEWA identifier - it identifies all issues of given
+        action for errata. By default it defines issues related to the current
+        respin. If 'partial' is defined it defines issues relevant for all respins.
+        """
+
+        newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.erratum_job.id}"
+        if not partial:
+            newa_id += f" ({', '.join(sorted(self.erratum_job.erratum.builds))}) :::"
+
+        return newa_id
+
+    def get_user_name(self, assignee_email: str) -> str:
+        """
+        Find Jira user name associated with given e-mail address
+
+        Notice that Jira user name has various forms, it can be either an e-mail
+        address or just an user name or even an user name with some sort of prefix.
+        It is possible that some e-mail addresses don't have Jira user associated,
+        e.g. some mailing lists. In that case empty string is returned.
+        """
+
+        if assignee_email not in self.user_names:
+            assignee_names = [u.name for u in self.connection.search_users(user=assignee_email)]
+            if not assignee_names:
+                self.user_names[assignee_email] = ""
+            elif len(assignee_names) == 1:
+                self.user_names[assignee_email] = assignee_names[0]
+            else:
+                raise Exception(f"At most one Jira user is expected to match {assignee_email}"
+                                f"({', '.join(assignee_names)})!")
+
+        return self.user_names[assignee_email]
+
+    def get_details(self, issue: Issue) -> jira.Issue:
+        """ Return issue details """
+
+        try:
+            return self.connection.issue(issue.id)
+        except jira.JIRAError as e:
+            raise Exception(f"Jira issue {issue} not found!") from e
+
+    def get_open_issues(self,
+                        action: IssueAction,
+                        all_respins: bool = False) -> dict[str, dict[str, str]]:
+        """
+        Get issues related to erratum job with given summary
+
+        Unless 'all_respins' is defined only issues related to the current respin are returned.
+        Result is a dictionary such that keys are found Jira issue keys (ID) and values
+        are dictionaries such that there is always 'description' key and if the issues has
+        parent then there is also 'parent' key. For instance:
+
+        {
+            "NEWA-123": {
+                "description": "description of first issue",
+                "parent": "NEWA-456"
+            }
+            "NEWA-456": {
+                "description": "description of second issue"
+            }
+        }
+        """
+
+        fields = ["description", "parent"]
+
+        newa_description = f"{self.newa_id(action, True) if all_respins else self.newa_id(action)}"
+        query = \
+            f"project = '{self.project}' AND " + \
+            f"labels in ({IssueHandler.newa_label}) AND " + \
+            f"description ~ '{newa_description}' AND " + \
+            f"status not in ({','.join(self.transitions['closed'])})"
+
+        search_result = self.connection.search_issues(query, fields=fields, json_result=True)
+        if not isinstance(search_result, dict):
+            raise Exception(f"Unexpected search result type {type(search_result)}!")
+
+        # Transformation of search_result json into simpler structure gets rid of
+        # linter warning and also makes easier mocking (for tests).
+        result = {}
+        for jira_issue in search_result["issues"]:
+            result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
+            if "parent" in jira_issue["fields"]:
+                result[jira_issue["key"]] |= {"parent": jira_issue["fields"]["parent"]["key"]}
+        return result
+
+    def create_issue(self,
+                     action: IssueAction,
+                     summary: str,
+                     description: str,
+                     assignee_email: str | None = None,
+                     parent: Issue | None = None) -> Issue:
+        """ Create issue """
+
+        data = {
+            "project": {"key": self.project},
+            "summary": summary,
+            "description": f"{self.newa_id(action)}\n\n{description}",
+            }
+        if assignee_email and self.get_user_name(assignee_email):
+            data |= {"assignee": {"name": self.get_user_name(assignee_email)}}
+
+        if action.type == IssueType.EPIC:
+            data |= {
+                "issuetype": {"name": "Epic"},
+                IssueHandler.custom_field_map["field_epic_name"]: data["summary"],
+                }
+        elif action.type == IssueType.TASK:
+            data |= {"issuetype": {"name": "Task"}}
+            if parent:
+                data |= {IssueHandler.custom_field_map["field_epic_link"]: parent.id}
+        elif action.type == IssueType.SUBTASK:
+            if not parent:
+                raise Exception("Missing task while creating sub-task!")
+
+            data |= {
+                "issuetype": {"name": "Sub-task"},
+                "parent": {"key": parent.id},
+                }
+        else:
+            raise Exception(f"Unknown issue type {action.type}!")
+
+        try:
+            jira_issue = self.connection.create_issue(data)
+            jira_issue.update(
+                fields={
+                    "labels": [
+                        *jira_issue.fields.labels,
+                        IssueHandler.newa_label]})
+            return Issue(jira_issue.key)
+        except jira.JIRAError as e:
+            raise Exception("Unable to create issue!") from e
+
+    def refresh_issue(self, action: IssueAction, issue: Issue) -> None:
+        """ Update NEWA identifier of issue """
+
+        issue_details = self.get_details(issue)
+        description = issue_details.fields.description
+
+        # Issue does not have any NEWA ID - error.
+        if isinstance(description, str) and self.newa_id(action, True) not in description:
+            raise Exception(f"Issue {issue} is missing NEWA identifier!")
+
+        # Issue has NEWA ID but not the current respin - update it.
+        if isinstance(description, str) and self.newa_id(action) not in description:
+            new_description = re.sub(f"^{re.escape(self.newa_id(action, partial=True))}.*\n",
+                                     f"{self.newa_id(action)}\n", description)
+            try:
+                self.get_details(issue).update(fields={"description": new_description})
+                self.comment_issue(issue, "NEWA refreshed issue ID.")
+            except jira.JIRAError as e:
+                raise Exception(f"Unable to modify issue {issue}!") from e
+
+    def comment_issue(self, issue: Issue, comment: str) -> None:
+        """ Add comment to issue """
+
+        try:
+            self.connection.add_comment(issue.id, comment)
+        except jira.JIRAError as e:
+            raise Exception(f"Unable to add a comment to issue {issue}!") from e
+
+    def drop_obsoleted_issue(self, issue: Issue, obsoleted_by: Issue) -> None:
+        """ Close obsoleted issue and link obsoleting issue to the obsoleted one """
+
+        obsoleting_comment = f"NEWA dropped this issue (obsoleted by {obsoleted_by})."
+        try:
+            self.connection.create_issue_link(type="relates to",
+                                              inwardIssue=issue.id,
+                                              outwardIssue=obsoleted_by.id,
+                                              comment={
+                                                   "body": obsoleting_comment,
+                                                   "visbility": None,
+                                                  })
+            self.connection.transition_issue(issue.id,
+                                             transition=self.transitions["dropped"][0])
+        except jira.JIRAError as e:
+            raise Exception(f"Cannot close issue {issue}!") from e

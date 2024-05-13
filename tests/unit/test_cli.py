@@ -26,6 +26,14 @@ def _mock_errata_tool(monkeypatch):
     def mock_get_request(url: str):
         return {"mock_key": "mock_response"}
 
+    def mock_et_fetch_info(self, id: str):
+        """ Return a meaningful json with info """
+        return {
+            "synopsis": "testing errata",
+            "people": {
+                "assigned_to": "user@domain.com"},
+            "respin_count": "1"}
+
     def mock_et_fetch_releases(self, id: str):
         """ Return a meaningful json with releases/builds """
         return {
@@ -46,6 +54,7 @@ def _mock_errata_tool(monkeypatch):
     monkeypatch.setenv("NEWA_ET_URL", "https://fake.erratatool.com")
     # We want to make sure we don't make requests to errata tool
     monkeypatch.setattr(newa, 'get_request', mock_get_request)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_info', mock_et_fetch_info)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_releases', mock_et_fetch_releases)
 
 

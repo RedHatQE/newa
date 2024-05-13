@@ -1,7 +1,12 @@
 from newa import Erratum, ErratumJob, Event, EventType, eval_test
 
 event = Event(type_=EventType.ERRATUM, id='foo')
-erratum = Erratum(release='RHEL-9.4.0')
+erratum = Erratum(id='12345',
+                  respin_count=1,
+                  summary='test errata',
+                  people_assigned_to='user',
+                  release='RHEL-9.4.0',
+                  builds=['component-1.0'])
 erratum_job = ErratumJob(event=event, erratum=erratum)
 
 variables = {
