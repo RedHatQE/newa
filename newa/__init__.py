@@ -275,6 +275,10 @@ def eval_test(
     return bool(outcome == 'true')
 
 
+def get_url_basename(url: str) -> str:
+    return os.path.splitext(os.path.basename(url))[0]
+
+
 class EventType(Enum):
     """ Event types """
 
@@ -460,10 +464,12 @@ class RawRecipeConfigDimension(TypedDict, total=False):
     compose: Optional[str]
     git_url: Optional[str]
     git_ref: Optional[str]
+    rp_launch: Optional[str]
     when: Optional[str]
 
 
-_RecipeConfigDimensionKey = Literal['context', 'environment', 'git_url', 'git_ref', 'when']
+_RecipeConfigDimensionKey = Literal['context',
+                                    'environment', 'git_url', 'git_ref', 'rp_launch', 'when']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.
@@ -559,6 +565,7 @@ class Request(Cloneable, Serializable):
     compose: Optional[str] = None
     git_url: Optional[str] = None
     git_ref: Optional[str] = None
+    rp_launch: Optional[str] = None
     tmt_path: Optional[str] = None
     plan: Optional[str] = None
     # TODO: 'when' not really needed, adding it to silent the linter
@@ -576,20 +583,28 @@ class Request(Cloneable, Serializable):
             ]
         rp_token = ctx.settings.rp_token
         rp_url = ctx.settings.rp_url
-        if rp_token and rp_url:
-            command += [
-                '--tmt-environment',
-                f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN={rp_token}',
-                '--tmt-environment',
-                f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL={rp_url}',
-                '--tmt-environment',
-                'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT=baseosqe',
-                '--tmt-environment',
-                'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH=ksrot_newa',
-                '--tmt-environment',
-                'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
-                '--context', f'newa_batch={self.get_hash(ctx.timestamp)}',
-                ]
+        rp_project = ctx.settings.rp_project
+        if not rp_token:
+            raise Exception('ERROR: ReportPortal token is not set')
+        if not rp_url:
+            raise Exception('ERROR: ReportPortal URL is not set')
+        if not rp_project:
+            raise Exception('ERROR: ReportPortal project is not set')
+        if not self.rp_launch:
+            raise Exception('ERROR: ReportPortal launch is not specified')
+        command += [
+            '--tmt-environment',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN={rp_token}',
+            '--tmt-environment',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL={rp_url}',
+            '--tmt-environment',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT={rp_project}',
+            '--tmt-environment',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH={self.rp_launch}',
+            '--tmt-environment',
+            'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
+            '--context', f'newa_batch={self.get_hash(ctx.timestamp)}',
+            ]
         # check compose
         if not self.compose:
             raise Exception('ERROR: compose is not specified for the request')

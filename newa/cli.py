@@ -30,6 +30,7 @@ from . import (
     ScheduleJob,
     Settings,
     eval_test,
+    get_url_basename,
     render_template,
     )
 
@@ -216,13 +217,6 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                                           rendered_assignee,
                                           parent)
 
-                if action.job_recipe:
-                    jira_job = JiraJob(event=erratum_job.event,
-                                       erratum=erratum_job.erratum,
-                                       jira=issue,
-                                       recipe=Recipe(url=action.job_recipe))
-                    ctx.save_jira_job('jira-', jira_job)
-
                 processed_actions[action.id] = issue
 
                 new_issues.append(issue)
@@ -241,6 +235,13 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
             # But if there are more than one new issues we encountered error.
             else:
                 raise Exception(f"More than one new {action.id} found ({new_issues})!")
+
+            if action.job_recipe:
+                jira_job = JiraJob(event=erratum_job.event,
+                                   erratum=erratum_job.erratum,
+                                   jira=issue,
+                                   recipe=Recipe(url=action.job_recipe))
+                ctx.save_jira_job('jira-', jira_job)
 
             # Processing old issues - we only expect old issues that are to be closed (if any).
             if old_issues:
@@ -267,6 +268,9 @@ def cmd_schedule(ctx: CLIContext) -> None:
         initial_config = RawRecipeConfigDimension(compose=compose)
 
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
+        # if rp_launch is not specified in the config, set it based on the recipe filename
+        if 'rp_launch' not in config.fixtures:
+            config.fixtures['rp_launch'] = get_url_basename(jira_job.recipe.url)
         # build requests
         requests = list(config.build_requests(initial_config))
         ctx.logger.info(f'{len(requests)} requests have been generated')
@@ -390,13 +394,7 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
         # it is sufficient to process each Jira issue only once
         if jira_id not in jira_request_mapping:
             jira_request_mapping[jira_id] = {}
-            # FIXME
-            # for now, we construct launch name for a merged launch based on the recipe name
-            jira_launch_name_mapping[jira_id] = os.path.splitext(
-                os.path.basename(
-                    execute_job.recipe.url,
-                    ),
-                )[0]
+            jira_launch_name_mapping[jira_id] = execute_job.request.rp_launch
         # for each Jira and request ID we build a list of RP launches
         jira_request_mapping[jira_id][request_id] = rp.find_launches_by_attr(
             'newa_batch', execute_job.execution.batch_id)
