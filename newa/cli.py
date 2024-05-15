@@ -401,29 +401,32 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
 
     # proceed with RP launch merge
     for jira_id in jira_request_mapping:
-        to_merge = []
+        launch_list = []
         description = f'{jira_id}: {len(jira_request_mapping[jira_id])} job requests in total:\n'
         for request in sorted(jira_request_mapping[jira_id].keys()):
             if len(jira_request_mapping[jira_id][request]):
                 description += f'  {request}: COMPLETED\n'
-                to_merge.extend(jira_request_mapping[jira_id][request])
+                launch_list.extend(jira_request_mapping[jira_id][request])
             else:
                 description += f'  {request}: MISSING\n'
-        if not len(to_merge):
+        if not len(launch_list):
             ctx.logger.error('Failed to find any related ReportPortal launches')
         else:
-            if len(to_merge) > 1:
-                final_launch = rp.merge_launches(
-                    to_merge, jira_launch_name_mapping[jira_id], description, {})
-            else:
-                final_launch = to_merge[0]
-            launch_url = rp.get_launch_url(final_launch)
-            ctx.logger.info(f'RP launch url: {launch_url}')
+            if len(launch_list) > 1:
+                merged_launch = rp.merge_launches(
+                    launch_list, jira_launch_name_mapping[jira_id], description, {})
+                if not merged_launch:
+                    ctx.logger.error('Failed to merge ReportPortal launches')
+                else:
+                    launch_list = [merged_launch]
             # report results back to Jira
+            launch_urls = [rp.get_launch_url(launch) for launch in launch_list]
+            ctx.logger.info(f'RP launch urls: {" ".join(launch_urls)}')
             try:
+                joined_urls = '\n'.join(launch_urls)
                 jira_connection.add_comment(jira_id,
-                                            f"NEWA has imported test results to\n{launch_url}")
+                                            f"NEWA has imported test results to\n{joined_urls}")
                 ctx.logger.info(
-                    f'Jira issue {jira_id} was updated with a link to RP launch {final_launch}')
+                    f'Jira issue {jira_id} was updated with a RP launch URL')
             except jira.JIRAError as e:
                 raise Exception(f"Unable to add a comment to issue {jira_id}!") from e

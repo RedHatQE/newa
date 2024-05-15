@@ -1067,7 +1067,7 @@ class ReportPortal:
                        launch_ids: list[str],
                        launch_name: str,
                        description: str,
-                       attributes: Optional[dict[str, str]] = None) -> str:
+                       attributes: Optional[dict[str, str]] = None) -> str | None:
         query_data: JSON = {
             "attributes": [],
             'description': description,
@@ -1086,7 +1086,7 @@ class ReportPortal:
             print('Launches successfully merged')
             return str(data['id'])
         print('Failed to merge launches')
-        return ''
+        return None
 
 
 @define
