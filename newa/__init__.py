@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import time
+import urllib
 from collections.abc import Iterable, Iterator
 from configparser import ConfigParser
 from enum import Enum
@@ -1033,9 +1034,9 @@ class ReportPortal:
                     path: str,
                     params: Optional[dict[str, str]] = None,
                     version: int = 1) -> JSON:
-        base_url = f'{self.url}/api/v{version}/{self.project}/{path.lstrip("/")}'
-        get_params = '&'.join([f'{k}={v}' for (k, v) in params.items()]) if params else ''
-        url = f'{base_url}?{get_params}'
+        url = urllib.parse.urljoin(self.url, f'/api/v{version}/{self.project}/{path.lstrip("/")}')
+        if params:
+            url = f'{url}?{urllib.parse.urlencode(params)}'
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
         req = requests.get(url, headers=headers)
         if req.status_code == 200:
