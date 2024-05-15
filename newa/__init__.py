@@ -678,9 +678,9 @@ class TFRequest(Cloneable, Serializable):
 class Execution(Cloneable, Serializable):
     """ A test job execution """
 
-    return_code: Optional[int] = 0
+    batch_id: str
+    return_code: int
     artifacts_url: Optional[str] = None
-    batch_id: str = ''
 
     def fetch_details(self) -> None:
         raise NotImplementedError
