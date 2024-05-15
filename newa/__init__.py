@@ -251,6 +251,15 @@ def eval_test(
 
     environment = environment or default_template_environment()
 
+    def _test_compose(obj: Union[Event, ArtifactJob]) -> bool:
+        if isinstance(obj, Event):
+            return obj.type_ is EventType.COMPOSE
+
+        if isinstance(obj, ArtifactJob):
+            return obj.event.type_ is EventType.COMPOSE
+
+        raise Exception(f"Unsupported type in 'compose' test: {type(obj)}")
+
     def _test_erratum(obj: Union[Event, ArtifactJob]) -> bool:
         if isinstance(obj, Event):
             return obj.type_ is EventType.ERRATUM
@@ -263,6 +272,7 @@ def eval_test(
     def _test_match(s: str, pattern: str) -> bool:
         return re.match(pattern, s) is not None
 
+    environment.tests['compose'] = _test_compose
     environment.tests['erratum'] = _test_erratum
     environment.tests['match'] = _test_match
 

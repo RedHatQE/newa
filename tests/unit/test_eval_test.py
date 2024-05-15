@@ -1,4 +1,4 @@
-from newa import Erratum, ErratumJob, Event, EventType, eval_test
+from newa import ArtifactJob, Compose, Erratum, Event, EventType, eval_test
 
 event = Event(type_=EventType.ERRATUM, id='foo')
 erratum = Erratum(id='12345',
@@ -7,9 +7,11 @@ erratum = Erratum(id='12345',
                   people_assigned_to='user',
                   release='RHEL-9.4.0',
                   builds=['component-1.0'])
-erratum_job = ErratumJob(event=event, erratum=erratum)
+compose = Compose(id='RHEL-9.4.0-Nightly')
+erratum_job = ArtifactJob(event=event, erratum=erratum, compose=compose)
 
 variables = {
+    'COMPOSE': compose,
     'EVENT': event,
     'ERRATUM': erratum,
     'JOB': erratum_job,
@@ -22,6 +24,9 @@ def test_expressions():
     # Checking if event type equals to "errata", "compose", ...
     assert test('EVENT is erratum', True)
     assert test('EVENT is not erratum', False)
+
+    assert test('EVENT is compose', False)
+    assert test('EVENT is not compose', True)
 
     assert test('JOB is erratum', True)
     assert test('JOB is not erratum', False)
@@ -43,6 +48,10 @@ def test_expressions():
     assert test('JOB.erratum.release is match("RHEL-.*")', True)
     assert test('JOB.erratum.release is match("(?i)rhel-.*")', True)
     assert test('JOB.erratum.release is match("RHEL-9.7.0")', False)
+
+    # Checking if compose id starts with (or contains or matches regexp) string "rhel-x.y"
+    assert test('JOB.compose.id is match("RHEL-.*")', True)
+    assert test('JOB.compose.id is match("RHEL-9.7.0")', False)
 
     # Checking if errata batch starts with (or contains or matches regexp) string "RHEL"
     # TODO: there seems to be no `batch` attribute yet
