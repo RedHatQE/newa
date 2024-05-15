@@ -45,7 +45,9 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self, TypeAlias
 
+    EventId: TypeAlias = str
     ErratumId: TypeAlias = str
+    ComposeId: TypeAlias = str
     JSON: TypeAlias = Any
 
 
@@ -249,11 +251,11 @@ def eval_test(
 
     environment = environment or default_template_environment()
 
-    def _test_erratum(obj: Union[Event, ErratumJob]) -> bool:
+    def _test_erratum(obj: Union[Event, ArtifactJob]) -> bool:
         if isinstance(obj, Event):
             return obj.type_ is EventType.ERRATUM
 
-        if isinstance(obj, ErratumJob):
+        if isinstance(obj, ArtifactJob):
             return obj.event.type_ is EventType.ERRATUM
 
         raise Exception(f"Unsupported type in 'erratum' test: {type(obj)}")
@@ -285,6 +287,7 @@ class EventType(Enum):
     """ Event types """
 
     ERRATUM = 'erratum'
+    COMPOSE = 'compose'
 
 
 @define
@@ -334,7 +337,7 @@ class Event(Serializable):
     """ A triggering event of Newa pipeline """
 
     type_: EventType = field(converter=EventType)
-    id: ErratumId
+    id: EventId
 
 
 @frozen
@@ -409,15 +412,26 @@ class ErrataTool:
 @define
 class InitialErratum(Serializable):
     """
-    An initial erratum as an input.
+    An initial event as an input.
 
     It does not track releases, just the initial event. It will be expanded
-    into corresponding :py:class:`ErratumJob` instances.
+    into corresponding :py:class:`ArtifactJob` instances.
     """
 
     event: Event = field(  # type: ignore[var-annotated]
         converter=lambda x: x if isinstance(x, Event) else Event(**x),
         )
+
+
+@define
+class Compose(Cloneable, Serializable):
+    """
+    A distribution compose
+
+    Represents a single distribution compose.
+    """
+
+    id: ComposeId = field()
 
 
 @define
@@ -428,7 +442,7 @@ class Erratum(Cloneable, Serializable):
     Represents a set of builds targetting a single release.
     """
 
-    id: str = field()
+    id: ErratumId = field()
     respin_count: int = field(repr=False)
     summary: str = field(repr=False)
     people_assigned_to: str = field(repr=False)
@@ -689,7 +703,7 @@ class Execution(Cloneable, Serializable):
 
 
 @define
-class Job(Cloneable, Serializable):
+class EventJob(Cloneable, Serializable):
     """ A single job """
 
     event: Event = field(  # type: ignore[var-annotated]
@@ -707,20 +721,32 @@ class Job(Cloneable, Serializable):
 
 
 @define
-class ErratumJob(Job):
+class ArtifactJob(EventJob):
     """ A single *erratum* job """
 
-    erratum: Erratum = field(  # type: ignore[var-annotated]
-        converter=lambda x: x if isinstance(x, Erratum) else Erratum(**x),
+    erratum: Optional[Erratum] = field(  # type: ignore[var-annotated]
+        converter=lambda x: None if x is None else x if isinstance(x, Erratum) else Erratum(**x),
+        )
+
+    compose: Optional[Compose] = field(  # type: ignore[var-annotated]
+        converter=lambda x: None if x is None else x if isinstance(x, Compose) else Compose(**x),
         )
 
     @property
+    def short_id(self) -> str:
+        if self.erratum:
+            return self.erratum.release
+        if self.compose:
+            return self.compose.id
+        return ""
+
+    @property
     def id(self) -> str:
-        return f'E: {self.event.id} @ {self.erratum.release}'
+        return f'E: {self.event.id} @ {self.short_id}'
 
 
 @define
-class JiraJob(ErratumJob):
+class JiraJob(ArtifactJob):
     """ A single *jira* job """
 
     jira: Issue = field(  # type: ignore[var-annotated]
@@ -733,7 +759,7 @@ class JiraJob(ErratumJob):
 
     @property
     def id(self) -> str:
-        return f'J: {self.event.id} @ {self.erratum.release} - {self.jira.id}'
+        return f'J: {self.event.id} @ {self.short_id} - {self.jira.id}'
 
 
 @define
@@ -746,7 +772,7 @@ class ScheduleJob(JiraJob):
 
     @property
     def id(self) -> str:
-        return f'S: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
+        return f'S: {self.event.id} @ {self.short_id} - {self.jira.id} / {self.request.id}'
 
 
 @define
@@ -759,7 +785,7 @@ class ExecuteJob(ScheduleJob):
 
     @property
     def id(self) -> str:
-        return f'X: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
+        return f'X: {self.event.id} @ {self.short_id} - {self.jira.id} / {self.request.id}'
 
 
 #
@@ -805,9 +831,9 @@ class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
 
 @frozen
 class IssueHandler:
-    """ An interface to Jira instance handling a specific ErratumJob """
+    """ An interface to Jira instance handling a specific ArtifactJob """
 
-    erratum_job: ErratumJob = field()
+    artifact_job: ArtifactJob = field()
     url: str = field()
     token: str = field()
     project: str = field()
@@ -844,9 +870,9 @@ class IssueHandler:
         respin. If 'partial' is defined it defines issues relevant for all respins.
         """
 
-        newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.erratum_job.id}"
-        if not partial:
-            newa_id += f" ({', '.join(sorted(self.erratum_job.erratum.builds))}) :::"
+        newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.artifact_job.id}"
+        if not partial and self.artifact_job.erratum:
+            newa_id += f" ({', '.join(sorted(self.artifact_job.erratum.builds))}) :::"
 
         return newa_id
 
