@@ -118,7 +118,7 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
         config = ErratumConfig.from_yaml_file(Path(os.path.expandvars(issue_config)))
 
         jira = IssueHandler(erratum_job, jira_url, jira_token, config.project, config.transitions)
-        ctx.logger.info(f"Initialized {jira}")
+        ctx.logger.info("Initialized Jira handler")
 
         # All issue action from the configuration.
         issue_actions = config.issues[:]
