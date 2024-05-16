@@ -881,7 +881,10 @@ class IssueHandler:
         """
 
         newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.artifact_job.id}"
-        if not partial and self.artifact_job.erratum:
+        # for ERRATUM event type update ID with sorted builds
+        if (not partial and
+            self.artifact_job.event.type_ is EventType.ERRATUM and
+                self.artifact_job.erratum):
             newa_id += f" ({', '.join(sorted(self.artifact_job.erratum.builds))}) :::"
 
         return newa_id
