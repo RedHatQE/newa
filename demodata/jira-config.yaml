@@ -33,7 +33,7 @@ issues:
    id: subtask_demo
    parent_id: errata_task
    on_respin: close
-   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/ks_reportportal/demodata/recipe1.yaml
+   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/main/demodata/recipe1.yaml
 
  - summary: "Demo testrun 2"
    description: "Run demo test"
@@ -42,4 +42,4 @@ issues:
    id: subtask_demo2
    parent_id: errata_task
    on_respin: close
-   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/ks_reportportal/demodata/recipe2.yaml
+   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/main/demodata/recipe2.yaml
