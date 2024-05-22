@@ -26,6 +26,7 @@ from typing import (
     cast,
     overload,
     )
+from urllib.parse import quote as Q  # noqa: N812
 
 import attrs
 import jinja2
@@ -277,7 +278,7 @@ def eval_test(
 
 
 def get_url_basename(url: str) -> str:
-    return os.path.splitext(os.path.basename(url))[0]
+    return os.path.splitext(os.path.basename(urllib.parse.urlparse(url).path))[0]
 
 
 class EventType(Enum):
@@ -344,13 +345,13 @@ class ErrataTool:
 
     def fetch_info(self, erratum_id: str) -> JSON:
         return get_request(
-            url=f"{self.url}/advisory/{erratum_id}.json",
+            url=f"{self.url}/advisory/{Q(erratum_id)}.json",
             krb=True,
             response_content=ResponseContentType.JSON)
 
     def fetch_releases(self, erratum_id: str) -> JSON:
         return get_request(
-            url=f"{self.url}/advisory/{erratum_id}/builds.json",
+            url=f"{self.url}/advisory/{Q(erratum_id)}/builds.json",
             krb=True,
             response_content=ResponseContentType.JSON)
 
@@ -1028,13 +1029,14 @@ class ReportPortal:
     project: str
 
     def get_launch_url(self, launch_id: str) -> str:
-        return f"{self.url}/ui/#{self.project}/launches/all/{launch_id}"
+        return f"{self.url}/ui/#{Q(self.project)}/launches/all/{Q(launch_id)}"
 
     def get_request(self,
                     path: str,
                     params: Optional[dict[str, str]] = None,
                     version: int = 1) -> JSON:
-        url = urllib.parse.urljoin(self.url, f'/api/v{version}/{self.project}/{path.lstrip("/")}')
+        url = urllib.parse.urljoin(
+            self.url, f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
         if params:
             url = f'{url}?{urllib.parse.urlencode(params)}'
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
@@ -1047,7 +1049,7 @@ class ReportPortal:
                      path: str,
                      json: JSON,
                      version: int = 1) -> JSON:
-        url = f'{self.url}/api/v{version}/{self.project}/{path.lstrip("/")}'
+        url = f'{self.url}/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}'
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
         req = requests.post(url, headers=headers, json=json)
         if req.status_code == 200:
