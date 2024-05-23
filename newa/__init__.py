@@ -1159,19 +1159,19 @@ class CLIContext:
 
             yield self.load_initial_erratum(self.state_dirpath / child)
 
-    def load_erratum_job(self, filepath: Path) -> ErratumJob:
-        job = ErratumJob.from_yaml_file(filepath)
+    def load_artifact_job(self, filepath: Path) -> ArtifactJob:
+        job = ArtifactJob.from_yaml_file(filepath)
 
         self.logger.info(f'Discovered erratum job {job.id} in {filepath}')
 
         return job
 
-    def load_erratum_jobs(self, filename_prefix: str) -> Iterator[ErratumJob]:
+    def load_artifact_jobs(self, filename_prefix: str) -> Iterator[ArtifactJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_erratum_job(self.state_dirpath / child)
+            yield self.load_artifact_job(self.state_dirpath / child)
 
     def load_jira_job(self, filepath: Path) -> JiraJob:
         job = JiraJob.from_yaml_file(filepath)
@@ -1215,34 +1215,34 @@ class CLIContext:
 
             yield self.load_execute_job(self.state_dirpath / child)
 
-    def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
+    def save_artifact_job(self, filename_prefix: str, job: ArtifactJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.short_id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Erratum job {job.id} written to {filepath}')
 
-    def save_erratum_jobs(self, filename_prefix: str, jobs: Iterable[ErratumJob]) -> None:
+    def save_artifact_jobs(self, filename_prefix: str, jobs: Iterable[ArtifactJob]) -> None:
         for job in jobs:
-            self.save_erratum_job(filename_prefix, job)
+            self.save_artifact_job(filename_prefix, job)
 
     def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Jira job {job.id} written to {filepath}')
 
     def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Schedule job {job.id} written to {filepath}')
 
     def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Execute job {job.id} written to {filepath}')

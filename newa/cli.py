@@ -10,12 +10,9 @@ import click
 import jira
 
 from . import (
-<<<<<<< HEAD
-    CLIContext,
-=======
     ArtifactJob,
+    CLIContext,
     Compose,
->>>>>>> 2b3ed40 (De-erratify newa, add Compose support)
     ErrataTool,
     ErratumConfig,
     Event,
@@ -44,113 +41,6 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-<<<<<<< HEAD
-=======
-@define
-class CLIContext:
-    """ State information about one Newa pipeline invocation """
-
-    logger: logging.Logger
-    settings: Settings
-
-    # Path to directory with state files
-    state_dirpath: Path
-
-    def enter_command(self, command: str) -> None:
-        self.logger.handlers[0].formatter = logging.Formatter(
-            f'[%(asctime)s] [{command.ljust(8, " ")}] %(message)s',
-            )
-
-    def load_initial_erratum(self, filepath: Path) -> InitialErratum:
-        erratum = InitialErratum.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered initial erratum {erratum.event.id} in {filepath}')
-
-        return erratum
-
-    def load_initial_errata(self, filename_prefix: str) -> Iterator[InitialErratum]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_initial_erratum(self.state_dirpath / child)
-
-    def load_artifact_job(self, filepath: Path) -> ArtifactJob:
-        job = ArtifactJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered erratum job {job.id} in {filepath}')
-
-        return job
-
-    def load_artifact_jobs(self, filename_prefix: str) -> Iterator[ArtifactJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_artifact_job(self.state_dirpath / child)
-
-    def load_jira_job(self, filepath: Path) -> JiraJob:
-        job = JiraJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered jira job {job.id} in {filepath}')
-
-        return job
-
-    def load_jira_jobs(self, filename_prefix: str) -> Iterator[JiraJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_jira_job(self.state_dirpath / child)
-
-    def load_schedule_job(self, filepath: Path) -> ScheduleJob:
-        job = ScheduleJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered schedule job {job.id} in {filepath}')
-
-        return job
-
-    def load_schedule_jobs(self, filename_prefix: str) -> Iterator[ScheduleJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_schedule_job(self.state_dirpath / child)
-
-    def save_artifact_job(self, filename_prefix: str, job: ArtifactJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.short_id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Artifact job {job.id} written to {filepath}')
-
-    def save_artifact_jobs(self, filename_prefix: str, jobs: Iterable[ArtifactJob]) -> None:
-        for job in jobs:
-            self.save_artifact_job(filename_prefix, job)
-
-    def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Jira job {job.id} written to {filepath}')
-
-    def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Schedule job {job.id} written to {filepath}')
-
-    def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Execute job {job.id} written to {filepath}')
-
-
->>>>>>> 2b3ed40 (De-erratify newa, add Compose support)
 @click.group(chain=True)
 @click.option(
     '--state-dir',
