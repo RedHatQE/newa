@@ -1,15 +1,16 @@
+import datetime
 import logging
 import multiprocessing
 import os.path
 import time
-from collections.abc import Iterable, Iterator
 from functools import partial
 from pathlib import Path
 
 import click
-from attrs import define
+import jira
 
 from . import (
+    CLIContext,
     ErrataTool,
     ErratumConfig,
     ErratumJob,
@@ -17,7 +18,6 @@ from . import (
     EventType,
     ExecuteJob,
     Execution,
-    InitialErratum,
     Issue,
     IssueHandler,
     IssueType,
@@ -26,9 +26,11 @@ from . import (
     RawRecipeConfigDimension,
     Recipe,
     RecipeConfig,
+    ReportPortal,
     ScheduleJob,
     Settings,
     eval_test,
+    get_url_basename,
     render_template,
     )
 
@@ -36,110 +38,6 @@ logging.basicConfig(
     format='%(asctime)s %(message)s',
     datefmt='%m/%d/%Y %I:%M:%S %p',
     level=logging.INFO)
-
-
-@define
-class CLIContext:
-    """ State information about one Newa pipeline invocation """
-
-    logger: logging.Logger
-    settings: Settings
-
-    # Path to directory with state files
-    state_dirpath: Path
-
-    def enter_command(self, command: str) -> None:
-        self.logger.handlers[0].formatter = logging.Formatter(
-            f'[%(asctime)s] [{command.ljust(8, " ")}] %(message)s',
-            )
-
-    def load_initial_erratum(self, filepath: Path) -> InitialErratum:
-        erratum = InitialErratum.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered initial erratum {erratum.event.id} in {filepath}')
-
-        return erratum
-
-    def load_initial_errata(self, filename_prefix: str) -> Iterator[InitialErratum]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_initial_erratum(self.state_dirpath / child)
-
-    def load_erratum_job(self, filepath: Path) -> ErratumJob:
-        job = ErratumJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered erratum job {job.id} in {filepath}')
-
-        return job
-
-    def load_erratum_jobs(self, filename_prefix: str) -> Iterator[ErratumJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_erratum_job(self.state_dirpath / child)
-
-    def load_jira_job(self, filepath: Path) -> JiraJob:
-        job = JiraJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered jira job {job.id} in {filepath}')
-
-        return job
-
-    def load_jira_jobs(self, filename_prefix: str) -> Iterator[JiraJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_jira_job(self.state_dirpath / child)
-
-    def load_schedule_job(self, filepath: Path) -> ScheduleJob:
-        job = ScheduleJob.from_yaml_file(filepath)
-
-        self.logger.info(f'Discovered schedule job {job.id} in {filepath}')
-
-        return job
-
-    def load_schedule_jobs(self, filename_prefix: str) -> Iterator[ScheduleJob]:
-        for child in self.state_dirpath.iterdir():
-            if not child.name.startswith(filename_prefix):
-                continue
-
-            yield self.load_schedule_job(self.state_dirpath / child)
-
-    def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Erratum job {job.id} written to {filepath}')
-
-    def save_erratum_jobs(self, filename_prefix: str, jobs: Iterable[ErratumJob]) -> None:
-        for job in jobs:
-            self.save_erratum_job(filename_prefix, job)
-
-    def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Jira job {job.id} written to {filepath}')
-
-    def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Schedule job {job.id} written to {filepath}')
-
-    def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
-
-        job.to_yaml_file(filepath)
-        self.logger.info(f'Execute job {job.id} written to {filepath}')
 
 
 @click.group(chain=True)
@@ -220,7 +118,7 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
         config = ErratumConfig.from_yaml_file(Path(os.path.expandvars(issue_config)))
 
         jira = IssueHandler(erratum_job, jira_url, jira_token, config.project, config.transitions)
-        ctx.logger.info(f"Initialized {jira}")
+        ctx.logger.info("Initialized Jira handler")
 
         # All issue action from the configuration.
         issue_actions = config.issues[:]
@@ -319,13 +217,6 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                                           rendered_assignee,
                                           parent)
 
-                if action.job_recipe:
-                    jira_job = JiraJob(event=erratum_job.event,
-                                       erratum=erratum_job.erratum,
-                                       jira=issue,
-                                       recipe=Recipe(url=action.job_recipe))
-                    ctx.save_jira_job('jira-', jira_job)
-
                 processed_actions[action.id] = issue
 
                 new_issues.append(issue)
@@ -344,6 +235,13 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
             # But if there are more than one new issues we encountered error.
             else:
                 raise Exception(f"More than one new {action.id} found ({new_issues})!")
+
+            if action.job_recipe:
+                jira_job = JiraJob(event=erratum_job.event,
+                                   erratum=erratum_job.erratum,
+                                   jira=issue,
+                                   recipe=Recipe(url=action.job_recipe))
+                ctx.save_jira_job('jira-', jira_job)
 
             # Processing old issues - we only expect old issues that are to be closed (if any).
             if old_issues:
@@ -370,11 +268,15 @@ def cmd_schedule(ctx: CLIContext) -> None:
         initial_config = RawRecipeConfigDimension(compose=compose)
 
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
+        # if rp_launch is not specified in the config, set it based on the recipe filename
+        if 'rp_launch' not in config.fixtures:
+            config.fixtures['rp_launch'] = os.path.splitext(
+                get_url_basename(jira_job.recipe.url))[0]
         # build requests
         requests = list(config.build_requests(initial_config))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
-        # create few fake Issue objects for now
+        # create ScheduleJob object for each request
         for request in requests:
             schedule_job = ScheduleJob(
                 event=jira_job.event,
@@ -388,12 +290,14 @@ def cmd_schedule(ctx: CLIContext) -> None:
 @main.command(name='execute')
 @click.option(
     '--workers',
-    default=4,
+    default=8,
     )
 @click.pass_obj
 def cmd_execute(ctx: CLIContext, workers: int) -> None:
     ctx.enter_command('execute')
 
+    # store timestamp of this execution
+    ctx.timestamp = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
     tf_token = ctx.settings.tf_token
     if not tf_token:
         raise ValueError("TESTING_FARM_API_TOKEN not set!")
@@ -422,12 +326,11 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     log('processing request...')
     # read request details
     schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
+
     log('initiating TF request')
-    tf_request = schedule_job.request.initiate_tf_request()
-    # tf_request = TFRequest(
-    #    api='https://api.dev.testing-farm.io/v0.1/requests/519f5c01-46b6-47c9-a055-aecaa32e6a20',
-    #    uuid='519f5c01-46b6-47c9-a055-aecaa32e6a20')
+    tf_request = schedule_job.request.initiate_tf_request(ctx)
     log(f'TF request filed with uuid {tf_request.uuid}')
+
     finished = False
     delay = int(ctx.settings.tf_recheck_delay)
     while not finished:
@@ -442,7 +345,9 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         jira=schedule_job.jira,
         recipe=schedule_job.recipe,
         request=schedule_job.request,
-        execution=Execution(return_code=0, artifacts_url=tf_request.details['run']['artifacts']),
+        execution=Execution(return_code=0,
+                            artifacts_url=tf_request.details['run']['artifacts'],
+                            batch_id=schedule_job.request.get_hash(ctx.timestamp)),
         )
     execute_job.to_yaml_file(
         schedule_file.parent /
@@ -453,11 +358,76 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
 
 
 @main.command(name='report')
+@click.option(
+    '--rp-project',
+    default='',
+    )
 @click.pass_obj
-def cmd_report(ctx: CLIContext) -> None:
+@click.option(
+    '--rp-url',
+    default='',
+    )
+def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     ctx.enter_command('report')
 
-    for _ in ctx.load_erratum_jobs('execute-'):
-        pass
-        # read yaml details
-        # update Jira issue with job result
+    jira_request_mapping: dict[str, dict[str, list[str]]] = {}
+    jira_launch_name_mapping: dict[str, str] = {}
+    if not rp_project:
+        rp_project = ctx.settings.rp_project
+    if not rp_url:
+        rp_url = ctx.settings.rp_url
+    rp = ReportPortal(url=rp_url,
+                      token=ctx.settings.rp_token,
+                      project=rp_project)
+    # initialize Jira connection as well
+    jira_url = ctx.settings.jira_url
+    if not jira_url:
+        raise Exception('Jira URL is not configured!')
+    jira_token = ctx.settings.jira_token
+    if not jira_token:
+        raise Exception('Jira URL is not configured!')
+    jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
+
+    # process each stored execute file
+    for execute_job in ctx.load_execute_jobs('execute-'):
+        jira_id = execute_job.jira.id
+        request_id = execute_job.request.id
+        # it is sufficient to process each Jira issue only once
+        if jira_id not in jira_request_mapping:
+            jira_request_mapping[jira_id] = {}
+            jira_launch_name_mapping[jira_id] = execute_job.request.rp_launch
+        # for each Jira and request ID we build a list of RP launches
+        jira_request_mapping[jira_id][request_id] = rp.find_launches_by_attr(
+            'newa_batch', execute_job.execution.batch_id)
+
+    # proceed with RP launch merge
+    for jira_id in jira_request_mapping:
+        launch_list = []
+        description = f'{jira_id}: {len(jira_request_mapping[jira_id])} job requests in total:\n'
+        for request in sorted(jira_request_mapping[jira_id].keys()):
+            if len(jira_request_mapping[jira_id][request]):
+                description += f'  {request}: COMPLETED\n'
+                launch_list.extend(jira_request_mapping[jira_id][request])
+            else:
+                description += f'  {request}: MISSING\n'
+        if not len(launch_list):
+            ctx.logger.error('Failed to find any related ReportPortal launches')
+        else:
+            if len(launch_list) > 1:
+                merged_launch = rp.merge_launches(
+                    launch_list, jira_launch_name_mapping[jira_id], description, {})
+                if not merged_launch:
+                    ctx.logger.error('Failed to merge ReportPortal launches')
+                else:
+                    launch_list = [merged_launch]
+            # report results back to Jira
+            launch_urls = [rp.get_launch_url(launch) for launch in launch_list]
+            ctx.logger.info(f'RP launch urls: {" ".join(launch_urls)}')
+            try:
+                joined_urls = '\n'.join(launch_urls)
+                jira_connection.add_comment(jira_id,
+                                            f"NEWA has imported test results to\n{joined_urls}")
+                ctx.logger.info(
+                    f'Jira issue {jira_id} was updated with a RP launch URL')
+            except jira.JIRAError as e:
+                raise Exception(f"Unable to add a comment to issue {jira_id}!") from e

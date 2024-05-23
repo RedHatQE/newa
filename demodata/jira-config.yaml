@@ -1,6 +1,16 @@
+project: BASEQESEC
+
+transitions:
+  closed:
+    - Done
+    - Dropped
+    - Completed
+  dropped:
+    - Dropped
+
 issues:
 
- - summary: "Testing ER#{{ ERRATUM.event.id }} {{ ERRATUM.summary }}"
+ - summary: "Testing ER#{{ ERRATUM.id }} {{ ERRATUM.summary }}"
    description: "{{ ERRATUM.url }}"
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: epic
@@ -15,7 +25,7 @@ issues:
    parent_id: errata_epic
    on_respin: close
 
- - summary: "Demo test"
+ - summary: "Demo testrun 1"
    description: "Run demo test"
    when: EVENT is erratum
    assignee: '{{ ERRATUM.people_assigned_to }}'
@@ -23,4 +33,13 @@ issues:
    id: subtask_demo
    parent_id: errata_task
    on_respin: close
-   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/main/demodata/recipe.yaml
+   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/main/demodata/recipe1.yaml
+
+ - summary: "Demo testrun 2"
+   description: "Run demo test"
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   type: subtask
+   id: subtask_demo2
+   parent_id: errata_task
+   on_respin: close
+   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/main/demodata/recipe2.yaml

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import itertools
+import logging
 import os
 import re
 import subprocess
 import time
-from collections.abc import Iterator
+import urllib
+from collections.abc import Iterable, Iterator
 from configparser import ConfigParser
 from enum import Enum
 from pathlib import Path
@@ -23,6 +26,7 @@ from typing import (
     cast,
     overload,
     )
+from urllib.parse import quote as Q  # noqa: N812
 
 import attrs
 import jinja2
@@ -273,6 +277,10 @@ def eval_test(
     return bool(outcome == 'true')
 
 
+def get_url_basename(url: str) -> str:
+    return os.path.basename(urllib.parse.urlparse(url).path)
+
+
 class EventType(Enum):
     """ Event types """
 
@@ -290,6 +298,10 @@ class Cloneable:
 @define
 class Serializable:
     """ A class whose instances can be serialized into YAML """
+
+    def get_hash(self, seed: str = '') -> str:
+        # use only first 12 characters
+        return hashlib.sha256(f'{seed}{self.to_yaml()}'.encode()).hexdigest()[:12]
 
     def to_yaml(self) -> str:
         output = io.StringIO()
@@ -333,13 +345,13 @@ class ErrataTool:
 
     def fetch_info(self, erratum_id: str) -> JSON:
         return get_request(
-            url=f"{self.url}/advisory/{erratum_id}.json",
+            url=f"{self.url}/advisory/{Q(erratum_id)}.json",
             krb=True,
             response_content=ResponseContentType.JSON)
 
     def fetch_releases(self, erratum_id: str) -> JSON:
         return get_request(
-            url=f"{self.url}/advisory/{erratum_id}/builds.json",
+            url=f"{self.url}/advisory/{Q(erratum_id)}/builds.json",
             krb=True,
             response_content=ResponseContentType.JSON)
 
@@ -454,10 +466,12 @@ class RawRecipeConfigDimension(TypedDict, total=False):
     compose: Optional[str]
     git_url: Optional[str]
     git_ref: Optional[str]
+    rp_launch: Optional[str]
     when: Optional[str]
 
 
-_RecipeConfigDimensionKey = Literal['context', 'environment', 'git_url', 'git_ref', 'when']
+_RecipeConfigDimensionKey = Literal['context',
+                                    'environment', 'git_url', 'git_ref', 'rp_launch', 'when']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.
@@ -521,8 +535,10 @@ class RecipeConfig(Cloneable, Serializable):
 
         # now for each combination merge data from individual dimensions
         merged_combinations = list(map(merge_combination_data, combinations))
+        # and filter them evaluating 'when' conditions
+        filtered_combinations = []
         for combination in merged_combinations:
-            # before creating a Request check if there is a condition present and evaluate it
+            # check if there is a condition present and evaluate it
             condition = combination.get('when', '')
             if condition:
                 # we will expose COMPOSE, ENVIRONMENT, CONTEXT to evaluate a condition
@@ -533,7 +549,12 @@ class RecipeConfig(Cloneable, Serializable):
                     CONTEXT=combination['context'])
                 if not test_result:
                     continue
-            yield Request(id=f'REQ-{next(recipe_id_gen)}', **combination)
+            filtered_combinations.append(combination)
+        # now build Request instances
+        total = len(filtered_combinations)
+        for combination in filtered_combinations:
+            yield Request(id=f'REQ-{next(recipe_id_gen)}.{total}',
+                          **combination)
 
 
 @define
@@ -546,6 +567,7 @@ class Request(Cloneable, Serializable):
     compose: Optional[str] = None
     git_url: Optional[str] = None
     git_ref: Optional[str] = None
+    rp_launch: Optional[str] = None
     tmt_path: Optional[str] = None
     plan: Optional[str] = None
     # TODO: 'when' not really needed, adding it to silent the linter
@@ -554,12 +576,36 @@ class Request(Cloneable, Serializable):
     def fetch_details(self) -> None:
         raise NotImplementedError
 
-    def generate_tf_exec_command(self) -> tuple[list[str], dict[str, str]]:
+    def generate_tf_exec_command(self, ctx: CLIContext) -> tuple[list[str], dict[str, str]]:
         environment: dict[str, str] = {
             'NO_COLOR': 'yes',
             }
         command: list[str] = [
             'testing-farm', 'request', '--no-wait',
+            ]
+        rp_token = ctx.settings.rp_token
+        rp_url = ctx.settings.rp_url
+        rp_project = ctx.settings.rp_project
+        if not rp_token:
+            raise Exception('ERROR: ReportPortal token is not set')
+        if not rp_url:
+            raise Exception('ERROR: ReportPortal URL is not set')
+        if not rp_project:
+            raise Exception('ERROR: ReportPortal project is not set')
+        if not self.rp_launch:
+            raise Exception('ERROR: ReportPortal launch is not specified')
+        command += [
+            '--tmt-environment',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN={rp_token}',
+            '--tmt-environment',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL={rp_url}',
+            '--tmt-environment',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT={rp_project}',
+            '--tmt-environment',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH={self.rp_launch}',
+            '--tmt-environment',
+            'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
+            '--context', f'newa_batch={self.get_hash(ctx.timestamp)}',
             ]
         # check compose
         if not self.compose:
@@ -589,8 +635,8 @@ class Request(Cloneable, Serializable):
 
         return command, environment
 
-    def initiate_tf_request(self) -> TFRequest:
-        command, environment = self.generate_tf_exec_command()
+    def initiate_tf_request(self, ctx: CLIContext) -> TFRequest:
+        command, environment = self.generate_tf_exec_command(ctx)
         # extend current envvars with the ones from the generated command
         env = copy.deepcopy(os.environ)
         env.update(environment)
@@ -634,7 +680,8 @@ class TFRequest(Cloneable, Serializable):
 class Execution(Cloneable, Serializable):
     """ A test job execution """
 
-    return_code: Optional[int] = None
+    batch_id: str
+    return_code: int
     artifacts_url: Optional[str] = None
 
     def fetch_details(self) -> None:
@@ -968,3 +1015,195 @@ class IssueHandler:
                                              transition=self.transitions["dropped"][0])
         except jira.JIRAError as e:
             raise Exception(f"Cannot close issue {issue}!") from e
+
+#
+# ReportPortal communication
+#
+
+
+@define
+class ReportPortal:
+
+    token: str
+    url: str
+    project: str
+
+    def get_launch_url(self, launch_id: str) -> str:
+        return f"{self.url}/ui/#{Q(self.project)}/launches/all/{Q(launch_id)}"
+
+    def get_request(self,
+                    path: str,
+                    params: Optional[dict[str, str]] = None,
+                    version: int = 1) -> JSON:
+        url = urllib.parse.urljoin(
+            self.url, f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
+        if params:
+            url = f'{url}?{urllib.parse.urlencode(params)}'
+        headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
+        req = requests.get(url, headers=headers)
+        if req.status_code == 200:
+            return req.json()
+        return None
+
+    def post_request(self,
+                     path: str,
+                     json: JSON,
+                     version: int = 1) -> JSON:
+        url = f'{self.url}/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}'
+        headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
+        req = requests.post(url, headers=headers, json=json)
+        if req.status_code == 200:
+            return req.json()
+        return None
+
+    def find_launches_by_attr(self, attr: str, value: str) -> list[str]:
+        """ Searches for RP launching having the respective attribute=value set. """
+        path = '/launch'
+        params = {'filter.has.compositeAttribute': f'{attr}:{value}'}
+        data = self.get_request(path, params)
+        if not data:
+            return []
+        return [launch['id'] for launch in data['content']]
+
+    def merge_launches(self,
+                       launch_ids: list[str],
+                       launch_name: str,
+                       description: str,
+                       attributes: Optional[dict[str, str]] = None) -> str | None:
+        query_data: JSON = {
+            "attributes": [],
+            'description': description,
+            'name': launch_name,
+            "mergeType": "BASIC",
+            'mode': 'DEFAULT',
+            "extendSuitesDescription": 'false',
+            "launches": launch_ids,
+            }
+        if attributes:
+            for key, value in attributes.items():
+                query_data['attributes'].append({"key": key.strip(), "value": value.strip()})
+        print(f'Merging launches: {launch_ids}')
+        data = self.post_request('/launch/merge', json=query_data)
+        if data:
+            print('Launches successfully merged')
+            return str(data['id'])
+        print('Failed to merge launches')
+        return None
+
+
+@define
+class CLIContext:
+    """ State information about one Newa pipeline invocation """
+
+    logger: logging.Logger
+    settings: Settings
+    # Path to directory with state files
+    state_dirpath: Path
+    timestamp: str = ''
+
+    def enter_command(self, command: str) -> None:
+        self.logger.handlers[0].formatter = logging.Formatter(
+            f'[%(asctime)s] [{command.ljust(8, " ")}] %(message)s',
+            )
+
+    def load_initial_erratum(self, filepath: Path) -> InitialErratum:
+        erratum = InitialErratum.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered initial erratum {erratum.event.id} in {filepath}')
+
+        return erratum
+
+    def load_initial_errata(self, filename_prefix: str) -> Iterator[InitialErratum]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_initial_erratum(self.state_dirpath / child)
+
+    def load_erratum_job(self, filepath: Path) -> ErratumJob:
+        job = ErratumJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered erratum job {job.id} in {filepath}')
+
+        return job
+
+    def load_erratum_jobs(self, filename_prefix: str) -> Iterator[ErratumJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_erratum_job(self.state_dirpath / child)
+
+    def load_jira_job(self, filepath: Path) -> JiraJob:
+        job = JiraJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered jira job {job.id} in {filepath}')
+
+        return job
+
+    def load_jira_jobs(self, filename_prefix: str) -> Iterator[JiraJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_jira_job(self.state_dirpath / child)
+
+    def load_schedule_job(self, filepath: Path) -> ScheduleJob:
+        job = ScheduleJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered schedule job {job.id} in {filepath}')
+
+        return job
+
+    def load_schedule_jobs(self, filename_prefix: str) -> Iterator[ScheduleJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_schedule_job(self.state_dirpath / child)
+
+    def load_execute_job(self, filepath: Path) -> ExecuteJob:
+        job = ExecuteJob.from_yaml_file(filepath)
+
+        self.logger.info(f'Discovered execute job {job.id} in {filepath}')
+
+        return job
+
+    def load_execute_jobs(self, filename_prefix: str) -> Iterator[ExecuteJob]:
+        for child in self.state_dirpath.iterdir():
+            if not child.name.startswith(filename_prefix):
+                continue
+
+            yield self.load_execute_job(self.state_dirpath / child)
+
+    def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Erratum job {job.id} written to {filepath}')
+
+    def save_erratum_jobs(self, filename_prefix: str, jobs: Iterable[ErratumJob]) -> None:
+        for job in jobs:
+            self.save_erratum_job(filename_prefix, job)
+
+    def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Jira job {job.id} written to {filepath}')
+
+    def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Schedule job {job.id} written to {filepath}')
+
+    def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
+        filepath = self.state_dirpath / \
+            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+
+        job.to_yaml_file(filepath)
+        self.logger.info(f'Execute job {job.id} written to {filepath}')

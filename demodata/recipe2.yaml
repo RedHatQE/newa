@@ -3,16 +3,17 @@ fixtures:
     PLANET: Earth
 
   git_url: https://github.com/RedHatQE/newa.git
-  git_ref: main
+  git_ref: ks_reportportal
   tmt_path: demodata
+  plan: /plan2
 
 dimensions:
   cities:
     - environment:
         CITY: Brno
+      when: CONTEXT.color is match("blue")
     - environment:
         CITY: Boston
-      when: CONTEXT.color is match("blue")
   colors:
     - context:
         color: red
