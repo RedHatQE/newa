@@ -1157,7 +1157,7 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_initial_erratum(self.state_dirpath / child)
+            yield self.load_initial_erratum(child.resolve())
 
     def load_artifact_job(self, filepath: Path) -> ArtifactJob:
         job = ArtifactJob.from_yaml_file(filepath)
@@ -1171,7 +1171,7 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_artifact_job(self.state_dirpath / child)
+            yield self.load_artifact_job(child.resolve())
 
     def load_jira_job(self, filepath: Path) -> JiraJob:
         job = JiraJob.from_yaml_file(filepath)
@@ -1185,7 +1185,7 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_jira_job(self.state_dirpath / child)
+            yield self.load_jira_job(child.resolve())
 
     def load_schedule_job(self, filepath: Path) -> ScheduleJob:
         job = ScheduleJob.from_yaml_file(filepath)
@@ -1199,7 +1199,7 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_schedule_job(self.state_dirpath / child)
+            yield self.load_schedule_job(child.resolve())
 
     def load_execute_job(self, filepath: Path) -> ExecuteJob:
         job = ExecuteJob.from_yaml_file(filepath)
@@ -1213,7 +1213,7 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_execute_job(self.state_dirpath / child)
+            yield self.load_execute_job(child.resolve())
 
     def save_artifact_job(self, filename_prefix: str, job: ArtifactJob) -> None:
         filepath = self.state_dirpath / \
