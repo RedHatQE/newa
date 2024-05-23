@@ -1,0 +1,25 @@
+project: BASEQESEC
+
+transitions:
+  closed:
+    - Done
+    - Dropped
+    - Completed
+  dropped:
+    - Dropped
+
+issues:
+
+ - summary: "Tier Testing RHEL compose {{ COMPOSE.id }}"
+   description: "Foo bar"
+   type: epic
+   id: tier_epic
+   on_respin: close
+
+ - summary: "Tier1 testing of RHEL compose {{ COMPOSE.id }}"
+   description: "tier1 testing"
+   type: task
+   id: tier1_task
+   parent_id: tier_epic
+   on_respin: close
+   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/ks_compose_event/demodata/recipe1.yaml
