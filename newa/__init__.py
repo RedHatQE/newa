@@ -1220,7 +1220,7 @@ class CLIContext:
             f'{filename_prefix}{job.event.id}-{job.short_id}.yaml'
 
         job.to_yaml_file(filepath)
-        self.logger.info(f'Erratum job {job.id} written to {filepath}')
+        self.logger.info(f'Artifact job {job.id} written to {filepath}')
 
     def save_artifact_jobs(self, filename_prefix: str, jobs: Iterable[ArtifactJob]) -> None:
         for job in jobs:
