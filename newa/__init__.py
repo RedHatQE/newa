@@ -278,7 +278,7 @@ def eval_test(
 
 
 def get_url_basename(url: str) -> str:
-    return os.path.splitext(os.path.basename(urllib.parse.urlparse(url).path))[0]
+    return os.path.basename(urllib.parse.urlparse(url).path)
 
 
 class EventType(Enum):

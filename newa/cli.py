@@ -270,7 +270,8 @@ def cmd_schedule(ctx: CLIContext) -> None:
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
         # if rp_launch is not specified in the config, set it based on the recipe filename
         if 'rp_launch' not in config.fixtures:
-            config.fixtures['rp_launch'] = get_url_basename(jira_job.recipe.url)
+            config.fixtures['rp_launch'] = os.path.splitext(
+                get_url_basename(jira_job.recipe.url))[0]
         # build requests
         requests = list(config.build_requests(initial_config))
         ctx.logger.info(f'{len(requests)} requests have been generated')
