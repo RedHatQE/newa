@@ -46,6 +46,20 @@ TESTING_FARM_API_TOKEN
 NEWA_TF_RECHECK_DELAY
 ```
 
+## Quick demo
+
+Make sure you have your `$HOME/.newa` configuration file defined prior running this file.
+
+```
+$ REQUESTS_CA_BUNDLE=/etc/pki/tls/cert.pem newa event --compose CentOS-Stream-9 jira --issue-config demodata/jira-compose-config.yaml schedule execute report
+```
+
+Or
+
+```
+$ REQUESTS_CA_BUNDLE=/etc/pki/tls/cert.pem newa event --erratum 124115 jira --issue-config demodata/jira-errata-config.yaml schedule execute report
+```
+
 ## Architecture
 
 ### Subcommand `event`
@@ -161,6 +175,55 @@ request:
   id: REQ-2
   tmt_path: ''
 ```
+
+### Subcommand `execute`
+
+Processes multiple files having `schedule-` prefix. For each such file it
+reads request details from the inside and proceeds with the actual execution.
+When tests are finished it produces files having `execute-` prefix updated with
+details of the execution.
+
+Example:
+```
+$ cat state/execute-RHEL-9.5.0-20240519.9-RHEL-9.5.0-20240519.9-BASEQESEC-1227-REQ-1.2.yaml
+compose:
+  id: RHEL-9.5.0-20240519.9
+erratum: null
+event:
+  id: RHEL-9.5.0-20240519.9
+  type_: compose
+execution:
+  artifacts_url: https://artifacts.somedomain.com/testing-farm/db0d98d2-f5c0-4f18-9308-66801f054342
+  batch_id: 49aa0321898d
+  return_code: 0
+jira:
+  id: BASEQESEC-1227
+recipe:
+  url: https://raw.githubusercontent.com/RedHatQE/newa/main/demodata/recipe1.yaml
+request:
+  compose: RHEL-9.5.0-20240519.9
+  context:
+    color: blue
+  environment:
+    CITY: Brno
+    PLANET: Earth
+  git_ref: main
+  git_url: https://github.com/RedHatQE/newa.git
+  id: REQ-1.2
+  plan: /plan1
+  rp_launch: recipe1
+  tmt_path: demodata
+  when: null
+```
+
+### Subcommand `import`
+
+This subcommand currently takes care of the results reporting to Jira and
+interaction with ReportPortal. It processes multiple files having `execute-` prefix,
+reads RP launch details and searches for all the relevant launches, subsequently
+merging them into a single launch. Later, it updates the respective Jira issue
+with a note about test results availalability and a link to ReportPortal launch.
+This subcommand doesn't produce any files.
 
 ## In-config tests
 
