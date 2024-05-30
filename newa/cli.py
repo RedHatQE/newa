@@ -10,10 +10,11 @@ import click
 import jira
 
 from . import (
+    ArtifactJob,
     CLIContext,
+    Compose,
     ErrataTool,
     ErratumConfig,
-    ErratumJob,
     Event,
     EventType,
     ExecuteJob,
@@ -66,33 +67,52 @@ def main(click_context: click.Context, state_dir: str, conf_file: str) -> None:
 @main.command(name='event')
 @click.option(
     '-e', '--erratum', 'errata_ids',
+    default=[],
+    multiple=True,
+    )
+@click.option(
+    '-c', '--compose', 'compose_ids',
+    default=[],
     multiple=True,
     )
 @click.pass_obj
-def cmd_event(ctx: CLIContext, errata_ids: list[str]) -> None:
+def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) -> None:
     ctx.enter_command('event')
 
     # Errata IDs were not given, try to load them from init- files.
-    if not errata_ids:
-        errata_ids = [e.event.id for e in ctx.load_initial_errata('init-')]
+    if not errata_ids and not compose_ids:
+        events = [e.event for e in ctx.load_initial_errata('init-')]
+        for event in events:
+            if event.type_ is EventType.ERRATUM:
+                errata_ids.append(event.id)
+            if event.type_ is EventType.COMPOSE:
+                compose_ids.append(event.id)
 
-    # Abort if there are still no errata IDs.
-    if not errata_ids:
-        raise Exception('Missing errata IDs!')
+    if not errata_ids and not compose_ids:
+        raise Exception('Missing event IDs!')
 
-    et_url = ctx.settings.et_url
-    if not et_url:
-        raise Exception('Errata Tool URL is not configured!')
+    # process errata IDs
+    if errata_ids:
+        # Abort if there are still no errata IDs.
+        et_url = ctx.settings.et_url
+        if not et_url:
+            raise Exception('Errata Tool URL is not configured!')
 
-    for erratum_id in errata_ids:
-        event = Event(type_=EventType.ERRATUM, id=erratum_id)
+        for erratum_id in errata_ids:
+            event = Event(type_=EventType.ERRATUM, id=erratum_id)
+            errata = ErrataTool(url=et_url).get_errata(event)
+            for erratum in errata:
+                # identify compose to be used, just a dump conversion for now
+                compose = erratum.release.rstrip('.GA') + '-Nightly'
+                artifact_job = ArtifactJob(event=event, erratum=erratum,
+                                           compose=Compose(id=compose))
+                ctx.save_artifact_job('event-', artifact_job)
 
-        errata = ErrataTool(url=et_url).get_errata(event)
-
-        for erratum in errata:
-            erratum_job = ErratumJob(event=event, erratum=erratum)
-
-            ctx.save_erratum_job('event-', erratum_job)
+    # process compose IDs
+    for compose_id in compose_ids:
+        event = Event(type_=EventType.COMPOSE, id=compose_id)
+        artifact_job = ArtifactJob(event=event, erratum=None, compose=Compose(id=compose_id))
+        ctx.save_artifact_job('event-', artifact_job)
 
 
 @main.command(name='jira')
@@ -112,12 +132,12 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
     if not jira_token:
         raise Exception('Jira URL is not configured!')
 
-    for erratum_job in ctx.load_erratum_jobs('event-'):
+    for artifact_job in ctx.load_artifact_jobs('event-'):
 
         # read Jira issue configuration
         config = ErratumConfig.from_yaml_file(Path(os.path.expandvars(issue_config)))
 
-        jira = IssueHandler(erratum_job, jira_url, jira_token, config.project, config.transitions)
+        jira = IssueHandler(artifact_job, jira_url, jira_token, config.project, config.transitions)
         ctx.logger.info("Initialized Jira handler")
 
         # All issue action from the configuration.
@@ -138,16 +158,24 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
             ctx.logger.info(f"Processing {action.id}")
 
             if action.when and not eval_test(action.when,
-                                             JOB=erratum_job,
-                                             EVENT=erratum_job.event,
-                                             ERRATUM=erratum_job.erratum):
+                                             JOB=artifact_job,
+                                             EVENT=artifact_job.event,
+                                             ERRATUM=artifact_job.erratum,
+                                             COMPOSE=artifact_job.compose):
                 ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
                 continue
 
-            rendered_summary = render_template(action.summary, ERRATUM=erratum_job.erratum)
-            rendered_description = render_template(action.description, ERRATUM=erratum_job.erratum)
+            rendered_summary = render_template(
+                action.summary,
+                ERRATUM=artifact_job.erratum,
+                COMPOSE=artifact_job.compose)
+            rendered_description = render_template(
+                action.description, ERRATUM=artifact_job.erratum, COMPOSE=artifact_job.compose)
             if action.assignee:
-                rendered_assignee = render_template(action.assignee, ERRATUM=erratum_job.erratum)
+                rendered_assignee = render_template(
+                    action.assignee,
+                    ERRATUM=artifact_job.erratum,
+                    COMPOSE=artifact_job.compose)
             else:
                 rendered_assignee = None
 
@@ -165,7 +193,7 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 issue_actions.append(action)
                 continue
 
-            # Find existing issues related to erratum_job and action
+            # Find existing issues related to artifact_job and action
             search_result = jira.get_open_issues(action, all_respins=True)
 
             # Issues related to the curent respin and previous one(s).
@@ -237,8 +265,9 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 raise Exception(f"More than one new {action.id} found ({new_issues})!")
 
             if action.job_recipe:
-                jira_job = JiraJob(event=erratum_job.event,
-                                   erratum=erratum_job.erratum,
+                jira_job = JiraJob(event=artifact_job.event,
+                                   erratum=artifact_job.erratum,
+                                   compose=artifact_job.compose,
                                    jira=issue,
                                    recipe=Recipe(url=action.job_recipe))
                 ctx.save_jira_job('jira-', jira_job)
@@ -262,9 +291,8 @@ def cmd_schedule(ctx: CLIContext) -> None:
         # generate all relevant test request using the recipe data
         # prepare a list of Request objects
 
-        # identify compose to be used
-        # just a dump conversion for now
-        compose = jira_job.erratum.release.rstrip('.GA') + '-Nightly'
+        # would it be OK not to pass compose to TF? I guess so
+        compose = jira_job.compose.id if jira_job.compose else None
         initial_config = RawRecipeConfigDimension(compose=compose)
 
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
@@ -281,6 +309,7 @@ def cmd_schedule(ctx: CLIContext) -> None:
             schedule_job = ScheduleJob(
                 event=jira_job.event,
                 erratum=jira_job.erratum,
+                compose=jira_job.compose,
                 jira=jira_job.jira,
                 recipe=jira_job.recipe,
                 request=request)
@@ -342,6 +371,7 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     execute_job = ExecuteJob(
         event=schedule_job.event,
         erratum=schedule_job.erratum,
+        compose=schedule_job.compose,
         jira=schedule_job.jira,
         recipe=schedule_job.recipe,
         request=schedule_job.request,

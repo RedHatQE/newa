@@ -45,7 +45,9 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self, TypeAlias
 
+    EventId: TypeAlias = str
     ErratumId: TypeAlias = str
+    ComposeId: TypeAlias = str
     JSON: TypeAlias = Any
 
 
@@ -249,11 +251,20 @@ def eval_test(
 
     environment = environment or default_template_environment()
 
-    def _test_erratum(obj: Union[Event, ErratumJob]) -> bool:
+    def _test_compose(obj: Union[Event, ArtifactJob]) -> bool:
+        if isinstance(obj, Event):
+            return obj.type_ is EventType.COMPOSE
+
+        if isinstance(obj, ArtifactJob):
+            return obj.event.type_ is EventType.COMPOSE
+
+        raise Exception(f"Unsupported type in 'compose' test: {type(obj)}")
+
+    def _test_erratum(obj: Union[Event, ArtifactJob]) -> bool:
         if isinstance(obj, Event):
             return obj.type_ is EventType.ERRATUM
 
-        if isinstance(obj, ErratumJob):
+        if isinstance(obj, ArtifactJob):
             return obj.event.type_ is EventType.ERRATUM
 
         raise Exception(f"Unsupported type in 'erratum' test: {type(obj)}")
@@ -261,6 +272,7 @@ def eval_test(
     def _test_match(s: str, pattern: str) -> bool:
         return re.match(pattern, s) is not None
 
+    environment.tests['compose'] = _test_compose
     environment.tests['erratum'] = _test_erratum
     environment.tests['match'] = _test_match
 
@@ -285,6 +297,7 @@ class EventType(Enum):
     """ Event types """
 
     ERRATUM = 'erratum'
+    COMPOSE = 'compose'
 
 
 @define
@@ -334,7 +347,7 @@ class Event(Serializable):
     """ A triggering event of Newa pipeline """
 
     type_: EventType = field(converter=EventType)
-    id: ErratumId
+    id: EventId
 
 
 @frozen
@@ -409,15 +422,26 @@ class ErrataTool:
 @define
 class InitialErratum(Serializable):
     """
-    An initial erratum as an input.
+    An initial event as an input.
 
     It does not track releases, just the initial event. It will be expanded
-    into corresponding :py:class:`ErratumJob` instances.
+    into corresponding :py:class:`ArtifactJob` instances.
     """
 
     event: Event = field(  # type: ignore[var-annotated]
         converter=lambda x: x if isinstance(x, Event) else Event(**x),
         )
+
+
+@define
+class Compose(Cloneable, Serializable):
+    """
+    A distribution compose
+
+    Represents a single distribution compose.
+    """
+
+    id: ComposeId = field()
 
 
 @define
@@ -428,7 +452,7 @@ class Erratum(Cloneable, Serializable):
     Represents a set of builds targetting a single release.
     """
 
-    id: str = field()
+    id: ErratumId = field()
     respin_count: int = field(repr=False)
     summary: str = field(repr=False)
     people_assigned_to: str = field(repr=False)
@@ -689,7 +713,7 @@ class Execution(Cloneable, Serializable):
 
 
 @define
-class Job(Cloneable, Serializable):
+class EventJob(Cloneable, Serializable):
     """ A single job """
 
     event: Event = field(  # type: ignore[var-annotated]
@@ -707,20 +731,32 @@ class Job(Cloneable, Serializable):
 
 
 @define
-class ErratumJob(Job):
+class ArtifactJob(EventJob):
     """ A single *erratum* job """
 
-    erratum: Erratum = field(  # type: ignore[var-annotated]
-        converter=lambda x: x if isinstance(x, Erratum) else Erratum(**x),
+    erratum: Optional[Erratum] = field(  # type: ignore[var-annotated]
+        converter=lambda x: None if x is None else x if isinstance(x, Erratum) else Erratum(**x),
+        )
+
+    compose: Optional[Compose] = field(  # type: ignore[var-annotated]
+        converter=lambda x: None if x is None else x if isinstance(x, Compose) else Compose(**x),
         )
 
     @property
+    def short_id(self) -> str:
+        if self.erratum:
+            return self.erratum.release
+        if self.compose:
+            return self.compose.id
+        return ""
+
+    @property
     def id(self) -> str:
-        return f'E: {self.event.id} @ {self.erratum.release}'
+        return f'E: {self.event.id} @ {self.short_id}'
 
 
 @define
-class JiraJob(ErratumJob):
+class JiraJob(ArtifactJob):
     """ A single *jira* job """
 
     jira: Issue = field(  # type: ignore[var-annotated]
@@ -733,7 +769,7 @@ class JiraJob(ErratumJob):
 
     @property
     def id(self) -> str:
-        return f'J: {self.event.id} @ {self.erratum.release} - {self.jira.id}'
+        return f'J: {self.event.id} @ {self.short_id} - {self.jira.id}'
 
 
 @define
@@ -746,7 +782,7 @@ class ScheduleJob(JiraJob):
 
     @property
     def id(self) -> str:
-        return f'S: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
+        return f'S: {self.event.id} @ {self.short_id} - {self.jira.id} / {self.request.id}'
 
 
 @define
@@ -759,7 +795,7 @@ class ExecuteJob(ScheduleJob):
 
     @property
     def id(self) -> str:
-        return f'X: {self.event.id} @ {self.erratum.release} - {self.jira.id} / {self.request.id}'
+        return f'X: {self.event.id} @ {self.short_id} - {self.jira.id} / {self.request.id}'
 
 
 #
@@ -805,9 +841,9 @@ class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
 
 @frozen
 class IssueHandler:
-    """ An interface to Jira instance handling a specific ErratumJob """
+    """ An interface to Jira instance handling a specific ArtifactJob """
 
-    erratum_job: ErratumJob = field()
+    artifact_job: ArtifactJob = field()
     url: str = field()
     token: str = field()
     project: str = field()
@@ -844,9 +880,12 @@ class IssueHandler:
         respin. If 'partial' is defined it defines issues relevant for all respins.
         """
 
-        newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.erratum_job.id}"
-        if not partial:
-            newa_id += f" ({', '.join(sorted(self.erratum_job.erratum.builds))}) :::"
+        newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.artifact_job.id}"
+        # for ERRATUM event type update ID with sorted builds
+        if (not partial and
+            self.artifact_job.event.type_ is EventType.ERRATUM and
+                self.artifact_job.erratum):
+            newa_id += f" ({', '.join(sorted(self.artifact_job.erratum.builds))}) :::"
 
         return newa_id
 
@@ -1118,21 +1157,21 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_initial_erratum(self.state_dirpath / child)
+            yield self.load_initial_erratum(child.resolve())
 
-    def load_erratum_job(self, filepath: Path) -> ErratumJob:
-        job = ErratumJob.from_yaml_file(filepath)
+    def load_artifact_job(self, filepath: Path) -> ArtifactJob:
+        job = ArtifactJob.from_yaml_file(filepath)
 
         self.logger.info(f'Discovered erratum job {job.id} in {filepath}')
 
         return job
 
-    def load_erratum_jobs(self, filename_prefix: str) -> Iterator[ErratumJob]:
+    def load_artifact_jobs(self, filename_prefix: str) -> Iterator[ArtifactJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_erratum_job(self.state_dirpath / child)
+            yield self.load_artifact_job(child.resolve())
 
     def load_jira_job(self, filepath: Path) -> JiraJob:
         job = JiraJob.from_yaml_file(filepath)
@@ -1146,7 +1185,7 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_jira_job(self.state_dirpath / child)
+            yield self.load_jira_job(child.resolve())
 
     def load_schedule_job(self, filepath: Path) -> ScheduleJob:
         job = ScheduleJob.from_yaml_file(filepath)
@@ -1160,7 +1199,7 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_schedule_job(self.state_dirpath / child)
+            yield self.load_schedule_job(child.resolve())
 
     def load_execute_job(self, filepath: Path) -> ExecuteJob:
         job = ExecuteJob.from_yaml_file(filepath)
@@ -1174,36 +1213,36 @@ class CLIContext:
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_execute_job(self.state_dirpath / child)
+            yield self.load_execute_job(child.resolve())
 
-    def save_erratum_job(self, filename_prefix: str, job: ErratumJob) -> None:
+    def save_artifact_job(self, filename_prefix: str, job: ArtifactJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.short_id}.yaml'
 
         job.to_yaml_file(filepath)
-        self.logger.info(f'Erratum job {job.id} written to {filepath}')
+        self.logger.info(f'Artifact job {job.id} written to {filepath}')
 
-    def save_erratum_jobs(self, filename_prefix: str, jobs: Iterable[ErratumJob]) -> None:
+    def save_artifact_jobs(self, filename_prefix: str, jobs: Iterable[ArtifactJob]) -> None:
         for job in jobs:
-            self.save_erratum_job(filename_prefix, job)
+            self.save_artifact_job(filename_prefix, job)
 
     def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Jira job {job.id} written to {filepath}')
 
     def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Schedule job {job.id} written to {filepath}')
 
     def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.erratum.release}-{job.jira.id}-{job.request.id}.yaml'
+            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Execute job {job.id} written to {filepath}')
