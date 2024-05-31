@@ -22,4 +22,4 @@ issues:
    id: tier1_task
    parent_id: tier_epic
    on_respin: close
-   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/ks_recipe_struct/demodata/recipe1.yaml
+   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/main/demodata/recipe1.yaml

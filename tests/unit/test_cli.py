@@ -30,6 +30,7 @@ def _mock_errata_tool(monkeypatch):
         """ Return a meaningful json with info """
         return {
             "synopsis": "testing errata",
+            "content_types": ["rpm"],
             "people": {
                 "assigned_to": "user@domain.com"},
             "respin_count": "1"}

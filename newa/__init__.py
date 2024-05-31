@@ -73,6 +73,7 @@ def yaml_parser() -> ruamel.yaml.YAML:
         return representer.represent_scalar('tag:yaml.org,2002:str', data.value)
 
     yaml.representer.add_representer(EventType, _represent_enum)
+    yaml.representer.add_representer(ErratumContentType, _represent_enum)
 
     return yaml
 
@@ -407,12 +408,18 @@ class ErrataTool:
             for item in builds_json:
                 builds += list(item.keys())
             if builds:
-                errata.append(Erratum(id=event.id,
-                                      respin_count=int(info_json["respin_count"]),
-                                      summary=info_json["synopsis"],
-                                      people_assigned_to=info_json["people"]["assigned_to"],
-                                      release=release,
-                                      builds=builds))
+                errata.append(
+                    Erratum(
+                        id=event.id,
+                        content_type=ErratumContentType(
+                            info_json["content_types"][0]),
+                        respin_count=int(
+                            info_json["respin_count"]),
+                        summary=info_json["synopsis"],
+                        people_assigned_to=info_json["people"]["assigned_to"],
+                        release=release,
+                        builds=builds,
+                        components=[NVRParser(build).name for build in builds]))
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
@@ -444,8 +451,15 @@ class Compose(Cloneable, Serializable):
     id: ComposeId = field()
 
 
+class ErratumContentType(Enum):
+    """ Supported erratum content types """
+
+    RPM = 'rpm'
+    DOCKER = 'docker'
+
+
 @define
-class Erratum(Cloneable, Serializable):
+class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     """
     An eratum
 
@@ -453,11 +467,14 @@ class Erratum(Cloneable, Serializable):
     """
 
     id: ErratumId = field()
+    content_type: Optional[ErratumContentType] = field(  # type: ignore[var-annotated]
+        converter=lambda value: ErratumContentType(value) if value else None)
     respin_count: int = field(repr=False)
     summary: str = field(repr=False)
     people_assigned_to: str = field(repr=False)
     release: str = field()
     builds: list[str] = field(factory=list)
+    components: list[str] = field(factory=list)
 
 
 @define
@@ -749,6 +766,18 @@ class EventJob(Cloneable, Serializable):
 
 
 @define
+class NVRParser:
+
+    nvr: str
+    name: str = field(init=False)
+    version: str = field(init=False)
+    release: str = field(init=False)
+
+    def __attrs_post_init__(self) -> None:
+        self.name, self.version, self.release = self.nvr.rsplit("-", 2)
+
+
+@define
 class ArtifactJob(EventJob):
     """ A single *erratum* job """
 
@@ -763,7 +792,11 @@ class ArtifactJob(EventJob):
     @property
     def short_id(self) -> str:
         if self.erratum:
-            return self.erratum.release
+            if self.erratum.content_type == ErratumContentType.RPM:
+                return self.erratum.release
+            if self.erratum.content_type == ErratumContentType.DOCKER:
+                # docker type ArtifactJob is identified by the container name
+                return NVRParser(self.erratum.builds[0]).name
         if self.compose:
             return self.compose.id
         return ""
@@ -845,6 +878,7 @@ class IssueAction:  # type: ignore[no-untyped-def]
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
     when: Optional[str] = None
+    newa_id: Optional[str] = None
 
 
 @define
@@ -898,6 +932,8 @@ class IssueHandler:
         respin. If 'partial' is defined it defines issues relevant for all respins.
         """
 
+        if action.newa_id:
+            return f"::: {IssueHandler.newa_label} {action.newa_id}"
         newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.artifact_job.id}"
         # for ERRATUM event type update ID with sorted builds
         if (not partial and

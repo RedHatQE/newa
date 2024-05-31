@@ -2,6 +2,7 @@ from newa import ArtifactJob, Compose, Erratum, Event, EventType, eval_test
 
 event = Event(type_=EventType.ERRATUM, id='foo')
 erratum = Erratum(id='12345',
+                  content_type='rpm',
                   respin_count=1,
                   summary='test errata',
                   people_assigned_to='user',

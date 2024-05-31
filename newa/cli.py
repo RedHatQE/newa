@@ -15,6 +15,7 @@ from . import (
     Compose,
     ErrataTool,
     ErratumConfig,
+    ErratumContentType,
     Event,
     EventType,
     ExecuteJob,
@@ -23,6 +24,7 @@ from . import (
     IssueHandler,
     IssueType,
     JiraJob,
+    NVRParser,
     OnRespinAction,
     RawRecipeConfigDimension,
     RawRecipeReportPortalConfigDimension,
@@ -105,9 +107,19 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
             for erratum in errata:
                 # identify compose to be used, just a dump conversion for now
                 compose = erratum.release.rstrip('.GA') + '-Nightly'
-                artifact_job = ArtifactJob(event=event, erratum=erratum,
-                                           compose=Compose(id=compose))
-                ctx.save_artifact_job('event-', artifact_job)
+                if erratum.content_type == ErratumContentType.RPM:
+                    artifact_job = ArtifactJob(event=event, erratum=erratum,
+                                               compose=Compose(id=compose))
+                    ctx.save_artifact_job('event-', artifact_job)
+                # for docker content type we create ArtifactJob per build
+                if erratum.content_type == ErratumContentType.DOCKER:
+                    erratum_clone = erratum.clone()
+                    for build in erratum.builds:
+                        erratum_clone.builds = [build]
+                        erratum_clone.components = [NVRParser(build).name]
+                        artifact_job = ArtifactJob(event=event, erratum=erratum_clone,
+                                                   compose=Compose(id=compose))
+                        ctx.save_artifact_job('event-', artifact_job)
 
     # process compose IDs
     for compose_id in compose_ids:
@@ -179,6 +191,11 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                     COMPOSE=artifact_job.compose)
             else:
                 rendered_assignee = None
+            if action.newa_id:
+                action.newa_id = render_template(
+                    action.newa_id,
+                    ERRATUM=artifact_job.erratum,
+                    COMPOSE=artifact_job.compose)
 
             # Detect that action has parent available (if applicable), if we went trough the
             # actions already and parent was not found, we abort.
