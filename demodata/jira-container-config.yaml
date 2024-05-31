@@ -1,0 +1,27 @@
+project: BASEQESEC
+
+transitions:
+  closed:
+    - Done
+    - Dropped
+    - Completed
+  dropped:
+    - Dropped
+
+issues:
+
+ - summary: "Testing container ER#{{ ERRATUM.id }} {{ ERRATUM.summary }}"
+   description: "{{ ERRATUM.url }}"
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   type: epic
+   id: errata_epic
+   newa_id: "ER#{{ ERRATUM.id }}"
+   on_respin: keep
+
+ - summary: "Container errata respin {{ ERRATUM.components|join(' ') }}"
+   description: "testing container {{ ERRATUM.components|join(' ') }}"
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   type: task
+   id: errata_task
+   parent_id: errata_epic
+   on_respin: close
