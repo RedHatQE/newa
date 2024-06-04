@@ -484,18 +484,28 @@ RecipeContext = dict[str, str]
 RecipeEnvironment = dict[str, str]
 
 
+class RawRecipeReportPortalConfigDimension(TypedDict, total=False):
+    launch_name: Optional[str]
+    launch_description: Optional[str]
+    suite_description: Optional[str]
+
+
+_RecipeReportPortalConfigDimensionKey = Literal['launch_name',
+                                                'launch_description', 'suite_description']
+
+
 class RawRecipeConfigDimension(TypedDict, total=False):
     context: RecipeContext
     environment: RecipeEnvironment
     compose: Optional[str]
     git_url: Optional[str]
     git_ref: Optional[str]
-    rp_launch: Optional[str]
+    reportportal: Optional[RawRecipeReportPortalConfigDimension]
     when: Optional[str]
 
 
 _RecipeConfigDimensionKey = Literal['context',
-                                    'environment', 'git_url', 'git_ref', 'rp_launch', 'when']
+                                    'environment', 'git_url', 'git_ref', 'reportportal', 'when']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.
@@ -591,7 +601,7 @@ class Request(Cloneable, Serializable):
     compose: Optional[str] = None
     git_url: Optional[str] = None
     git_ref: Optional[str] = None
-    rp_launch: Optional[str] = None
+    reportportal: Optional[RawRecipeReportPortalConfigDimension] = None
     tmt_path: Optional[str] = None
     plan: Optional[str] = None
     # TODO: 'when' not really needed, adding it to silent the linter
@@ -616,8 +626,8 @@ class Request(Cloneable, Serializable):
             raise Exception('ERROR: ReportPortal URL is not set')
         if not rp_project:
             raise Exception('ERROR: ReportPortal project is not set')
-        if not self.rp_launch:
-            raise Exception('ERROR: ReportPortal launch is not specified')
+        if (not self.reportportal) or (not self.reportportal['launch_name']):
+            raise Exception('ERROR: ReportPortal launch name is not specified')
         command += [
             '--tmt-environment',
             f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN={rp_token}',
@@ -626,7 +636,7 @@ class Request(Cloneable, Serializable):
             '--tmt-environment',
             f'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT={rp_project}',
             '--tmt-environment',
-            f'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH={self.rp_launch}',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH={self.reportportal["launch_name"]}',
             '--tmt-environment',
             'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
             '--context', f'newa_batch={self.get_hash(ctx.timestamp)}',
@@ -648,6 +658,14 @@ class Request(Cloneable, Serializable):
         # process plan
         if self.plan:
             command += ['--plan', self.plan]
+        # process reportportal configuration
+        if self.reportportal and self.reportportal.get("suite_description", None):
+            # we are intentionally using suite_description, not launch description
+            # as due to SUITE_PER_PLAN enabled the launch description will end up
+            # in suite description as well once
+            # https://github.com/teemtee/tmt/issues/2990 is implemented
+            command += ['--tmt-environment',
+                        f"""TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION='{self.reportportal.get("suite_description")}'"""]
         # process context
         if self.context:
             for k, v in self.context.items():
