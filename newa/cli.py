@@ -25,6 +25,7 @@ from . import (
     JiraJob,
     OnRespinAction,
     RawRecipeConfigDimension,
+    RawRecipeReportPortalConfigDimension,
     Recipe,
     RecipeConfig,
     ReportPortal,
@@ -296,9 +297,15 @@ def cmd_schedule(ctx: CLIContext) -> None:
         initial_config = RawRecipeConfigDimension(compose=compose)
 
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
-        # if rp_launch is not specified in the config, set it based on the recipe filename
-        if 'rp_launch' not in config.fixtures:
-            config.fixtures['rp_launch'] = os.path.splitext(
+        # if RP launch name is not specified in the recipe, set it based on the recipe filename
+        if not config.fixtures.get('reportportal', None):
+            config.fixtures['reportportal'] = RawRecipeReportPortalConfigDimension()
+        # Populate default for config.fixtures['reportportal']['launch_name']
+        # Although config.fixtures['reportportal'] is not None, though linter still complaints
+        # so we repeat the condition once more
+        if ((config.fixtures['reportportal'] is not None) and
+                (not config.fixtures['reportportal'].get('launch_name', None))):
+            config.fixtures['reportportal']['launch_name'] = os.path.splitext(
                 get_url_basename(jira_job.recipe.url))[0]
         # build requests
         requests = list(config.build_requests(initial_config))
@@ -306,6 +313,18 @@ def cmd_schedule(ctx: CLIContext) -> None:
 
         # create ScheduleJob object for each request
         for request in requests:
+            # before yaml export render specific fields
+            for rp_attr in ("launch_name", "launch_description", "suite_description"):
+                if request.reportportal and request.reportportal.get(rp_attr):
+                    request.reportportal[rp_attr] = render_template(  # type: ignore[literal-required]
+                        str(request.reportportal.get(rp_attr)),
+                        ERRATUM=jira_job.erratum,
+                        COMPOSE=jira_job.compose,
+                        CONTEXT=request.context,
+                        ENVIRONMENT=request.environment,
+                        )
+
+            # export schedule_job yaml
             schedule_job = ScheduleJob(
                 event=jira_job.event,
                 erratum=jira_job.erratum,
@@ -401,7 +420,7 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     ctx.enter_command('report')
 
     jira_request_mapping: dict[str, dict[str, list[str]]] = {}
-    jira_launch_name_mapping: dict[str, str] = {}
+    jira_launch_mapping: dict[str, RawRecipeReportPortalConfigDimension] = {}
     if not rp_project:
         rp_project = ctx.settings.rp_project
     if not rp_url:
@@ -425,7 +444,10 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
         # it is sufficient to process each Jira issue only once
         if jira_id not in jira_request_mapping:
             jira_request_mapping[jira_id] = {}
-            jira_launch_name_mapping[jira_id] = execute_job.request.rp_launch
+            jira_launch_mapping[jira_id] = RawRecipeReportPortalConfigDimension(
+                launch_name=execute_job.request.reportportal['launch_name'],
+                launch_description=execute_job.request.reportportal['launch_description'])
+            # jira_launch_mapping[jira_id] = execute_job.request.reportportal['launch_name']
         # for each Jira and request ID we build a list of RP launches
         jira_request_mapping[jira_id][request_id] = rp.find_launches_by_attr(
             'newa_batch', execute_job.execution.batch_id)
@@ -433,19 +455,33 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     # proceed with RP launch merge
     for jira_id in jira_request_mapping:
         launch_list = []
-        description = f'{jira_id}: {len(jira_request_mapping[jira_id])} job requests in total:\n'
+        # prepare launch description
+        # start with description specified in the recipe file
+        description = jira_launch_mapping[jira_id].get('launch_description', None)
+        if description:
+            description += '<br><br>'
+        else:
+            description = ''
+        # add info about the number of recipies scheduled and completed
+        description += f'{jira_id}: {len(jira_request_mapping[jira_id])} requests in total<br>'
         for request in sorted(jira_request_mapping[jira_id].keys()):
             if len(jira_request_mapping[jira_id][request]):
-                description += f'  {request}: COMPLETED\n'
+                description += f'  {request}: COMPLETED<br>'
                 launch_list.extend(jira_request_mapping[jira_id][request])
             else:
-                description += f'  {request}: MISSING\n'
+                description += f'  {request}: MISSING<br>'
+        # prepare launch name
+        if jira_launch_mapping[jira_id]['launch_name']:
+            name = str(jira_launch_mapping[jira_id]['launch_name'])
+        else:
+            # should not happen
+            name = 'unspecified_newa_launch_name'
         if not len(launch_list):
             ctx.logger.error('Failed to find any related ReportPortal launches')
         else:
             if len(launch_list) > 1:
                 merged_launch = rp.merge_launches(
-                    launch_list, jira_launch_name_mapping[jira_id], description, {})
+                    launch_list, name, description, {})
                 if not merged_launch:
                     ctx.logger.error('Failed to merge ReportPortal launches')
                 else:
