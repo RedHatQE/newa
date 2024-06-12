@@ -539,6 +539,16 @@ RecipeContext = dict[str, str]
 RecipeEnvironment = dict[str, str]
 
 
+class RawRecipeTmtConfigDimension(TypedDict, total=False):
+    url: Optional[str]
+    ref: Optional[str]
+    path: Optional[str]
+    plan: Optional[str]
+
+
+_RecipeTmtConfigDimensionKey = Literal['url', 'ref', 'path', 'plan']
+
+
 class RawRecipeReportPortalConfigDimension(TypedDict, total=False):
     launch_name: Optional[str]
     launch_description: Optional[str]
@@ -554,14 +564,13 @@ class RawRecipeConfigDimension(TypedDict, total=False):
     environment: RecipeEnvironment
     compose: Optional[str]
     arch: Optional[Arch]
-    git_url: Optional[str]
-    git_ref: Optional[str]
+    tmt: Optional[RawRecipeTmtConfigDimension]
     reportportal: Optional[RawRecipeReportPortalConfigDimension]
     when: Optional[str]
 
 
-_RecipeConfigDimensionKey = Literal['context', 'environment',
-                                    'git_url', 'git_ref', 'reportportal', 'when', 'arch']
+_RecipeConfigDimensionKey = Literal['context',
+                                    'environment', 'tmt', 'reportportal', 'when', 'arch']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.
@@ -657,11 +666,8 @@ class Request(Cloneable, Serializable):
     environment: RecipeEnvironment = field(factory=dict)
     compose: Optional[str] = None
     arch: Optional[Arch] = None
-    git_url: Optional[str] = None
-    git_ref: Optional[str] = None
+    tmt: Optional[RawRecipeTmtConfigDimension] = None
     reportportal: Optional[RawRecipeReportPortalConfigDimension] = None
-    tmt_path: Optional[str] = None
-    plan: Optional[str] = None
     # TODO: 'when' not really needed, adding it to silent the linter
     when: Optional[str] = None
 
@@ -703,22 +709,22 @@ class Request(Cloneable, Serializable):
         if not self.compose:
             raise Exception('ERROR: compose is not specified for the request')
         command += ['--compose', self.compose]
-        # process git_url
-        if not self.git_url:
-            raise Exception('ERROR: git_url is not specified for the request')
-        command += ['--git-url', self.git_url]
-        # process git_ref
-        if self.git_ref:
-            command += ['--git-ref', self.git_ref]
-        # process tmt_path
-        if self.tmt_path:
-            command += ['--path', self.tmt_path]
+        # process tmt related settings
+        if not self.tmt:
+            raise Exception('ERROR: tmt settings is not specified for the request')
+        if not self.tmt.get("url", None):
+            raise Exception('ERROR: tmt "url" is not specified for the request')
+        if self.tmt['url']:
+            command += ['--git-url', self.tmt['url']]
+        if self.tmt.get("ref") and self.tmt['ref']:
+            command += ['--git-ref', self.tmt['ref']]
+        if self.tmt.get("path") and self.tmt['path']:
+            command += ['--path', self.tmt['path']]
+        if self.tmt.get("plan") and self.tmt['plan']:
+            command += ['--plan', self.tmt['plan']]
         # process arch
         if self.arch:
             command += ['--arch', self.arch.value]
-        # process plan
-        if self.plan:
-            command += ['--plan', self.plan]
         # process reportportal configuration
         if self.reportportal and self.reportportal.get("suite_description", None):
             # we are intentionally using suite_description, not launch description
