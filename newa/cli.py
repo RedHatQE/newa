@@ -10,6 +10,7 @@ import click
 import jira
 
 from . import (
+    Arch,
     ArtifactJob,
     CLIContext,
     Compose,
@@ -300,8 +301,12 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
 
 
 @main.command(name='schedule')
+@click.option(
+    '--arch',
+    default=None,
+    )
 @click.pass_obj
-def cmd_schedule(ctx: CLIContext) -> None:
+def cmd_schedule(ctx: CLIContext, arch: str) -> None:
     ctx.enter_command('schedule')
 
     for jira_job in ctx.load_jira_jobs('jira-'):
@@ -311,9 +316,20 @@ def cmd_schedule(ctx: CLIContext) -> None:
 
         # would it be OK not to pass compose to TF? I guess so
         compose = jira_job.compose.id if jira_job.compose else None
+        if arch:
+            architectures = Arch.architectures(
+                [Arch(a.strip()) for a in arch.split(',')])
+        else:
+            architectures = jira_job.erratum.archs if (
+                jira_job.erratum and jira_job.erratum.archs) else Arch.architectures()
         initial_config = RawRecipeConfigDimension(compose=compose)
 
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
+        # extend dimensions with system architecture but do not override existing settings
+        if 'arch' not in config.dimensions:
+            config.dimensions['arch'] = []
+            for architecture in architectures:
+                config.dimensions['arch'].append({'arch': architecture})
         # if RP launch name is not specified in the recipe, set it based on the recipe filename
         if not config.fixtures.get('reportportal', None):
             config.fixtures['reportportal'] = RawRecipeReportPortalConfigDimension()

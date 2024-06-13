@@ -77,6 +77,7 @@ def yaml_parser() -> ruamel.yaml.YAML:
 
     yaml.representer.add_representer(EventType, _represent_enum)
     yaml.representer.add_representer(ErratumContentType, _represent_enum)
+    yaml.representer.add_representer(Arch, _represent_enum)
 
     return yaml
 
@@ -304,6 +305,29 @@ class EventType(Enum):
     COMPOSE = 'compose'
 
 
+class Arch(Enum):
+    """ Available system architectures """
+
+    X86_64 = 'x86_64'
+    AARCH64 = 'aarch64'
+    S390X = 's390x'
+    PPC64LE = 'ppc64le'
+    MULTI = 'multi'
+
+    @classmethod
+    def architectures(cls: type[Arch],
+                      preset: Optional[list[Arch]] = None) -> list[Arch]:
+
+        _all = [a.value for a in Arch.__members__.values() if a != Arch.MULTI]
+
+        if not preset:
+            return [Arch('x86_64')]
+        # 'multi' is given for container advisories
+        if Arch('multi') in preset:
+            return _all
+        return list(set(_all).intersection(set(preset)))
+
+
 @define
 class Cloneable:
     """ A class whose instances can be cloned """
@@ -392,7 +416,12 @@ class ErrataTool:
         #   "RHEL-9.0.0.Z.EUS": [
         #     {
         #       "scap-security-guide-0.1.72-1.el9_3": {
-        #          ...
+        #          "BaseOS-9.3.0.Z.EUS": {
+        #            "SRPMS": [...],
+        #            "x86_64": [...],
+        #            "ppc64le": [...],
+        #          }
+        #       }
         #     }
         #   ]
         #   "RHEL-9.2.0.Z.EUS": [
@@ -408,8 +437,12 @@ class ErrataTool:
         for release in releases_json:
             builds = []
             builds_json = releases_json[release]
+            archs = set()
             for item in builds_json:
-                builds += list(item.keys())
+                for (build, channels) in item.items():
+                    builds.append(build)
+                    for channel in channels.values():
+                        archs.update([Arch(a) for a in channel])
             if builds:
                 errata.append(
                     Erratum(
@@ -422,6 +455,7 @@ class ErrataTool:
                         people_assigned_to=info_json["people"]["assigned_to"],
                         release=release,
                         builds=builds,
+                        archs=Arch.architectures(list(archs)),
                         components=[NVRParser(build).name for build in builds]))
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
@@ -476,6 +510,7 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     summary: str = field(repr=False)
     people_assigned_to: str = field(repr=False)
     release: str = field()
+    archs: list[Arch] = field(factory=list)
     builds: list[str] = field(factory=list)
     components: list[str] = field(factory=list)
 
@@ -518,14 +553,15 @@ class RawRecipeConfigDimension(TypedDict, total=False):
     context: RecipeContext
     environment: RecipeEnvironment
     compose: Optional[str]
+    arch: Optional[Arch]
     git_url: Optional[str]
     git_ref: Optional[str]
     reportportal: Optional[RawRecipeReportPortalConfigDimension]
     when: Optional[str]
 
 
-_RecipeConfigDimensionKey = Literal['context',
-                                    'environment', 'git_url', 'git_ref', 'reportportal', 'when']
+_RecipeConfigDimensionKey = Literal['context', 'environment',
+                                    'git_url', 'git_ref', 'reportportal', 'when', 'arch']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.
@@ -599,6 +635,7 @@ class RecipeConfig(Cloneable, Serializable):
                 test_result = eval_test(
                     condition,
                     COMPOSE=combination['compose'],
+                    ARCH=combination['arch'],
                     ENVIRONMENT=combination['environment'],
                     CONTEXT=combination['context'])
                 if not test_result:
@@ -619,6 +656,7 @@ class Request(Cloneable, Serializable):
     context: RecipeContext = field(factory=dict)
     environment: RecipeEnvironment = field(factory=dict)
     compose: Optional[str] = None
+    arch: Optional[Arch] = None
     git_url: Optional[str] = None
     git_ref: Optional[str] = None
     reportportal: Optional[RawRecipeReportPortalConfigDimension] = None
@@ -675,6 +713,9 @@ class Request(Cloneable, Serializable):
         # process tmt_path
         if self.tmt_path:
             command += ['--path', self.tmt_path]
+        # process arch
+        if self.arch:
+            command += ['--arch', self.arch.value]
         # process plan
         if self.plan:
             command += ['--plan', self.plan]
