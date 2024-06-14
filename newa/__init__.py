@@ -10,6 +10,11 @@ import re
 import subprocess
 import time
 import urllib
+
+try:
+    from attrs import asdict, define, evolve, field, frozen, validators
+except ModuleNotFoundError:
+    from attr import asdict, define, evolve, field, frozen, validators
 from collections.abc import Iterable, Iterator
 from configparser import ConfigParser
 from enum import Enum
@@ -28,7 +33,6 @@ from typing import (
     )
 from urllib.parse import quote as Q  # noqa: N812
 
-import attrs
 import jinja2
 import jira
 import jira.client
@@ -37,7 +41,6 @@ import ruamel.yaml
 import ruamel.yaml.nodes
 import ruamel.yaml.representer
 import urllib3.response
-from attrs import define, field, frozen, validators
 from requests_kerberos import HTTPKerberosAuth
 
 if TYPE_CHECKING:
@@ -306,7 +309,7 @@ class Cloneable:
     """ A class whose instances can be cloned """
 
     def clone(self) -> Self:
-        return attrs.evolve(self)
+        return evolve(self)
 
 
 @define
@@ -320,7 +323,7 @@ class Serializable:
     def to_yaml(self) -> str:
         output = io.StringIO()
 
-        yaml_parser().dump(attrs.asdict(self, recurse=True), output)
+        yaml_parser().dump(asdict(self, recurse=True), output)
 
         return output.getvalue()
 
