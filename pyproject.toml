@@ -61,6 +61,7 @@ raw-options.version_scheme = "release-branch-semver"
 
 [tool.hatch.build.targets.sdist]
 include = [
+    "/newa",
     "/README.md",
     ]
 
