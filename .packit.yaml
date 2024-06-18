@@ -46,7 +46,6 @@ jobs:
     enable_net: false
     list_on_homepage: true
     preserve_project: true
-    owner: "@RedHatQE"
     project: newa
     release_suffix: "{PACKIT_PROJECT_BRANCH}"
     actions:
@@ -67,7 +66,7 @@ jobs:
     enable_net: false
     list_on_homepage: true
     preserve_project: true
-    owner: "@RedHatQE"
+    owner: "ksrot"
     project: newa
     actions:
       create-archive:
