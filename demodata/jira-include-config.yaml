@@ -1,0 +1,12 @@
+include:
+  - demodata/jira-include-project-config.yaml
+  - https://raw.githubusercontent.com/RedHatQE/newa/ks_jira_include/demodata/jira-include-issues-config.yaml
+
+issues:
+
+ - summary: "Tier1 testing of RHEL compose {{ COMPOSE.id }}"
+   description: "tier1 testing"
+   type: task
+   id: tier1_task
+   parent_id: tier_epic
+   on_respin: close

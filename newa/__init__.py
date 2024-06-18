@@ -369,6 +369,45 @@ class Serializable:
         r = get_request(url=url, response_content=ResponseContentType.TEXT)
         return cls.from_yaml(r)
 
+    @classmethod
+    def from_yaml_with_include(cls: type[SerializableT], location: str) -> SerializableT:
+
+        def load_data_from_location(location: str,
+                                    stack: Union[list[str], None] = None) -> dict[str, Any]:
+            if stack and location in stack:
+                raise Exception(f"Recursion encountered when loading YAML from {location}")
+            # include location into the stack so we can detect recursion
+            if stack:
+                stack.append(location)
+            else:
+                stack = [location]
+            if location.startswith('https://'):
+                data = yaml_parser().load(get_request(
+                    url=location,
+                    response_content=ResponseContentType.TEXT))
+            else:
+                data = yaml_parser().load(Path(location).read_text())
+            # process 'include' attribute
+            if 'include' in data:
+                locations = data['include']
+                # drop 'include' so it won't be processed again
+                del data['include']
+                for loc in locations:
+                    data2 = load_data_from_location(loc, stack)
+                    if data2:
+                        # explicitly join 'issues' lists first
+                        if data.get('issues', []) and data2.get('issues', []):
+                            data['issues'].extend(data2['issues'])
+                        # now extend dictionary with other keys from the included YAML
+                        # data from 'data' have precedence
+                        data2.update(data)
+                        data = copy.deepcopy(data2)
+
+            return data
+
+        data = load_data_from_location(location)
+        return cls(**data)
+
 
 @define
 class Event(Serializable):
@@ -926,7 +965,7 @@ class IssueAction:  # type: ignore[no-untyped-def]
 
 
 @define
-class ErratumConfig(Serializable):  # type: ignore[no-untyped-def]
+class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
 
     project: str = field()
     transitions: dict[str, list[str]] = field()

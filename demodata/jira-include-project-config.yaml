@@ -1,0 +1,9 @@
+project: BASEQESEC
+
+transitions:
+  closed:
+    - Done
+    - Dropped
+    - Completed
+  dropped:
+    - Dropped
