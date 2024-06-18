@@ -16,13 +16,13 @@ from . import (
     CLIContext,
     Compose,
     ErrataTool,
-    ErratumConfig,
     ErratumContentType,
     Event,
     EventType,
     ExecuteJob,
     Execution,
     Issue,
+    IssueConfig,
     IssueHandler,
     IssueType,
     JiraJob,
@@ -169,8 +169,7 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
     for artifact_job in ctx.load_artifact_jobs('event-'):
 
         # read Jira issue configuration
-        config = ErratumConfig.from_yaml_file(Path(os.path.expandvars(issue_config)))
-
+        config = IssueConfig.from_yaml_with_include(os.path.expandvars(issue_config))
         jira = IssueHandler(artifact_job, jira_url, jira_token, config.project, config.transitions)
         ctx.logger.info("Initialized Jira handler")
 

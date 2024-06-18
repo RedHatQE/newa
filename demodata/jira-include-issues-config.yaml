@@ -1,0 +1,7 @@
+issues:
+
+ - summary: "Generic issue"
+   description: "Some generic activity"
+   type: epic
+   id: tier_epic
+   on_respin: close
