@@ -2,6 +2,7 @@ import datetime
 import logging
 import multiprocessing
 import os.path
+import re
 import time
 from functools import partial
 from pathlib import Path
@@ -45,10 +46,28 @@ logging.basicConfig(
     level=logging.INFO)
 
 
+def default_state_dir() -> Path:
+    """ Returns the first unused directory matching /var/tmp/newa/run-[0-9]+ """
+    parent_dir = Path('/var/tmp/newa')
+    pattern = '^run-([0-9]+)$'
+    counter = 0
+    try:
+        obj = os.scandir(parent_dir)
+    except FileNotFoundError:
+        return parent_dir / f'run-{counter}'
+    for entry in obj:
+        r = re.match(pattern, entry.name)
+        if entry.is_dir() and r:
+            c = int(r.group(1))
+            if c >= counter:
+                counter = c + 1
+    return parent_dir / f'run-{counter}'
+
+
 @click.group(chain=True)
 @click.option(
     '--state-dir',
-    default='$PWD/state',
+    default=default_state_dir,
     )
 @click.option(
     '--conf-file',
@@ -63,8 +82,9 @@ def main(click_context: click.Context, state_dir: str, conf_file: str) -> None:
         )
     click_context.obj = ctx
 
+    ctx.logger.info(f'Using state directory {ctx.state_dirpath}')
     if not ctx.state_dirpath.exists():
-        ctx.logger.info(f'State directory {ctx.state_dirpath} does not exist, creating...')
+        ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
         ctx.state_dirpath.mkdir(parents=True)
 
 
