@@ -318,7 +318,7 @@ class Arch(Enum):
     def architectures(cls: type[Arch],
                       preset: Optional[list[Arch]] = None) -> list[Arch]:
 
-        _all = [a.value for a in Arch.__members__.values() if a != Arch.MULTI]
+        _all = [Arch(a) for a in Arch.__members__.values() if a != Arch.MULTI]
 
         if not preset:
             return [Arch('x86_64')]
