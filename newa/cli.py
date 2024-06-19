@@ -554,8 +554,9 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
             ctx.logger.info(f'RP launch urls: {" ".join(launch_urls)}')
             try:
                 joined_urls = '\n'.join(launch_urls)
-                jira_connection.add_comment(jira_id,
-                                            f"NEWA has imported test results to\n{joined_urls}")
+                description = description.replace('<br>', '\n')
+                jira_connection.add_comment(
+                    jira_id, f"NEWA has imported test results to\n{joined_urls}\n\n{description}")
                 ctx.logger.info(
                     f'Jira issue {jira_id} was updated with a RP launch URL')
             except jira.JIRAError as e:
