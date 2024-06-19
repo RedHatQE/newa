@@ -508,7 +508,8 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
             jira_request_mapping[jira_id] = {}
             jira_launch_mapping[jira_id] = RawRecipeReportPortalConfigDimension(
                 launch_name=execute_job.request.reportportal['launch_name'],
-                launch_description=execute_job.request.reportportal['launch_description'])
+                launch_description=execute_job.request.reportportal.get(
+                    'launch_description', None))
             # jira_launch_mapping[jira_id] = execute_job.request.reportportal['launch_name']
         # for each Jira and request ID we build a list of RP launches
         jira_request_mapping[jira_id][request_id] = rp.find_launches_by_attr(
