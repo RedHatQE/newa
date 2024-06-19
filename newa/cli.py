@@ -549,7 +549,7 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
                 else:
                     launch_list = [merged_launch]
             # report results back to Jira
-            launch_urls = [rp.get_launch_url(launch) for launch in launch_list]
+            launch_urls = [rp.get_launch_url(str(launch)) for launch in launch_list]
             ctx.logger.info(f'RP launch urls: {" ".join(launch_urls)}')
             try:
                 joined_urls = '\n'.join(launch_urls)
