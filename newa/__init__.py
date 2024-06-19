@@ -590,6 +590,13 @@ class RawRecipeTmtConfigDimension(TypedDict, total=False):
 _RecipeTmtConfigDimensionKey = Literal['url', 'ref', 'path', 'plan']
 
 
+class RawRecipeTFConfigDimension(TypedDict, total=False):
+    cli_args: Optional[str]
+
+
+_RecipeTFConfigDimensionKey = Literal['cli_args']
+
+
 class RawRecipeReportPortalConfigDimension(TypedDict, total=False):
     launch_name: Optional[str]
     launch_description: Optional[str]
@@ -606,12 +613,13 @@ class RawRecipeConfigDimension(TypedDict, total=False):
     compose: Optional[str]
     arch: Optional[Arch]
     tmt: Optional[RawRecipeTmtConfigDimension]
+    testingfarm: Optional[RawRecipeTFConfigDimension]
     reportportal: Optional[RawRecipeReportPortalConfigDimension]
     when: Optional[str]
 
 
-_RecipeConfigDimensionKey = Literal['context',
-                                    'environment', 'tmt', 'reportportal', 'when', 'arch']
+_RecipeConfigDimensionKey = Literal['context', 'environment',
+                                    'tmt', 'testingfarm', 'reportportal', 'when', 'arch']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.
@@ -627,7 +635,8 @@ class RecipeConfig(Cloneable, Serializable):
     dimensions: RawRecipeConfigDimensions = field(
         factory=cast(Callable[[], RawRecipeConfigDimensions], dict))
 
-    def build_requests(self, initial_config: RawRecipeConfigDimension) -> Iterator[Request]:
+    def build_requests(self, initial_config: RawRecipeConfigDimension,
+                       jinja_vars: Optional[dict[str, Any]] = None) -> Iterator[Request]:
         # this is here to generate unique recipe IDs
         recipe_id_gen = itertools.count(start=1)
 
@@ -687,7 +696,8 @@ class RecipeConfig(Cloneable, Serializable):
                     COMPOSE=combination['compose'],
                     ARCH=combination['arch'],
                     ENVIRONMENT=combination['environment'],
-                    CONTEXT=combination['context'])
+                    CONTEXT=combination['context'],
+                    **(jinja_vars if jinja_vars else {}))
                 if not test_result:
                     continue
             filtered_combinations.append(combination)
@@ -705,9 +715,10 @@ class Request(Cloneable, Serializable):
     id: str
     context: RecipeContext = field(factory=dict)
     environment: RecipeEnvironment = field(factory=dict)
+    arch: Optional[Arch] = field(converter=Arch, default=Arch.X86_64)
     compose: Optional[str] = None
-    arch: Optional[Arch] = None
     tmt: Optional[RawRecipeTmtConfigDimension] = None
+    testingfarm: Optional[RawRecipeTFConfigDimension] = None
     reportportal: Optional[RawRecipeReportPortalConfigDimension] = None
     # TODO: 'when' not really needed, adding it to silent the linter
     when: Optional[str] = None
@@ -763,6 +774,9 @@ class Request(Cloneable, Serializable):
             command += ['--path', self.tmt['path']]
         if self.tmt.get("plan") and self.tmt['plan']:
             command += ['--plan', self.tmt['plan']]
+        # process Testing Farm related settings
+        if self.testingfarm and self.testingfarm['cli_args']:
+            command += [self.testingfarm['cli_args']]
         # process arch
         if self.arch:
             command += ['--arch', self.arch.value]

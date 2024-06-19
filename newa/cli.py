@@ -360,21 +360,26 @@ def cmd_schedule(ctx: CLIContext, arch: str) -> None:
             config.fixtures['reportportal']['launch_name'] = os.path.splitext(
                 get_url_basename(jira_job.recipe.url))[0]
         # build requests
-        requests = list(config.build_requests(initial_config))
+        jinja_vars = {
+            'ERRATUM': jira_job.erratum,
+            }
+
+        requests = list(config.build_requests(initial_config, jinja_vars))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
         # create ScheduleJob object for each request
         for request in requests:
-            # before yaml export render specific fields
-            for rp_attr in ("launch_name", "launch_description", "suite_description"):
-                if request.reportportal and request.reportportal.get(rp_attr):
-                    request.reportportal[rp_attr] = render_template(  # type: ignore[literal-required]
-                        str(request.reportportal.get(rp_attr)),
-                        ERRATUM=jira_job.erratum,
-                        COMPOSE=jira_job.compose,
-                        CONTEXT=request.context,
-                        ENVIRONMENT=request.environment,
-                        )
+            # before yaml export render all fields as Jinja templates
+            for attr in ("reportportal", "tmt", "testingfarm", "environment", "context"):
+                if getattr(request, attr, None):
+                    for (key, value) in getattr(request, attr).items():
+                        getattr(request, attr)[key] = render_template(
+                            value,
+                            ERRATUM=jira_job.erratum,
+                            COMPOSE=jira_job.compose,
+                            CONTEXT=request.context,
+                            ENVIRONMENT=request.environment,
+                            )
 
             # export schedule_job yaml
             schedule_job = ScheduleJob(
