@@ -399,8 +399,9 @@ class Serializable:
                         # explicitly join 'issues' lists first
                         if data.get('issues', []) and included_data.get('issues', []):
                             data['issues'].extend(included_data['issues'])
-                        # now extend dictionary with other keys from the included YAML
-                        # data from 'data' have precedence
+                        # now update data from included YAML with data from the importing YAML
+                        # so that the importing data takes precedence (except 'issues' that have
+                        # been joined)
                         included_data.update(data)
                         data = copy.deepcopy(included_data)
 
