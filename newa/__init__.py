@@ -671,6 +671,8 @@ class RecipeConfig(Cloneable, Serializable):
                 dest[key].update(src[key])  # type: ignore[literal-required]
             elif isinstance(dest[key], list) and isinstance(src[key], list):  # type: ignore[literal-required]
                 dest[key].extend(src[key])  # type: ignore[literal-required]
+            elif isinstance(dest[key], str) and isinstance(src[key], str):  # type: ignore[literal-required]
+                dest[key] = src[key]  # type: ignore[literal-required]
             else:
                 raise Exception(f"Don't know how to merge record type '{key}'")
 
