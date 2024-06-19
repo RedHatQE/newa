@@ -373,7 +373,7 @@ class Serializable:
     def from_yaml_with_include(cls: type[SerializableT], location: str) -> SerializableT:
 
         def load_data_from_location(location: str,
-                                    stack: Union[list[str], None] = None) -> dict[str, Any]:
+                                    stack: Optional[list[str]] = None) -> dict[str, Any]:
             if stack and location in stack:
                 raise Exception(f"Recursion encountered when loading YAML from {location}")
             # include location into the stack so we can detect recursion
@@ -381,6 +381,7 @@ class Serializable:
                 stack.append(location)
             else:
                 stack = [location]
+            data: dict[str, Any] = {}
             if location.startswith('https://'):
                 data = yaml_parser().load(get_request(
                     url=location,
@@ -393,15 +394,15 @@ class Serializable:
                 # drop 'include' so it won't be processed again
                 del data['include']
                 for loc in locations:
-                    data2 = load_data_from_location(loc, stack)
-                    if data2:
+                    included_data = load_data_from_location(loc, stack)
+                    if included_data:
                         # explicitly join 'issues' lists first
-                        if data.get('issues', []) and data2.get('issues', []):
-                            data['issues'].extend(data2['issues'])
+                        if data.get('issues', []) and included_data.get('issues', []):
+                            data['issues'].extend(included_data['issues'])
                         # now extend dictionary with other keys from the included YAML
                         # data from 'data' have precedence
-                        data2.update(data)
-                        data = copy.deepcopy(data2)
+                        included_data.update(data)
+                        data = copy.deepcopy(included_data)
 
             return data
 
