@@ -436,6 +436,21 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     tf_request = schedule_job.request.initiate_tf_request(ctx)
     log(f'TF request filed with uuid {tf_request.uuid}')
 
+    # export Execution to YAML so that we can report it even later
+    # we won't report 'return_code' since it is not known yet
+    # This is something to be implemented later
+    execute_job = ExecuteJob(
+        event=schedule_job.event,
+        erratum=schedule_job.erratum,
+        compose=schedule_job.compose,
+        jira=schedule_job.jira,
+        recipe=schedule_job.recipe,
+        request=schedule_job.request,
+        execution=Execution(request_uuid=tf_request.uuid,
+                            batch_id=schedule_job.request.get_hash(ctx.timestamp)),
+        )
+    ctx.save_execute_job('execute-', execute_job)
+    # wait for TF job to finish
     finished = False
     delay = int(ctx.settings.tf_recheck_delay)
     while not finished:
@@ -444,23 +459,13 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         state = tf_request.details['state']
         log(f'TF reqest {tf_request.uuid} state: {state}')
         finished = state in ['complete', 'error']
-    execute_job = ExecuteJob(
-        event=schedule_job.event,
-        erratum=schedule_job.erratum,
-        compose=schedule_job.compose,
-        jira=schedule_job.jira,
-        recipe=schedule_job.recipe,
-        request=schedule_job.request,
-        execution=Execution(return_code=0,
-                            artifacts_url=tf_request.details['run']['artifacts'],
-                            batch_id=schedule_job.request.get_hash(ctx.timestamp)),
-        )
-    execute_job.to_yaml_file(
-        schedule_file.parent /
-        schedule_file.name.replace(
-            'schedule-',
-            'execute-'))
+
     log(f'finished with result: {tf_request.details["result"]["overall"]}')
+    # now write execution details once more
+    # FIXME: we pretend return_code to be 0
+    execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
+    execute_job.execution.return_code = 0
+    ctx.save_execute_job('execute-', execute_job)
 
 
 @main.command(name='report')

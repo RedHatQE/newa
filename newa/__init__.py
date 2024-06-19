@@ -847,7 +847,8 @@ class Execution(Cloneable, Serializable):
     """ A test job execution """
 
     batch_id: str
-    return_code: int
+    return_code: Optional[int] = None
+    request_uuid: Optional[str] = None
     artifacts_url: Optional[str] = None
 
     def fetch_details(self) -> None:
