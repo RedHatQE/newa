@@ -313,12 +313,14 @@ class Arch(Enum):
     S390X = 's390x'
     PPC64LE = 'ppc64le'
     MULTI = 'multi'
+    SRPMS = 'SRPMS'  # just to ease errata processing
 
     @classmethod
     def architectures(cls: type[Arch],
                       preset: Optional[list[Arch]] = None) -> list[Arch]:
 
-        _all = [Arch(a) for a in Arch.__members__.values() if a != Arch.MULTI]
+        _exclude = [Arch.MULTI, Arch.SRPMS]
+        _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
 
         if not preset:
             return [Arch('x86_64')]
@@ -695,10 +697,10 @@ class RecipeConfig(Cloneable, Serializable):
                 # we will expose COMPOSE, ENVIRONMENT, CONTEXT to evaluate a condition
                 test_result = eval_test(
                     condition,
-                    COMPOSE=combination['compose'],
-                    ARCH=combination['arch'],
-                    ENVIRONMENT=combination['environment'],
-                    CONTEXT=combination['context'],
+                    COMPOSE=combination.get('compose', None),
+                    ARCH=combination.get('arch', None),
+                    ENVIRONMENT=combination.get('environment', None),
+                    CONTEXT=combination.get('context', None),
                     **(jinja_vars if jinja_vars else {}))
                 if not test_result:
                     continue
