@@ -981,9 +981,9 @@ class IssueAction:  # type: ignore[no-untyped-def]
     summary: str
     description: str
     id: str
-    on_respin: Optional[OnRespinAction] = field(  # type: ignore[var-annotated]
-        converter=lambda value: OnRespinAction(value) if value else None)
     type: IssueType = field(converter=IssueType)
+    on_respin: OnRespinAction = field(  # type: ignore[var-annotated]
+        converter=lambda value: OnRespinAction(value), default=OnRespinAction.CLOSE)
     assignee: Optional[str] = None
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
@@ -1113,18 +1113,20 @@ class IssueHandler:
             f"labels in ({IssueHandler.newa_label}) AND " + \
             f"description ~ '{newa_description}' AND " + \
             f"status not in ({','.join(self.transitions['closed'])})"
-
         search_result = self.connection.search_issues(query, fields=fields, json_result=True)
         if not isinstance(search_result, dict):
             raise Exception(f"Unexpected search result type {type(search_result)}!")
 
         # Transformation of search_result json into simpler structure gets rid of
         # linter warning and also makes easier mocking (for tests).
+        # Additionally, double-check that the description matches since Jira tend to mess up
+        # searches containing characters like underscore, space etc. and may return extra issues
         result = {}
         for jira_issue in search_result["issues"]:
-            result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
-            if "parent" in jira_issue["fields"]:
-                result[jira_issue["key"]] |= {"parent": jira_issue["fields"]["parent"]["key"]}
+            if newa_description in jira_issue["fields"]["description"]:
+                result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
+                if "parent" in jira_issue["fields"]:
+                    result[jira_issue["key"]] |= {"parent": jira_issue["fields"]["parent"]["key"]}
         return result
 
     def create_issue(self,
