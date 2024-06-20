@@ -270,6 +270,9 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 # However, it might happen that we encounter an issue that is new but its
                 # original parent has been replaced by a newly created issue. In such a case
                 # we have to re-create the issue as well and drop the old one.
+                #
+                # TODO: we may want to distinguish issues that are Dropped and Done
+                # and do not re-create issues that are Done (i.e. completed)
                 is_new = False
                 if jira.newa_id(action) in jira_issue["description"] \
                     and (not action.parent_id
