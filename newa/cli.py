@@ -24,7 +24,6 @@ from . import (
     Issue,
     IssueConfig,
     IssueHandler,
-    IssueType,
     JiraJob,
     NVRParser,
     OnRespinAction,
@@ -200,6 +199,9 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
         # Processed action (action.id : issue).
         processed_actions: dict[str, Issue] = {}
 
+        # action_ids for which new Issues have been created
+        created_action_ids: list[str] = []
+
         # Length of the queue the last time issue action was processed,
         # Use to prevent endless loop over the issue actions.
         endless_loop_check: dict[str, int] = {}
@@ -265,19 +267,13 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 # of this action in the description. Otherwise, it is old (relevant to the
                 # previous respins).
                 #
-                # However, it might happen that we encounter subtask issue that is new but its
-                # original parent task got dropped (by human mistake, newa would never do that).
-                # By this time new parent task already exists. Unfortunately, Jira REST API does
-                # not allow updating 'parent' field [1] and hence we cannot re-use the issue with
-                # updated parent - we need to handle it as an old one (unless it has KEEP on_respin
-                # action it will get dropped and new one is created with the proper parent).
-                #
-                # [1] https://jira.atlassian.com/browse/JRASERVER-68763
+                # However, it might happen that we encounter an issue that is new but its
+                # original parent has been replaced by a newly created issue. In such a case
+                # we have to re-create the issue as well and drop the old one.
                 is_new = False
                 if jira.newa_id(action) in jira_issue["description"] \
-                        and (action.type != IssueType.SUBTASK
-                             or not action.parent_id
-                             or processed_actions[action.parent_id].id == jira_issue["parent"]):
+                    and (not action.parent_id
+                         or action.parent_id not in created_action_ids):
                     is_new = True
 
                 if is_new:
@@ -312,6 +308,7 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                                           group=config.group)
 
                 processed_actions[action.id] = issue
+                created_action_ids.append(action.id)
 
                 new_issues.append(issue)
                 ctx.logger.info(f"New issue {issue.id} created")
