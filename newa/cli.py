@@ -73,8 +73,13 @@ def default_state_dir() -> Path:
     '--conf-file',
     default='$HOME/.newa',
     )
+@click.option(
+    '--debug',
+    is_flag=True,
+    default=False,
+    )
 @click.pass_context
-def main(click_context: click.Context, state_dir: str, conf_file: str) -> None:
+def main(click_context: click.Context, state_dir: str, conf_file: str, debug: bool) -> None:
     ctx = CLIContext(
         settings=Settings.load(Path(os.path.expandvars(conf_file))),
         logger=logging.getLogger(),
@@ -82,6 +87,8 @@ def main(click_context: click.Context, state_dir: str, conf_file: str) -> None:
         )
     click_context.obj = ctx
 
+    if debug:
+        ctx.logger.setLevel(logging.DEBUG)
     ctx.logger.info(f'Using state directory {ctx.state_dirpath}')
     if not ctx.state_dirpath.exists():
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
