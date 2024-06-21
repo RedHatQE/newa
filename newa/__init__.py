@@ -1150,21 +1150,29 @@ class IssueHandler:
             "NEWA-123": {
                 "description": "description of first issue",
                 "parent": "NEWA-456"
+                "status": "closed"
             }
             "NEWA-456": {
                 "description": "description of second issue"
+                "status": "opened"
             }
         }
         """
 
-        fields = ["description", "parent", "opened"]
+        fields = ["description", "parent", "status"]
 
         newa_description = f"{self.newa_id(action, True) if all_respins else self.newa_id(action)}"
-        query = \
-            f"project = '{self.project}' AND " + \
-            f"labels in ({IssueHandler.newa_label}) AND " + \
-            f"description ~ '{newa_description}' AND " + \
-            f"status not in ({','.join(self.transitions['closed'])})"
+        if closed:
+            query = \
+                f"project = '{self.project}' AND " + \
+                f"labels in ({IssueHandler.newa_label}) AND " + \
+                f"description ~ '{newa_description}'"
+        else:
+            query = \
+                f"project = '{self.project}' AND " + \
+                f"labels in ({IssueHandler.newa_label}) AND " + \
+                f"description ~ '{newa_description}' AND " + \
+                f"status not in ({','.join(self.transitions['closed'])})"
         search_result = self.connection.search_issues(query, fields=fields, json_result=True)
         if not isinstance(search_result, dict):
             raise Exception(f"Unexpected search result type {type(search_result)}!")
@@ -1177,7 +1185,7 @@ class IssueHandler:
         for jira_issue in search_result["issues"]:
             if newa_description in jira_issue["fields"]["description"]:
                 result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
-                if jira_issue["fields"]["status"] in self.transitions['closed']:
+                if jira_issue["fields"]["status"]["name"] in self.transitions['closed']:
                     result[jira_issue["key"]] |= {"status": "closed"}
                 else:
                     result[jira_issue["key"]] |= {"status": "opened"}
