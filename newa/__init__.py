@@ -587,6 +587,7 @@ class Issue(Cloneable, Serializable):
     # usually JiraHandler.group takes priority but this value
     # will be used when JiraHandler is not available
     group: Optional[str] = None
+    closed: Optional[bool] = None
 
     def __str__(self) -> str:
         return self.id
@@ -1132,13 +1133,15 @@ class IssueHandler:
         except jira.JIRAError as e:
             raise Exception(f"Jira issue {issue} not found!") from e
 
-    def get_open_issues(self,
-                        action: IssueAction,
-                        all_respins: bool = False) -> dict[str, dict[str, str]]:
+    def get_related_issues(self,
+                           action: IssueAction,
+                           all_respins: bool = False,
+                           closed: bool = False) -> dict[str, dict[str, str]]:
         """
         Get issues related to erratum job with given summary
 
         Unless 'all_respins' is defined only issues related to the current respin are returned.
+        Unless 'closed' is defined, only opened issues are returned.
         Result is a dictionary such that keys are found Jira issue keys (ID) and values
         are dictionaries such that there is always 'description' key and if the issues has
         parent then there is also 'parent' key. For instance:
@@ -1154,7 +1157,7 @@ class IssueHandler:
         }
         """
 
-        fields = ["description", "parent"]
+        fields = ["description", "parent", "opened"]
 
         newa_description = f"{self.newa_id(action, True) if all_respins else self.newa_id(action)}"
         query = \
@@ -1174,6 +1177,10 @@ class IssueHandler:
         for jira_issue in search_result["issues"]:
             if newa_description in jira_issue["fields"]["description"]:
                 result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
+                if jira_issue["fields"]["status"] in self.transitions['closed']:
+                    result[jira_issue["key"]] |= {"status": "closed"}
+                else:
+                    result[jira_issue["key"]] |= {"status": "opened"}
                 if "parent" in jira_issue["fields"]:
                     result[jira_issue["key"]] |= {"parent": jira_issue["fields"]["parent"]["key"]}
         return result
