@@ -378,15 +378,15 @@ def cmd_schedule(ctx: CLIContext, arch: str) -> None:
         for request in requests:
             # before yaml export render all fields as Jinja templates
             for attr in ("reportportal", "tmt", "testingfarm", "environment", "context"):
-                if getattr(request, attr, None):
-                    for (key, value) in getattr(request, attr).items():
-                        getattr(request, attr)[key] = render_template(
-                            value,
-                            ERRATUM=jira_job.erratum,
-                            COMPOSE=jira_job.compose,
-                            CONTEXT=request.context,
-                            ENVIRONMENT=request.environment,
-                            )
+                mapping = getattr(request, attr, {})
+                for (key, value) in mapping.items():
+                    mapping[key] = render_template(
+                        value,
+                        ERRATUM=jira_job.erratum,
+                        COMPOSE=jira_job.compose,
+                        CONTEXT=request.context,
+                        ENVIRONMENT=request.environment,
+                        )
 
             # export schedule_job yaml
             schedule_job = ScheduleJob(
