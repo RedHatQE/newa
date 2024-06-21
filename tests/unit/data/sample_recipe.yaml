@@ -4,6 +4,8 @@ fixtures:
         ref: main
         path: demodata
         plan: /plan/plan1
+    testingfarm:
+        cli_args: "-c trigger=newa"
     context:
         tier: 1
     environment:

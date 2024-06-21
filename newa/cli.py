@@ -73,8 +73,13 @@ def default_state_dir() -> Path:
     '--conf-file',
     default='$HOME/.newa',
     )
+@click.option(
+    '--debug',
+    is_flag=True,
+    default=False,
+    )
 @click.pass_context
-def main(click_context: click.Context, state_dir: str, conf_file: str) -> None:
+def main(click_context: click.Context, state_dir: str, conf_file: str, debug: bool) -> None:
     ctx = CLIContext(
         settings=Settings.load(Path(os.path.expandvars(conf_file))),
         logger=logging.getLogger(),
@@ -82,6 +87,8 @@ def main(click_context: click.Context, state_dir: str, conf_file: str) -> None:
         )
     click_context.obj = ctx
 
+    if debug:
+        ctx.logger.setLevel(logging.DEBUG)
     ctx.logger.info(f'Using state directory {ctx.state_dirpath}')
     if not ctx.state_dirpath.exists():
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
@@ -360,16 +367,21 @@ def cmd_schedule(ctx: CLIContext, arch: str) -> None:
             config.fixtures['reportportal']['launch_name'] = os.path.splitext(
                 get_url_basename(jira_job.recipe.url))[0]
         # build requests
-        requests = list(config.build_requests(initial_config))
+        jinja_vars = {
+            'ERRATUM': jira_job.erratum,
+            }
+
+        requests = list(config.build_requests(initial_config, jinja_vars))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
         # create ScheduleJob object for each request
         for request in requests:
-            # before yaml export render specific fields
-            for rp_attr in ("launch_name", "launch_description", "suite_description"):
-                if request.reportportal and request.reportportal.get(rp_attr):
-                    request.reportportal[rp_attr] = render_template(  # type: ignore[literal-required]
-                        str(request.reportportal.get(rp_attr)),
+            # before yaml export render all fields as Jinja templates
+            for attr in ("reportportal", "tmt", "testingfarm", "environment", "context"):
+                mapping = getattr(request, attr, {})
+                for (key, value) in mapping.items():
+                    mapping[key] = render_template(
+                        value,
                         ERRATUM=jira_job.erratum,
                         COMPOSE=jira_job.compose,
                         CONTEXT=request.context,
@@ -431,6 +443,21 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     tf_request = schedule_job.request.initiate_tf_request(ctx)
     log(f'TF request filed with uuid {tf_request.uuid}')
 
+    # export Execution to YAML so that we can report it even later
+    # we won't report 'return_code' since it is not known yet
+    # This is something to be implemented later
+    execute_job = ExecuteJob(
+        event=schedule_job.event,
+        erratum=schedule_job.erratum,
+        compose=schedule_job.compose,
+        jira=schedule_job.jira,
+        recipe=schedule_job.recipe,
+        request=schedule_job.request,
+        execution=Execution(request_uuid=tf_request.uuid,
+                            batch_id=schedule_job.request.get_hash(ctx.timestamp)),
+        )
+    ctx.save_execute_job('execute-', execute_job)
+    # wait for TF job to finish
     finished = False
     delay = int(ctx.settings.tf_recheck_delay)
     while not finished:
@@ -439,23 +466,13 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         state = tf_request.details['state']
         log(f'TF reqest {tf_request.uuid} state: {state}')
         finished = state in ['complete', 'error']
-    execute_job = ExecuteJob(
-        event=schedule_job.event,
-        erratum=schedule_job.erratum,
-        compose=schedule_job.compose,
-        jira=schedule_job.jira,
-        recipe=schedule_job.recipe,
-        request=schedule_job.request,
-        execution=Execution(return_code=0,
-                            artifacts_url=tf_request.details['run']['artifacts'],
-                            batch_id=schedule_job.request.get_hash(ctx.timestamp)),
-        )
-    execute_job.to_yaml_file(
-        schedule_file.parent /
-        schedule_file.name.replace(
-            'schedule-',
-            'execute-'))
+
     log(f'finished with result: {tf_request.details["result"]["overall"]}')
+    # now write execution details once more
+    # FIXME: we pretend return_code to be 0
+    execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
+    execute_job.execution.return_code = 0
+    ctx.save_execute_job('execute-', execute_job)
 
 
 @main.command(name='report')
@@ -498,7 +515,8 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
             jira_request_mapping[jira_id] = {}
             jira_launch_mapping[jira_id] = RawRecipeReportPortalConfigDimension(
                 launch_name=execute_job.request.reportportal['launch_name'],
-                launch_description=execute_job.request.reportportal['launch_description'])
+                launch_description=execute_job.request.reportportal.get(
+                    'launch_description', None))
             # jira_launch_mapping[jira_id] = execute_job.request.reportportal['launch_name']
         # for each Jira and request ID we build a list of RP launches
         jira_request_mapping[jira_id][request_id] = rp.find_launches_by_attr(
@@ -539,12 +557,13 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
                 else:
                     launch_list = [merged_launch]
             # report results back to Jira
-            launch_urls = [rp.get_launch_url(launch) for launch in launch_list]
+            launch_urls = [rp.get_launch_url(str(launch)) for launch in launch_list]
             ctx.logger.info(f'RP launch urls: {" ".join(launch_urls)}')
             try:
                 joined_urls = '\n'.join(launch_urls)
-                jira_connection.add_comment(jira_id,
-                                            f"NEWA has imported test results to\n{joined_urls}")
+                description = description.replace('<br>', '\n')
+                jira_connection.add_comment(
+                    jira_id, f"NEWA has imported test results to\n{joined_urls}\n\n{description}")
                 ctx.logger.info(
                     f'Jira issue {jira_id} was updated with a RP launch URL')
             except jira.JIRAError as e:

@@ -313,12 +313,14 @@ class Arch(Enum):
     S390X = 's390x'
     PPC64LE = 'ppc64le'
     MULTI = 'multi'
+    SRPMS = 'SRPMS'  # just to ease errata processing
 
     @classmethod
     def architectures(cls: type[Arch],
                       preset: Optional[list[Arch]] = None) -> list[Arch]:
 
-        _all = [Arch(a) for a in Arch.__members__.values() if a != Arch.MULTI]
+        _exclude = [Arch.MULTI, Arch.SRPMS]
+        _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
 
         if not preset:
             return [Arch('x86_64')]
@@ -590,6 +592,13 @@ class RawRecipeTmtConfigDimension(TypedDict, total=False):
 _RecipeTmtConfigDimensionKey = Literal['url', 'ref', 'path', 'plan']
 
 
+class RawRecipeTFConfigDimension(TypedDict, total=False):
+    cli_args: Optional[str]
+
+
+_RecipeTFConfigDimensionKey = Literal['cli_args']
+
+
 class RawRecipeReportPortalConfigDimension(TypedDict, total=False):
     launch_name: Optional[str]
     launch_description: Optional[str]
@@ -606,12 +615,13 @@ class RawRecipeConfigDimension(TypedDict, total=False):
     compose: Optional[str]
     arch: Optional[Arch]
     tmt: Optional[RawRecipeTmtConfigDimension]
+    testingfarm: Optional[RawRecipeTFConfigDimension]
     reportportal: Optional[RawRecipeReportPortalConfigDimension]
     when: Optional[str]
 
 
-_RecipeConfigDimensionKey = Literal['context',
-                                    'environment', 'tmt', 'reportportal', 'when', 'arch']
+_RecipeConfigDimensionKey = Literal['context', 'environment',
+                                    'tmt', 'testingfarm', 'reportportal', 'when', 'arch']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.
@@ -627,7 +637,8 @@ class RecipeConfig(Cloneable, Serializable):
     dimensions: RawRecipeConfigDimensions = field(
         factory=cast(Callable[[], RawRecipeConfigDimensions], dict))
 
-    def build_requests(self, initial_config: RawRecipeConfigDimension) -> Iterator[Request]:
+    def build_requests(self, initial_config: RawRecipeConfigDimension,
+                       jinja_vars: Optional[dict[str, Any]] = None) -> Iterator[Request]:
         # this is here to generate unique recipe IDs
         recipe_id_gen = itertools.count(start=1)
 
@@ -662,6 +673,8 @@ class RecipeConfig(Cloneable, Serializable):
                 dest[key].update(src[key])  # type: ignore[literal-required]
             elif isinstance(dest[key], list) and isinstance(src[key], list):  # type: ignore[literal-required]
                 dest[key].extend(src[key])  # type: ignore[literal-required]
+            elif isinstance(dest[key], str) and isinstance(src[key], str):  # type: ignore[literal-required]
+                dest[key] = src[key]  # type: ignore[literal-required]
             else:
                 raise Exception(f"Don't know how to merge record type '{key}'")
 
@@ -684,10 +697,11 @@ class RecipeConfig(Cloneable, Serializable):
                 # we will expose COMPOSE, ENVIRONMENT, CONTEXT to evaluate a condition
                 test_result = eval_test(
                     condition,
-                    COMPOSE=combination['compose'],
-                    ARCH=combination['arch'],
-                    ENVIRONMENT=combination['environment'],
-                    CONTEXT=combination['context'])
+                    COMPOSE=combination.get('compose', None),
+                    ARCH=combination.get('arch', None),
+                    ENVIRONMENT=combination.get('environment', None),
+                    CONTEXT=combination.get('context', None),
+                    **(jinja_vars if jinja_vars else {}))
                 if not test_result:
                     continue
             filtered_combinations.append(combination)
@@ -705,9 +719,10 @@ class Request(Cloneable, Serializable):
     id: str
     context: RecipeContext = field(factory=dict)
     environment: RecipeEnvironment = field(factory=dict)
+    arch: Optional[Arch] = field(converter=Arch, default=Arch.X86_64)
     compose: Optional[str] = None
-    arch: Optional[Arch] = None
     tmt: Optional[RawRecipeTmtConfigDimension] = None
+    testingfarm: Optional[RawRecipeTFConfigDimension] = None
     reportportal: Optional[RawRecipeReportPortalConfigDimension] = None
     # TODO: 'when' not really needed, adding it to silent the linter
     when: Optional[str] = None
@@ -763,6 +778,9 @@ class Request(Cloneable, Serializable):
             command += ['--path', self.tmt['path']]
         if self.tmt.get("plan") and self.tmt['plan']:
             command += ['--plan', self.tmt['plan']]
+        # process Testing Farm related settings
+        if self.testingfarm and self.testingfarm['cli_args']:
+            command += [self.testingfarm['cli_args']]
         # process arch
         if self.arch:
             command += ['--arch', self.arch.value]
@@ -831,7 +849,8 @@ class Execution(Cloneable, Serializable):
     """ A test job execution """
 
     batch_id: str
-    return_code: int
+    return_code: Optional[int] = None
+    request_uuid: Optional[str] = None
     artifacts_url: Optional[str] = None
 
     def fetch_details(self) -> None:
@@ -962,9 +981,9 @@ class IssueAction:  # type: ignore[no-untyped-def]
     summary: str
     description: str
     id: str
-    on_respin: Optional[OnRespinAction] = field(  # type: ignore[var-annotated]
-        converter=lambda value: OnRespinAction(value) if value else None)
     type: IssueType = field(converter=IssueType)
+    on_respin: OnRespinAction = field(  # type: ignore[var-annotated]
+        converter=lambda value: OnRespinAction(value), default=OnRespinAction.CLOSE)
     assignee: Optional[str] = None
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
@@ -1094,18 +1113,20 @@ class IssueHandler:
             f"labels in ({IssueHandler.newa_label}) AND " + \
             f"description ~ '{newa_description}' AND " + \
             f"status not in ({','.join(self.transitions['closed'])})"
-
         search_result = self.connection.search_issues(query, fields=fields, json_result=True)
         if not isinstance(search_result, dict):
             raise Exception(f"Unexpected search result type {type(search_result)}!")
 
         # Transformation of search_result json into simpler structure gets rid of
         # linter warning and also makes easier mocking (for tests).
+        # Additionally, double-check that the description matches since Jira tend to mess up
+        # searches containing characters like underscore, space etc. and may return extra issues
         result = {}
         for jira_issue in search_result["issues"]:
-            result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
-            if "parent" in jira_issue["fields"]:
-                result[jira_issue["key"]] |= {"parent": jira_issue["fields"]["parent"]["key"]}
+            if newa_description in jira_issue["fields"]["description"]:
+                result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
+                if "parent" in jira_issue["fields"]:
+                    result[jira_issue["key"]] |= {"parent": jira_issue["fields"]["parent"]["key"]}
         return result
 
     def create_issue(self,
