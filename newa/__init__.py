@@ -312,6 +312,7 @@ class Arch(Enum):
     AARCH64 = 'aarch64'
     S390X = 's390x'
     PPC64LE = 'ppc64le'
+    NOARCH = 'noarch'
     MULTI = 'multi'
     SRPMS = 'SRPMS'  # just to ease errata processing
 
@@ -319,11 +320,14 @@ class Arch(Enum):
     def architectures(cls: type[Arch],
                       preset: Optional[list[Arch]] = None) -> list[Arch]:
 
-        _exclude = [Arch.MULTI, Arch.SRPMS]
+        _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH]
         _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
 
         if not preset:
             return [Arch('x86_64')]
+        # 'noarch' should be tested on all architectures
+        if Arch('noarch') in preset:
+            return _all
         # 'multi' is given for container advisories
         if Arch('multi') in preset:
             return _all
