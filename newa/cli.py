@@ -165,8 +165,13 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
     '--issue-config',
     default='component-config.yaml.sample',
     )
+@click.option(
+    '--recreate',
+    is_flag=True,
+    default=False,
+    )
 @click.pass_obj
-def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
+def cmd_jira(ctx: CLIContext, issue_config: str, recreate: bool) -> None:
     ctx.enter_command('jira')
 
     jira_url = ctx.settings.jira_url
@@ -255,8 +260,13 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 continue
 
             # Find existing issues related to artifact_job and action
-            search_result = jira.get_open_issues(action, all_respins=True)
+            # If we are supposed to recreate closed issues, search only for opened ones
+            if recreate:
+                search_result = jira.get_related_issues(action, all_respins=True, closed=False)
+            else:
+                search_result = jira.get_related_issues(action, all_respins=True, closed=True)
 
+            print(search_result)
             # Issues related to the curent respin and previous one(s).
             new_issues: list[Issue] = []
             old_issues: list[Issue] = []
@@ -270,32 +280,47 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                 # However, it might happen that we encounter an issue that is new but its
                 # original parent has been replaced by a newly created issue. In such a case
                 # we have to re-create the issue as well and drop the old one.
-                #
-                # TODO: we may want to distinguish issues that are Dropped and Done
-                # and do not re-create issues that are Done (i.e. completed)
                 is_new = False
                 if jira.newa_id(action) in jira_issue["description"] \
                     and (not action.parent_id
                          or action.parent_id not in created_action_ids):
                     is_new = True
 
+                print(jira_issue)
                 if is_new:
                     new_issues.append(
                         Issue(
                             jira_issue_key,
-                            group=config.group))
-                else:
+                            group=config.group,
+                            closed=jira_issue["status"] == "closed"))
+                # opened old issues may be reused
+                elif jira_issue["status"] == "opened":
                     old_issues.append(
                         Issue(
                             jira_issue_key,
-                            group=config.group))
+                            group=config.group,
+                            closed=False))
 
-            # Old issue(s) can be re-used for the current respin.
+            # Old opened issue(s) can be re-used for the current respin.
             if old_issues and action.on_respin == OnRespinAction.KEEP:
                 new_issues.extend(old_issues)
                 old_issues = []
 
-            # Processing new issues.
+            # Unless we want recreate closed issues we would stop processing
+            # if new_issues are closed as it means they are already processed by a user
+            if not recreate:
+                opened_issues = [i for i in new_issues if i.closed]
+                closed_issues = [i for i in new_issues if not i.closed]
+                # if there are no opened new issues we are done processing
+                if not opened_issues:
+                    closed_ids = ', '.join([i.id for i in closed_issues])
+                    ctx.logger.info(
+                        f"Relevant issues {closed_ids} found but already closed")
+                    continue
+                # otherwise we continue processing new issues
+                new_issues = opened_issues
+
+            # Processing new opened issues.
             #
             # 1. Either there is no new issue (it does not exist yet - we need to create it).
             if not new_issues:
