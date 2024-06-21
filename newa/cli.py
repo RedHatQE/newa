@@ -378,7 +378,8 @@ def cmd_schedule(ctx: CLIContext, arch: str) -> None:
         for request in requests:
             # before yaml export render all fields as Jinja templates
             for attr in ("reportportal", "tmt", "testingfarm", "environment", "context"):
-                mapping = getattr(request, attr, {})
+                # getattr(request, attr) could also be None due to 'attr' being None
+                mapping = getattr(request, attr, {}) or {}
                 for (key, value) in mapping.items():
                     mapping[key] = render_template(
                         value,
