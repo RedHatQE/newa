@@ -266,7 +266,6 @@ def cmd_jira(ctx: CLIContext, issue_config: str, recreate: bool) -> None:
             else:
                 search_result = jira.get_related_issues(action, all_respins=True, closed=True)
 
-            print(search_result)
             # Issues related to the curent respin and previous one(s).
             new_issues: list[Issue] = []
             old_issues: list[Issue] = []
@@ -286,7 +285,6 @@ def cmd_jira(ctx: CLIContext, issue_config: str, recreate: bool) -> None:
                          or action.parent_id not in created_action_ids):
                     is_new = True
 
-                print(jira_issue)
                 if is_new:
                     new_issues.append(
                         Issue(
@@ -308,9 +306,9 @@ def cmd_jira(ctx: CLIContext, issue_config: str, recreate: bool) -> None:
 
             # Unless we want recreate closed issues we would stop processing
             # if new_issues are closed as it means they are already processed by a user
-            if not recreate:
-                opened_issues = [i for i in new_issues if i.closed]
-                closed_issues = [i for i in new_issues if not i.closed]
+            if new_issues and (not recreate):
+                opened_issues = [i for i in new_issues if not i.closed]
+                closed_issues = [i for i in new_issues if i.closed]
                 # if there are no opened new issues we are done processing
                 if not opened_issues:
                     closed_ids = ', '.join([i.id for i in closed_issues])
