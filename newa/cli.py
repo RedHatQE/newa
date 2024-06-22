@@ -177,7 +177,16 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
 
         # read Jira issue configuration
         config = IssueConfig.from_yaml_with_include(os.path.expandvars(issue_config))
-        jira = IssueHandler(artifact_job, jira_url, jira_token, config.project, config.transitions)
+        jira = IssueHandler(
+            artifact_job,
+            jira_url,
+            jira_token,
+            config.project,
+            config.transitions,
+            group=getattr(
+                config,
+                'group',
+                None))
         ctx.logger.info("Initialized Jira handler")
 
         # All issue action from the configuration.
@@ -267,9 +276,15 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                     is_new = True
 
                 if is_new:
-                    new_issues.append(Issue(jira_issue_key))
+                    new_issues.append(
+                        Issue(
+                            jira_issue_key,
+                            group=config.group))
                 else:
-                    old_issues.append(Issue(jira_issue_key))
+                    old_issues.append(
+                        Issue(
+                            jira_issue_key,
+                            group=config.group))
 
             # Old issue(s) can be re-used for the current respin.
             if old_issues and action.on_respin == OnRespinAction.KEEP:
@@ -288,7 +303,8 @@ def cmd_jira(ctx: CLIContext, issue_config: str) -> None:
                                           rendered_summary,
                                           rendered_description,
                                           rendered_assignee,
-                                          parent)
+                                          parent,
+                                          group=config.group)
 
                 processed_actions[action.id] = issue
 
@@ -491,6 +507,8 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
 
     jira_request_mapping: dict[str, dict[str, list[str]]] = {}
     jira_launch_mapping: dict[str, RawRecipeReportPortalConfigDimension] = {}
+    # jira_group_mapping will store comment restrictions only when defined
+    jira_group_mapping: dict[str, str] = {}
     if not rp_project:
         rp_project = ctx.settings.rp_project
     if not rp_url:
@@ -510,6 +528,8 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     # process each stored execute file
     for execute_job in ctx.load_execute_jobs('execute-'):
         jira_id = execute_job.jira.id
+        if execute_job.jira.group:
+            jira_group_mapping[jira_id] = execute_job.jira.group
         request_id = execute_job.request.id
         # it is sufficient to process each Jira issue only once
         if jira_id not in jira_request_mapping:
@@ -564,7 +584,12 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
                 joined_urls = '\n'.join(launch_urls)
                 description = description.replace('<br>', '\n')
                 jira_connection.add_comment(
-                    jira_id, f"NEWA has imported test results to\n{joined_urls}\n\n{description}")
+                    jira_id,
+                    f"NEWA has imported test results to\n{joined_urls}\n\n{description}",
+                    visibility={
+                        'type': 'group',
+                        'value': jira_group_mapping[jira_id]}
+                    if jira_id in jira_group_mapping else None)
                 ctx.logger.info(
                     f'Jira issue {jira_id} was updated with a RP launch URL')
             except jira.JIRAError as e:

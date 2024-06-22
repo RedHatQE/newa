@@ -567,6 +567,10 @@ class Issue(Cloneable, Serializable):
     """ Issue - a key in Jira (eg. NEWA-123) """
 
     id: str = field()
+    # this is used to store comment visibility restriction
+    # usually JiraHandler.group takes priority but this value
+    # will be used when JiraHandler is not available
+    group: Optional[str] = None
 
     def __str__(self) -> str:
         return self.id
@@ -1003,6 +1007,7 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
     issues: list[IssueAction] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
+    group: Optional[str] = None
 
 
 @frozen
@@ -1032,6 +1037,7 @@ class IssueHandler:
 
     # NEWA label
     newa_label: ClassVar[str] = "NEWA"
+    group: Optional[str] = None
 
     @connection.default  # pyright: ignore [reportAttributeAccessIssue]
     def connection_factory(self) -> jira.JIRA:
@@ -1138,7 +1144,8 @@ class IssueHandler:
                      summary: str,
                      description: str,
                      assignee_email: str | None = None,
-                     parent: Issue | None = None) -> Issue:
+                     parent: Issue | None = None,
+                     group: Optional[str] = None) -> Issue:
         """ Create issue """
 
         data = {
@@ -1176,7 +1183,7 @@ class IssueHandler:
                     "labels": [
                         *jira_issue.fields.labels,
                         IssueHandler.newa_label]})
-            return Issue(jira_issue.key)
+            return Issue(jira_issue.key, group=self.group)
         except jira.JIRAError as e:
             raise Exception("Unable to create issue!") from e
 
@@ -1196,7 +1203,8 @@ class IssueHandler:
                                      f"{self.newa_id(action)}\n", description)
             try:
                 self.get_details(issue).update(fields={"description": new_description})
-                self.comment_issue(issue, "NEWA refreshed issue ID.")
+                self.comment_issue(
+                    issue, "NEWA refreshed issue ID.")
             except jira.JIRAError as e:
                 raise Exception(f"Unable to modify issue {issue}!") from e
 
@@ -1204,7 +1212,9 @@ class IssueHandler:
         """ Add comment to issue """
 
         try:
-            self.connection.add_comment(issue.id, comment)
+            self.connection.add_comment(
+                issue.id, comment, visibility={
+                    'type': 'group', 'value': self.group} if self.group else None)
         except jira.JIRAError as e:
             raise Exception(f"Unable to add a comment to issue {issue}!") from e
 
@@ -1213,13 +1223,16 @@ class IssueHandler:
 
         obsoleting_comment = f"NEWA dropped this issue (obsoleted by {obsoleted_by})."
         try:
-            self.connection.create_issue_link(type="relates to",
-                                              inwardIssue=issue.id,
-                                              outwardIssue=obsoleted_by.id,
-                                              comment={
-                                                   "body": obsoleting_comment,
-                                                   "visbility": None,
-                                                  })
+            self.connection.create_issue_link(
+                type="relates to",
+                inwardIssue=issue.id,
+                outwardIssue=obsoleted_by.id,
+                comment={
+                    "body": obsoleting_comment,
+                    "visibility": {
+                        'type': 'group',
+                        'value': self.group} if self.group else None,
+                    })
             self.connection.transition_issue(issue.id,
                                              transition=self.transitions["dropped"][0])
         except jira.JIRAError as e:
