@@ -698,10 +698,11 @@ class RecipeConfig(Cloneable, Serializable):
             # check if there is a condition present and evaluate it
             condition = combination.get('when', '')
             if condition:
+                compose: Optional[str] = combination.get('compose', '')
                 # we will expose COMPOSE, ENVIRONMENT, CONTEXT to evaluate a condition
                 test_result = eval_test(
                     condition,
-                    COMPOSE=combination.get('compose', None),
+                    COMPOSE=Compose(compose) if compose else None,
                     ARCH=combination.get('arch', None),
                     ENVIRONMENT=combination.get('environment', None),
                     CONTEXT=combination.get('context', None),
