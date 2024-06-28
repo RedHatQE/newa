@@ -228,12 +228,19 @@ def get_request(
         response_content: ResponseContentType = ResponseContentType.TEXT) -> Any:
     """ Generic GET request, optionally using Kerberos authentication """
     while attempts:
-        r = requests.get(url, auth=HTTPKerberosAuth(delegate=True)) if krb else requests.get(url)
-        if r.status_code == 200:
-            response = getattr(r, response_content.value)
-            if callable(response):
-                return response()
-            return response
+        try:
+            r = requests.get(
+                url,
+                auth=HTTPKerberosAuth(delegate=True),
+                ) if krb else requests.get(url)
+            if r.status_code == 200:
+                response = getattr(r, response_content.value)
+                if callable(response):
+                    return response()
+                return response
+        except requests.exceptions.RequestException:
+            # will give it another try
+            pass
         time.sleep(delay)
         attempts -= 1
 
