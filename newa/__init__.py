@@ -490,12 +490,20 @@ class ErrataTool:
                     builds.append(build)
                     for channel in channels.values():
                         archs.update([Arch(a) for a in channel])
+            content_type = ErratumContentType(
+                info_json["content_types"][0])
             if builds:
+                if content_type == ErratumContentType.MODULE:
+                    nsvcs = [NSVCParser(b) for b in builds]
+                    builds = [str(n) for n in nsvcs]
+                    components = [f'{n.name}:{n.stream}' for n in nsvcs]
+                else:
+                    components = [NVRParser(build).name for build in builds]
+
                 errata.append(
                     Erratum(
                         id=event.id,
-                        content_type=ErratumContentType(
-                            info_json["content_types"][0]),
+                        content_type=content_type,
                         respin_count=int(
                             info_json["respin_count"]),
                         summary=info_json["synopsis"],
@@ -503,7 +511,7 @@ class ErrataTool:
                         release=release,
                         builds=builds,
                         archs=Arch.architectures(list(archs)),
-                        components=[NVRParser(build).name for build in builds]))
+                        components=components))
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
@@ -540,6 +548,7 @@ class ErratumContentType(Enum):
 
     RPM = 'rpm'
     DOCKER = 'docker'
+    MODULE = 'module'
 
 
 @define
@@ -795,8 +804,10 @@ class Request(Cloneable, Serializable):
             # as due to SUITE_PER_PLAN enabled the launch description will end up
             # in suite description as well once
             # https://github.com/teemtee/tmt/issues/2990 is implemented
-            command += ['--tmt-environment',
-                        f"""TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION='{self.reportportal.get("suite_description")}'"""]
+            command += [
+                '--tmt-environment',
+                f"""TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION='{
+                    self.reportportal.get("suite_description")}'"""]
         # process context
         if self.context:
             for k, v in self.context.items():
@@ -893,6 +904,23 @@ class NVRParser:
 
 
 @define
+class NSVCParser:
+
+    nsvc: str
+    name: str = field(init=False)
+    stream: str = field(init=False)
+    version: str = field(init=False)
+    context: str = field(init=False)
+
+    def __attrs_post_init__(self) -> None:
+        self.name, self.stream, partial = self.nsvc.rsplit("-", 2)
+        self.version, self.context = partial.split('.', 1)
+
+    def __str__(self) -> str:
+        return f'{self.name}:{self.stream}:{self.version}:{self.context}'
+
+
+@define
 class ArtifactJob(EventJob):
     """ A single *erratum* job """
 
@@ -908,6 +936,8 @@ class ArtifactJob(EventJob):
     def short_id(self) -> str:
         if self.erratum:
             if self.erratum.content_type == ErratumContentType.RPM:
+                return self.erratum.release
+            if self.erratum.content_type == ErratumContentType.MODULE:
                 return self.erratum.release
             if self.erratum.content_type == ErratumContentType.DOCKER:
                 # docker type ArtifactJob is identified by the container name

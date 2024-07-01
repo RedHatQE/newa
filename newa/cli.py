@@ -135,7 +135,7 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
             for erratum in errata:
                 # identify compose to be used, just a dump conversion for now
                 compose = erratum.release.rstrip('.GA') + '-Nightly'
-                if erratum.content_type == ErratumContentType.RPM:
+                if erratum.content_type in (ErratumContentType.RPM, ErratumContentType.MODULE):
                     artifact_job = ArtifactJob(event=event, erratum=erratum,
                                                compose=Compose(id=compose))
                     ctx.save_artifact_job('event-', artifact_job)
