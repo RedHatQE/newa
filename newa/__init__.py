@@ -875,6 +875,7 @@ class Execution(Cloneable, Serializable):
     return_code: Optional[int] = None
     request_uuid: Optional[str] = None
     artifacts_url: Optional[str] = None
+    command: Optional[str] = None
 
     def fetch_details(self) -> None:
         raise NotImplementedError
