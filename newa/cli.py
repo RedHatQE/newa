@@ -444,6 +444,11 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     tf_request = schedule_job.request.initiate_tf_request(ctx)
     log(f'TF request filed with uuid {tf_request.uuid}')
 
+    # generate Tf command so we can log it
+    command_args, environment = schedule_job.request.generate_tf_exec_command(ctx)
+    command = ' '.join(command_args)
+    # hide tokens
+    command = command.replace(ctx.settings.rp_token, '***')
     # export Execution to YAML so that we can report it even later
     # we won't report 'return_code' since it is not known yet
     # This is something to be implemented later
@@ -455,7 +460,8 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         recipe=schedule_job.recipe,
         request=schedule_job.request,
         execution=Execution(request_uuid=tf_request.uuid,
-                            batch_id=schedule_job.request.get_hash(ctx.timestamp)),
+                            batch_id=schedule_job.request.get_hash(ctx.timestamp),
+                            command=command),
         )
     ctx.save_execute_job('execute-', execute_job)
     # wait for TF job to finish
