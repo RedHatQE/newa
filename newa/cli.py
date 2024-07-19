@@ -134,7 +134,12 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
             errata = ErrataTool(url=et_url).get_errata(event)
             for erratum in errata:
                 # identify compose to be used, just a dump conversion for now
-                compose = erratum.release.rstrip('.GA') + '-Nightly'
+                compose = erratum.release.strip()
+                if compose.endswith('.GA'):
+                    compose = compose[:-3]
+                compose += '-Nightly'
+                # handle compose differences between ET and TF
+                compose = compose.replace('RHEL-10.0.BETA', 'RHEL-10-Beta')
                 if erratum.content_type in (ErratumContentType.RPM, ErratumContentType.MODULE):
                     artifact_job = ArtifactJob(event=event, erratum=erratum,
                                                compose=Compose(id=compose))
