@@ -455,7 +455,9 @@ def cmd_execute(ctx: CLIContext, workers: int) -> None:
 
 def worker(ctx: CLIContext, schedule_file: Path) -> None:
 
-    log = partial(print, schedule_file.name)
+    # modify log message so it contains name of the processed file
+    # so that we can distinguish individual workers
+    log = partial(lambda msg: ctx.logger.info("%s: %s", schedule_file.name, msg))
 
     log('processing request...')
     # read request details
