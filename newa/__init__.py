@@ -518,7 +518,8 @@ class ErrataTool:
                         release=release,
                         builds=builds,
                         archs=Arch.architectures(list(archs)),
-                        components=components))
+                        components=components,
+                        url=f"{self.url}/advisory/{event.id}"))
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
@@ -573,6 +574,7 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     summary: str = field(repr=False)
     people_assigned_to: str = field(repr=False)
     release: str = field()
+    url: str = field()
     archs: list[Arch] = field(factory=list)
     builds: list[str] = field(factory=list)
     components: list[str] = field(factory=list)
