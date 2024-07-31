@@ -21,8 +21,10 @@ jobs:
   - job: copr_build
     trigger: pull_request
     targets:
-      - fedora-all
-      - epel-9
+      - fedora-all-x86_64
+      - fedora-all-aarch64
+      - epel-9-x86_64
+      - epel-9-aarch64
     enable_net: false
     actions:
       create-archive:
@@ -41,8 +43,10 @@ jobs:
     trigger: commit
     branch: main
     targets:
-      - fedora-all
-      - epel-9
+      - fedora-all-x86_64
+      - fedora-all-aarch64
+      - epel-9-x86_64
+      - epel-9-aarch64
     enable_net: false
     list_on_homepage: true
     #preserve_project: true
@@ -60,8 +64,10 @@ jobs:
   - job: copr_build
     trigger: release
     targets:
-      - fedora-all
-      - epel-9
+      - fedora-all-x86_64
+      - fedora-all-aarch64
+      - epel-9-x86_64
+      - epel-9-aarch64
     enable_net: false
     list_on_homepage: true
     preserve_project: true
