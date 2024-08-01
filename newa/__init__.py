@@ -778,13 +778,13 @@ class Request(Cloneable, Serializable):
             raise Exception('ERROR: ReportPortal launch name is not specified')
         command += [
             '--tmt-environment',
-            f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN={rp_token}',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"',
             '--tmt-environment',
-            f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL={rp_url}',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL="{rp_url}"',
             '--tmt-environment',
-            f'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT={rp_project}',
+            f'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT="{rp_project}"',
             '--tmt-environment',
-            f'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH={self.reportportal["launch_name"]}',
+            f"""TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH='{self.reportportal["launch_name"]}'""",
             '--tmt-environment',
             'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
             '--context', f'newa_batch={self.get_hash(ctx.timestamp)}',
