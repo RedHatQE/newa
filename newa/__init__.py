@@ -838,6 +838,9 @@ class Request(Cloneable, Serializable):
         # extend current envvars with the ones from the generated command
         env = copy.deepcopy(os.environ)
         env.update(environment)
+        # disable colors and escape control sequences
+        env['NO_COLOR'] = "1"
+        env['NO_TTY'] = "1"
         if not command:
             raise Exception("Failed to generate testing-farm command")
         try:
@@ -852,7 +855,7 @@ class Request(Cloneable, Serializable):
             output = process.stdout
         except subprocess.CalledProcessError as e:
             output = e.stdout
-        r = re.search(' api [^h]*(https://[\\S]*)\x1b', output)
+        r = re.search('api (https://[\\S]*)', output)
         if not r:
             raise Exception(f"TF request failed:\n{output}\n")
         api = r.group(1).strip()
