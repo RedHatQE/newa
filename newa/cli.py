@@ -39,6 +39,8 @@ from . import (
     render_template,
     )
 
+JIRA_NONE_ID = '_NO_ISSUE'
+
 logging.basicConfig(
     format='%(asctime)s %(message)s',
     datefmt='%m/%d/%Y %I:%M:%S %p',
@@ -194,15 +196,25 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
 @main.command(name='jira')
 @click.option(
     '--issue-config',
-    default='component-config.yaml.sample',
     )
 @click.option(
     '--recreate',
     is_flag=True,
     default=False,
     )
+@click.option(
+    '--issue',
+    )
+@click.option(
+    '--job-recipe',
+    )
 @click.pass_obj
-def cmd_jira(ctx: CLIContext, issue_config: str, recreate: bool) -> None:
+def cmd_jira(
+        ctx: CLIContext,
+        issue_config: str,
+        recreate: bool,
+        issue: str,
+        job_recipe: str) -> None:
     ctx.enter_command('jira')
 
     jira_url = ctx.settings.jira_url
@@ -214,198 +226,221 @@ def cmd_jira(ctx: CLIContext, issue_config: str, recreate: bool) -> None:
         raise Exception('Jira URL is not configured!')
 
     for artifact_job in ctx.load_artifact_jobs('event-'):
+        # when issue_config is defined, --issue and --job-recipe are ignored
+        # as it will be set depending on the --issue-config content
+        if issue_config:
+            # read Jira issue configuration
+            config = IssueConfig.from_yaml_with_include(os.path.expandvars(issue_config))
 
-        # read Jira issue configuration
-        config = IssueConfig.from_yaml_with_include(os.path.expandvars(issue_config))
-        jira = IssueHandler(
-            artifact_job,
-            jira_url,
-            jira_token,
-            config.project,
-            config.transitions,
-            group=getattr(
-                config,
-                'group',
-                None))
-        ctx.logger.info("Initialized Jira handler")
+            jira_handler = IssueHandler(
+                artifact_job,
+                jira_url,
+                jira_token,
+                config.project,
+                config.transitions,
+                group=getattr(
+                    config,
+                    'group',
+                    None))
+            ctx.logger.info("Initialized Jira handler")
 
-        # All issue action from the configuration.
-        issue_actions = config.issues[:]
+            # All issue action from the configuration.
+            issue_actions = config.issues[:]
 
-        # Processed action (action.id : issue).
-        processed_actions: dict[str, Issue] = {}
+            # Processed action (action.id : issue).
+            processed_actions: dict[str, Issue] = {}
 
-        # action_ids for which new Issues have been created
-        created_action_ids: list[str] = []
+            # action_ids for which new Issues have been created
+            created_action_ids: list[str] = []
 
-        # Length of the queue the last time issue action was processed,
-        # Use to prevent endless loop over the issue actions.
-        endless_loop_check: dict[str, int] = {}
+            # Length of the queue the last time issue action was processed,
+            # Use to prevent endless loop over the issue actions.
+            endless_loop_check: dict[str, int] = {}
 
-        # Iterate over issue actions. Take one, if it's not possible to finish it,
-        # put it back at the end of the queue.
-        while issue_actions:
-            action = issue_actions.pop(0)
+            # Iterate over issue actions. Take one, if it's not possible to finish it,
+            # put it back at the end of the queue.
+            while issue_actions:
+                action = issue_actions.pop(0)
 
-            ctx.logger.info(f"Processing {action.id}")
+                ctx.logger.info(f"Processing {action.id}")
 
-            if action.when and not eval_test(action.when,
-                                             JOB=artifact_job,
-                                             EVENT=artifact_job.event,
-                                             ERRATUM=artifact_job.erratum,
-                                             COMPOSE=artifact_job.compose,
-                                             ENVIRONMENT=ctx.cli_environment):
-                ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
-                continue
-
-            rendered_summary = render_template(
-                action.summary,
-                ERRATUM=artifact_job.erratum,
-                COMPOSE=artifact_job.compose,
-                ENVIRONMENT=ctx.cli_environment)
-            rendered_description = render_template(
-                action.description,
-                ERRATUM=artifact_job.erratum,
-                COMPOSE=artifact_job.compose,
-                ENVIRONMENT=ctx.cli_environment)
-            if action.assignee:
-                rendered_assignee = render_template(
-                    action.assignee,
-                    ERRATUM=artifact_job.erratum,
-                    COMPOSE=artifact_job.compose,
-                    ENVIRONMENT=ctx.cli_environment)
-            else:
-                rendered_assignee = None
-            if action.newa_id:
-                action.newa_id = render_template(
-                    action.newa_id,
-                    ERRATUM=artifact_job.erratum,
-                    COMPOSE=artifact_job.compose,
-                    ENVIRONMENT=ctx.cli_environment)
-
-            # Detect that action has parent available (if applicable), if we went trough the
-            # actions already and parent was not found, we abort.
-            if action.parent_id and action.parent_id not in processed_actions:
-                queue_length = len(issue_actions)
-                last_queue_length = endless_loop_check.get(action.id, 0)
-                if last_queue_length == queue_length:
-                    raise Exception(f"Parent {action.parent_id} for {action.id} not found!")
-
-                endless_loop_check[action.id] = queue_length
-                ctx.logger.info(f"Skipped for now (parent {action.parent_id} not yet found)")
-
-                issue_actions.append(action)
-                continue
-
-            # Find existing issues related to artifact_job and action
-            # If we are supposed to recreate closed issues, search only for opened ones
-            if recreate:
-                search_result = jira.get_related_issues(action, all_respins=True, closed=False)
-            else:
-                search_result = jira.get_related_issues(action, all_respins=True, closed=True)
-
-            # Issues related to the curent respin and previous one(s).
-            new_issues: list[Issue] = []
-            old_issues: list[Issue] = []
-            for jira_issue_key, jira_issue in search_result.items():
-                ctx.logger.info(f"Checking {jira_issue_key}")
-
-                # In general, issue is new (relevant to the current respin) if it has newa_id
-                # of this action in the description. Otherwise, it is old (relevant to the
-                # previous respins).
-                #
-                # However, it might happen that we encounter an issue that is new but its
-                # original parent has been replaced by a newly created issue. In such a case
-                # we have to re-create the issue as well and drop the old one.
-                is_new = False
-                if jira.newa_id(action) in jira_issue["description"] \
-                    and (not action.parent_id
-                         or action.parent_id not in created_action_ids):
-                    is_new = True
-
-                if is_new:
-                    new_issues.append(
-                        Issue(
-                            jira_issue_key,
-                            group=config.group,
-                            closed=jira_issue["status"] == "closed"))
-                # opened old issues may be reused
-                elif jira_issue["status"] == "opened":
-                    old_issues.append(
-                        Issue(
-                            jira_issue_key,
-                            group=config.group,
-                            closed=False))
-
-            # Old opened issue(s) can be re-used for the current respin.
-            if old_issues and action.on_respin == OnRespinAction.KEEP:
-                new_issues.extend(old_issues)
-                old_issues = []
-
-            # Unless we want recreate closed issues we would stop processing
-            # if new_issues are closed as it means they are already processed by a user
-            if new_issues and (not recreate):
-                opened_issues = [i for i in new_issues if not i.closed]
-                closed_issues = [i for i in new_issues if i.closed]
-                # if there are no opened new issues we are done processing
-                if not opened_issues:
-                    closed_ids = ', '.join([i.id for i in closed_issues])
-                    ctx.logger.info(
-                        f"Relevant issues {closed_ids} found but already closed")
+                if action.when and not eval_test(action.when,
+                                                 JOB=artifact_job,
+                                                 EVENT=artifact_job.event,
+                                                 ERRATUM=artifact_job.erratum,
+                                                 COMPOSE=artifact_job.compose):
+                    ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
                     continue
-                # otherwise we continue processing new issues
-                new_issues = opened_issues
 
-            # Processing new opened issues.
-            #
-            # 1. Either there is no new issue (it does not exist yet - we need to create it).
-            if not new_issues:
-                parent = None
-                if action.parent_id:
-                    parent = processed_actions.get(action.parent_id, None)
+                rendered_summary = render_template(
+                    action.summary,
+                    ERRATUM=artifact_job.erratum,
+                    COMPOSE=artifact_job.compose)
+                rendered_description = render_template(
+                    action.description, ERRATUM=artifact_job.erratum, COMPOSE=artifact_job.compose)
+                if action.assignee:
+                    rendered_assignee = render_template(
+                        action.assignee,
+                        ERRATUM=artifact_job.erratum,
+                        COMPOSE=artifact_job.compose)
+                else:
+                    rendered_assignee = None
+                if action.newa_id:
+                    action.newa_id = render_template(
+                        action.newa_id,
+                        ERRATUM=artifact_job.erratum,
+                        COMPOSE=artifact_job.compose)
 
-                issue = jira.create_issue(action,
-                                          rendered_summary,
-                                          rendered_description,
-                                          rendered_assignee,
-                                          parent,
-                                          group=config.group)
+                # Detect that action has parent available (if applicable), if we went trough the
+                # actions already and parent was not found, we abort.
+                if action.parent_id and action.parent_id not in processed_actions:
+                    queue_length = len(issue_actions)
+                    last_queue_length = endless_loop_check.get(action.id, 0)
+                    if last_queue_length == queue_length:
+                        raise Exception(f"Parent {action.parent_id} for {action.id} not found!")
 
-                processed_actions[action.id] = issue
-                created_action_ids.append(action.id)
+                    endless_loop_check[action.id] = queue_length
+                    ctx.logger.info(f"Skipped for now (parent {action.parent_id} not yet found)")
 
-                new_issues.append(issue)
-                ctx.logger.info(f"New issue {issue.id} created")
+                    issue_actions.append(action)
+                    continue
 
-            # Or there is exactly one new issue (already created or re-used old issue).
-            elif len(new_issues) == 1:
-                issue = new_issues[0]
-                processed_actions[action.id] = issue
+                # Find existing issues related to artifact_job and action
+                # If we are supposed to recreate closed issues, search only for opened ones
+                if recreate:
+                    search_result = jira_handler.get_related_issues(
+                        action, all_respins=True, closed=False)
+                else:
+                    search_result = jira_handler.get_related_issues(
+                        action, all_respins=True, closed=True)
 
-                # If the old issue was reused, re-fresh it.
-                parent = processed_actions[action.parent_id] if action.parent_id else None
-                jira.refresh_issue(action, issue)
-                ctx.logger.info(f"Issue {issue} re-used")
+                # Issues related to the curent respin and previous one(s).
+                new_issues: list[Issue] = []
+                old_issues: list[Issue] = []
+                for jira_issue_key, jira_issue in search_result.items():
+                    ctx.logger.info(f"Checking {jira_issue_key}")
 
-            # But if there are more than one new issues we encountered error.
+                    # In general, issue is new (relevant to the current respin) if it has newa_id
+                    # of this action in the description. Otherwise, it is old (relevant to the
+                    # previous respins).
+                    #
+                    # However, it might happen that we encounter an issue that is new but its
+                    # original parent has been replaced by a newly created issue. In such a case
+                    # we have to re-create the issue as well and drop the old one.
+                    is_new = False
+                    if jira_handler.newa_id(action) in jira_issue["description"] \
+                        and (not action.parent_id
+                             or action.parent_id not in created_action_ids):
+                        is_new = True
+
+                    if is_new:
+                        new_issues.append(
+                            Issue(
+                                jira_issue_key,
+                                group=config.group,
+                                closed=jira_issue["status"] == "closed"))
+                    # opened old issues may be reused
+                    elif jira_issue["status"] == "opened":
+                        old_issues.append(
+                            Issue(
+                                jira_issue_key,
+                                group=config.group,
+                                closed=False))
+
+                # Old opened issue(s) can be re-used for the current respin.
+                if old_issues and action.on_respin == OnRespinAction.KEEP:
+                    new_issues.extend(old_issues)
+                    old_issues = []
+
+                # Unless we want recreate closed issues we would stop processing
+                # if new_issues are closed as it means they are already processed by a user
+                if new_issues and (not recreate):
+                    opened_issues = [i for i in new_issues if not i.closed]
+                    closed_issues = [i for i in new_issues if i.closed]
+                    # if there are no opened new issues we are done processing
+                    if not opened_issues:
+                        closed_ids = ', '.join([i.id for i in closed_issues])
+                        ctx.logger.info(
+                            f"Relevant issues {closed_ids} found but already closed")
+                        continue
+                    # otherwise we continue processing new issues
+                    new_issues = opened_issues
+
+                # Processing new opened issues.
+                #
+                # 1. Either there is no new issue (it does not exist yet - we need to create it).
+                if not new_issues:
+                    parent = None
+                    if action.parent_id:
+                        parent = processed_actions.get(action.parent_id, None)
+
+                    new_issue = jira_handler.create_issue(action,
+                                                          rendered_summary,
+                                                          rendered_description,
+                                                          rendered_assignee,
+                                                          parent,
+                                                          group=config.group)
+
+                    processed_actions[action.id] = new_issue
+                    created_action_ids.append(action.id)
+
+                    new_issues.append(new_issue)
+                    ctx.logger.info(f"New issue {new_issue.id} created")
+
+                # Or there is exactly one new issue (already created or re-used old issue).
+                elif len(new_issues) == 1:
+                    new_issue = new_issues[0]
+                    processed_actions[action.id] = new_issue
+
+                    # If the old issue was reused, re-fresh it.
+                    parent = processed_actions[action.parent_id] if action.parent_id else None
+                    jira_handler.refresh_issue(action, new_issue)
+                    ctx.logger.info(f"Issue {new_issue} re-used")
+
+                # But if there are more than one new issues we encountered error.
+                else:
+                    raise Exception(f"More than one new {action.id} found ({new_issues})!")
+
+                if action.job_recipe:
+                    jira_job = JiraJob(event=artifact_job.event,
+                                       erratum=artifact_job.erratum,
+                                       compose=artifact_job.compose,
+                                       jira=new_issue,
+                                       recipe=Recipe(url=action.job_recipe))
+                    ctx.save_jira_job('jira-', jira_job)
+
+                # Processing old issues - we only expect old issues that are to be closed (if any).
+                if old_issues:
+                    if action.on_respin != OnRespinAction.CLOSE:
+                        raise Exception(
+                            f"Invalid respin action {action.on_respin} for {old_issues}!")
+                    for old_issue in old_issues:
+                        jira_handler.drop_obsoleted_issue(
+                            old_issue, obsoleted_by=processed_actions[action.id])
+                        ctx.logger.info(f"Old issue {old_issue} closed")
+
+        # when there is no issue_config we will create one
+        # using --issue and --job_recipe parameters
+        else:
+            if not job_recipe:
+                raise Exception("Option --job-recipe is mandatory when --issue-config is not set")
+            if issue:
+                # verify that specified Jira issue truly exists
+                jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
+                jira_connection.issue(issue)
+                ctx.logger.info(f"Using issue {issue}")
+                new_issue = Issue(issue)
             else:
-                raise Exception(f"More than one new {action.id} found ({new_issues})!")
+                # when --issue is not specified, we would use an empty string as ID
+                # so we will skip Jira reporting steps in later stages
+                new_issue = Issue(JIRA_NONE_ID)
 
-            if action.job_recipe:
-                jira_job = JiraJob(event=artifact_job.event,
-                                   erratum=artifact_job.erratum,
-                                   compose=artifact_job.compose,
-                                   jira=issue,
-                                   recipe=Recipe(url=action.job_recipe))
-                ctx.save_jira_job('jira-', jira_job)
-
-            # Processing old issues - we only expect old issues that are to be closed (if any).
-            if old_issues:
-                if action.on_respin != OnRespinAction.CLOSE:
-                    raise Exception(f"Invalid respin action {action.on_respin} for {old_issues}!")
-                for issue in old_issues:
-                    jira.drop_obsoleted_issue(issue, obsoleted_by=processed_actions[action.id])
-                    ctx.logger.info(f"Old issue {issue} closed")
+            jira_job = JiraJob(event=artifact_job.event,
+                               erratum=artifact_job.erratum,
+                               compose=artifact_job.compose,
+                               jira=new_issue,
+                               recipe=Recipe(url=job_recipe))
+            ctx.save_jira_job('jira-', jira_job)
 
 
 @main.command(name='schedule')
@@ -601,47 +636,53 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     jira_token = ctx.settings.jira_token
     if not jira_token:
         raise Exception('Jira URL is not configured!')
-    jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
 
     # process each stored execute file
     for execute_job in ctx.load_execute_jobs('execute-'):
+        # in record_id we combine short_id and jira_id make it more 'unique'
+        # as using jira_id only may not be sufficient
+        # especially when not processing --issue-config file
+        # we use (artifacts_job) short_id as this is what defines the "granularity"
+        # prior the execution of 'jira' subcommand
+        short_id = execute_job.short_id
         jira_id = execute_job.jira.id
+        record_id = f'{short_id}%{jira_id}'
         if execute_job.jira.group:
-            jira_group_mapping[jira_id] = execute_job.jira.group
+            jira_group_mapping[record_id] = execute_job.jira.group
         request_id = execute_job.request.id
-        # it is sufficient to process each Jira issue only once
-        if jira_id not in jira_request_mapping:
-            jira_request_mapping[jira_id] = {}
-            jira_launch_mapping[jira_id] = RawRecipeReportPortalConfigDimension(
+        # it is sufficient to process each record_id only once
+        if record_id not in jira_request_mapping:
+            jira_request_mapping[record_id] = {}
+            jira_launch_mapping[record_id] = RawRecipeReportPortalConfigDimension(
                 launch_name=execute_job.request.reportportal['launch_name'],
                 launch_description=execute_job.request.reportportal.get(
                     'launch_description', None))
-            # jira_launch_mapping[jira_id] = execute_job.request.reportportal['launch_name']
         # for each Jira and request ID we build a list of RP launches
-        jira_request_mapping[jira_id][request_id] = rp.find_launches_by_attr(
+        jira_request_mapping[record_id][request_id] = rp.find_launches_by_attr(
             'newa_batch', execute_job.execution.batch_id)
 
     # proceed with RP launch merge
-    for jira_id in jira_request_mapping:
+    for record_id in jira_request_mapping:
         launch_list = []
+        jira_id = record_id.split('%')[-1]
         # prepare launch description
         # start with description specified in the recipe file
-        description = jira_launch_mapping[jira_id].get('launch_description', None)
+        description = jira_launch_mapping[record_id].get('launch_description', None)
         if description:
             description += '<br><br>'
         else:
             description = ''
         # add info about the number of recipies scheduled and completed
-        description += f'{jira_id}: {len(jira_request_mapping[jira_id])} requests in total<br>'
-        for request in sorted(jira_request_mapping[jira_id].keys()):
-            if len(jira_request_mapping[jira_id][request]):
+        description += f'{jira_id}: {len(jira_request_mapping[record_id])} requests in total<br>'
+        for request in sorted(jira_request_mapping[record_id].keys()):
+            if len(jira_request_mapping[record_id][request]):
                 description += f'  {request}: COMPLETED<br>'
-                launch_list.extend(jira_request_mapping[jira_id][request])
+                launch_list.extend(jira_request_mapping[record_id][request])
             else:
                 description += f'  {request}: MISSING<br>'
         # prepare launch name
-        if jira_launch_mapping[jira_id]['launch_name']:
-            name = str(jira_launch_mapping[jira_id]['launch_name'])
+        if jira_launch_mapping[record_id]['launch_name']:
+            name = str(jira_launch_mapping[record_id]['launch_name'])
         else:
             # should not happen
             name = 'unspecified_newa_launch_name'
@@ -658,17 +699,20 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
             # report results back to Jira
             launch_urls = [rp.get_launch_url(str(launch)) for launch in launch_list]
             ctx.logger.info(f'RP launch urls: {" ".join(launch_urls)}')
-            try:
-                joined_urls = '\n'.join(launch_urls)
-                description = description.replace('<br>', '\n')
-                jira_connection.add_comment(
-                    jira_id,
-                    f"NEWA has imported test results to\n{joined_urls}\n\n{description}",
-                    visibility={
-                        'type': 'group',
-                        'value': jira_group_mapping[jira_id]}
-                    if jira_id in jira_group_mapping else None)
-                ctx.logger.info(
-                    f'Jira issue {jira_id} was updated with a RP launch URL')
-            except jira.JIRAError as e:
-                raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
+            # do not report to Jira if JIRA_NONE_ID was used
+            if jira_id != JIRA_NONE_ID:
+                jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
+                try:
+                    joined_urls = '\n'.join(launch_urls)
+                    description = description.replace('<br>', '\n')
+                    jira_connection.add_comment(
+                        jira_id,
+                        f"NEWA has imported test results to\n{joined_urls}\n\n{description}",
+                        visibility={
+                            'type': 'group',
+                            'value': jira_group_mapping[record_id]}
+                        if record_id in jira_group_mapping else None)
+                    ctx.logger.info(
+                        f'Jira issue {jira_id} was updated with a RP launch URL')
+                except jira.JIRAError as e:
+                    raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
