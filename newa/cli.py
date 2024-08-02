@@ -517,7 +517,9 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         time.sleep(delay)
         tf_request.fetch_details()
         state = tf_request.details['state']
-        log(f'TF reqest {tf_request.uuid} state: {state}')
+        envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
+                         for e in tf_request.details['environments_requested']])
+        log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
         finished = state in ['complete', 'error']
 
     log(f'finished with result: {tf_request.details["result"]["overall"]}')
