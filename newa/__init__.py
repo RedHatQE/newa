@@ -1380,6 +1380,8 @@ class CLIContext:
     settings: Settings
     # Path to directory with state files
     state_dirpath: Path
+    cli_environment: RecipeEnvironment = field()
+    cli_context: RecipeContext = field()
     timestamp: str = ''
 
     def enter_command(self, command: str) -> None:
