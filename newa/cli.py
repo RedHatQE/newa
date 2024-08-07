@@ -77,12 +77,30 @@ def default_state_dir() -> Path:
     is_flag=True,
     default=False,
     )
+@click.option(
+    '-e', '--environment', 'envvars',
+    default=[],
+    multiple=True,
+    )
+@click.option(
+    '-c', '--context', 'contexts',
+    default=[],
+    multiple=True,
+    )
 @click.pass_context
-def main(click_context: click.Context, state_dir: str, conf_file: str, debug: bool) -> None:
+def main(click_context: click.Context,
+         state_dir: str,
+         conf_file: str,
+         debug: bool,
+         envvars: list[str],
+         contexts: list[str]) -> None:
+
     ctx = CLIContext(
         settings=Settings.load(Path(os.path.expandvars(conf_file))),
         logger=logging.getLogger(),
         state_dirpath=Path(os.path.expandvars(state_dir)),
+        cli_environment={},
+        cli_context={},
         )
     click_context.obj = ctx
 
@@ -92,6 +110,27 @@ def main(click_context: click.Context, state_dir: str, conf_file: str, debug: bo
     if not ctx.state_dirpath.exists():
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
         ctx.state_dirpath.mkdir(parents=True)
+
+    def _split(s: str) -> tuple[str, str]:
+        """ split key='some value' into a tuple (key, value) """
+        s = s.strip()
+        if ('=' not in s) or s.startswith('='):
+            raise Exception(
+                f'Option --environment {s} has invalid value, key=value format expected!')
+        (k, v) = map(str.strip, s.split('=', 1))
+        # cut-off surrounding " or '
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1]
+        return (k, v)
+
+    # store environment variables and context provided on a cmdline
+    for s in envvars:
+        k, v = _split(s)
+        ctx.cli_environment[k] = v
+
+    for s in contexts:
+        k, v = _split(s)
+        ctx.cli_context[k] = v
 
 
 @main.command(name='event')
@@ -222,28 +261,35 @@ def cmd_jira(ctx: CLIContext, issue_config: str, recreate: bool) -> None:
                                              JOB=artifact_job,
                                              EVENT=artifact_job.event,
                                              ERRATUM=artifact_job.erratum,
-                                             COMPOSE=artifact_job.compose):
+                                             COMPOSE=artifact_job.compose,
+                                             ENVIRONMENT=ctx.cli_environment):
                 ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
                 continue
 
             rendered_summary = render_template(
                 action.summary,
                 ERRATUM=artifact_job.erratum,
-                COMPOSE=artifact_job.compose)
+                COMPOSE=artifact_job.compose,
+                ENVIRONMENT=ctx.cli_environment)
             rendered_description = render_template(
-                action.description, ERRATUM=artifact_job.erratum, COMPOSE=artifact_job.compose)
+                action.description,
+                ERRATUM=artifact_job.erratum,
+                COMPOSE=artifact_job.compose,
+                ENVIRONMENT=ctx.cli_environment)
             if action.assignee:
                 rendered_assignee = render_template(
                     action.assignee,
                     ERRATUM=artifact_job.erratum,
-                    COMPOSE=artifact_job.compose)
+                    COMPOSE=artifact_job.compose,
+                    ENVIRONMENT=ctx.cli_environment)
             else:
                 rendered_assignee = None
             if action.newa_id:
                 action.newa_id = render_template(
                     action.newa_id,
                     ERRATUM=artifact_job.erratum,
-                    COMPOSE=artifact_job.compose)
+                    COMPOSE=artifact_job.compose,
+                    ENVIRONMENT=ctx.cli_environment)
 
             # Detect that action has parent available (if applicable), if we went trough the
             # actions already and parent was not found, we abort.
@@ -392,7 +438,9 @@ def cmd_schedule(ctx: CLIContext, arch: str) -> None:
         else:
             architectures = jira_job.erratum.archs if (
                 jira_job.erratum and jira_job.erratum.archs) else Arch.architectures()
-        initial_config = RawRecipeConfigDimension(compose=compose)
+        initial_config = RawRecipeConfigDimension(compose=compose,
+                                                  environment=ctx.cli_environment,
+                                                  context=ctx.cli_context)
 
         config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
         # extend dimensions with system architecture but do not override existing settings

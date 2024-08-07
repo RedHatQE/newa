@@ -16,7 +16,9 @@ def mock_clicontext(tmp_path):
         settings=Settings(
             et_url='http://dummy.et.url.com',
             ),
-        state_dirpath=tmp_path)
+        state_dirpath=tmp_path,
+        cli_environment={},
+        cli_context={})
 
 
 @pytest.fixture()
