@@ -113,14 +113,11 @@ def main(click_context: click.Context,
 
     def _split(s: str) -> tuple[str, str]:
         """ split key='some value' into a tuple (key, value) """
-        s = s.strip()
-        if ('=' not in s) or s.startswith('='):
+        r = re.match(r"""^\s*([a-zA-Z0-9_][a-zA-Z0-9_\-]*)=["']?(.*?)["']?\s*$""", s)
+        if not r:
             raise Exception(
-                f'Option --environment {s} has invalid value, key=value format expected!')
-        (k, v) = map(str.strip, s.split('=', 1))
-        # cut-off surrounding " or '
-        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-            v = v[1:-1]
+                f'Option value {s} has invalid format, key=value format expected!')
+        k, v = r.groups()
         return (k, v)
 
     # store environment variables and context provided on a cmdline
