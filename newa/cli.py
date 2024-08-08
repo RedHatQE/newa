@@ -124,13 +124,8 @@ def main(click_context: click.Context,
         return (k, v)
 
     # store environment variables and context provided on a cmdline
-    for s in envvars:
-        k, v = _split(s)
-        ctx.cli_environment[k] = v
-
-    for s in contexts:
-        k, v = _split(s)
-        ctx.cli_context[k] = v
+    ctx.cli_environment.update(dict(_split(s) for s in envvars))
+    ctx.cli_context.update(dict(_split(s) for s in contexts))
 
 
 @main.command(name='event')
