@@ -1292,8 +1292,16 @@ class IssueHandler:
                         'type': 'group',
                         'value': self.group} if self.group else None,
                     })
-            self.connection.transition_issue(issue.id,
-                                             transition=self.transitions["dropped"][0])
+            # if the transition has a format status.resolution close with resolution
+            if '.' in self.transitions["dropped"][0]:
+                status, resolution = self.transitions["dropped"][0].split('.', 1)
+                self.connection.transition_issue(issue.id,
+                                                 transition=status,
+                                                 resolution={'name': resolution})
+            # otherwise close just using the status
+            else:
+                self.connection.transition_issue(issue.id,
+                                                 transition=self.transitions["dropped"][0])
         except jira.JIRAError as e:
             raise Exception(f"Cannot close issue {issue}!") from e
 
