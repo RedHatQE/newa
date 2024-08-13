@@ -208,13 +208,24 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
 @click.option(
     '--job-recipe',
     )
+@click.option(
+    '--assignee', 'assignee',
+    default=None,
+    )
+@click.option(
+    '--unassigned',
+    is_flag=True,
+    default=False,
+    )
 @click.pass_obj
 def cmd_jira(
         ctx: CLIContext,
         issue_config: str,
         recreate: bool,
         issue: str,
-        job_recipe: str) -> None:
+        job_recipe: str,
+        assignee: str,
+        unassigned: bool) -> None:
     ctx.enter_command('jira')
 
     jira_url = ctx.settings.jira_url
@@ -224,6 +235,9 @@ def cmd_jira(
     jira_token = ctx.settings.jira_token
     if not jira_token:
         raise Exception('Jira URL is not configured!')
+
+    if assignee and unassigned:
+        raise Exception('Options --assignee and --unassigned cannot be used together')
 
     for artifact_job in ctx.load_artifact_jobs('event-'):
         # when issue_config is defined, --issue and --job-recipe are ignored
@@ -278,7 +292,11 @@ def cmd_jira(
                     COMPOSE=artifact_job.compose)
                 rendered_description = render_template(
                     action.description, ERRATUM=artifact_job.erratum, COMPOSE=artifact_job.compose)
-                if action.assignee:
+                if assignee:
+                    rendered_assignee = assignee
+                elif unassigned:
+                    rendered_assignee = None
+                elif action.assignee:
                     rendered_assignee = render_template(
                         action.assignee,
                         ERRATUM=artifact_job.erratum,
