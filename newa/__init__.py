@@ -876,6 +876,13 @@ class TFRequest(Cloneable, Serializable):
             url=self.api,
             response_content=ResponseContentType.JSON)
 
+    def is_finished(self) -> bool:
+        self.fetch_details()
+        if self.details:
+            state: str = self.details['state']
+            return state in ['complete', 'error']
+        raise Exception(f'Could not fetch details for TF request {self.uuid}')
+
 
 @define
 class Execution(Cloneable, Serializable):
@@ -884,6 +891,7 @@ class Execution(Cloneable, Serializable):
     batch_id: str
     return_code: Optional[int] = None
     request_uuid: Optional[str] = None
+    request_api: Optional[str] = None
     artifacts_url: Optional[str] = None
     command: Optional[str] = None
 

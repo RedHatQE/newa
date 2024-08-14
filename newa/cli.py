@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import os.path
 import re
+import sys
 import time
 from functools import partial
 from pathlib import Path
@@ -34,6 +35,7 @@ from . import (
     ReportPortal,
     ScheduleJob,
     Settings,
+    TFRequest,
     eval_test,
     get_url_basename,
     render_template,
@@ -618,6 +620,7 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         recipe=schedule_job.recipe,
         request=schedule_job.request,
         execution=Execution(request_uuid=tf_request.uuid,
+                            request_api=tf_request.api,
                             batch_id=schedule_job.request.get_hash(ctx.timestamp),
                             command=command),
         )
@@ -627,12 +630,11 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     delay = int(ctx.settings.tf_recheck_delay)
     while not finished:
         time.sleep(delay)
-        tf_request.fetch_details()
+        finished = tf_request.is_finished()
         state = tf_request.details['state']
         envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
                          for e in tf_request.details['environments_requested']])
         log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
-        finished = state in ['complete', 'error']
 
     log(f'finished with result: {tf_request.details["result"]["overall"]}')
     # now write execution details once more
@@ -640,6 +642,30 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
     execute_job.execution.return_code = 0
     ctx.save_execute_job('execute-', execute_job)
+
+
+def wait_for_requests_to_finish(ctx: CLIContext, requests: list[TFRequest]) -> None:
+    delay = int(ctx.settings.tf_recheck_delay)
+    watchlist = requests.copy()
+    while watchlist:
+        future_watchlist = []
+        for tf_request in watchlist:
+            finished = tf_request.is_finished()
+            if not tf_request.details:
+                raise Exception(f'Could not fetch details for TF request {tf_request.uuid}')
+            if finished:
+                ctx.logger.info(
+                    f'TF request {tf_request.uuid} finished with result: '
+                    f'{tf_request.details["result"]["overall"]}')
+            else:
+                state = tf_request.details['state']
+                envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
+                                 for e in tf_request.details['environments_requested']])
+                ctx.logger.info(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
+                future_watchlist.append(tf_request)
+        if future_watchlist:
+            time.sleep(delay)
+        watchlist = future_watchlist
 
 
 @main.command(name='report')
@@ -674,8 +700,26 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     if not jira_token:
         raise Exception('Jira URL is not configured!')
 
+    # we will use this list twice
+    execute_jobs = list(ctx.load_execute_jobs('execute-'))
+
+    # before reporting check if all TF requests are finished
+    # unless we have previously executed 'execute' subcommand
+    if 'execute' not in sys.argv:
+        watchlist = []
+        for execute_job in execute_jobs:
+            uuid = getattr(getattr(execute_job, 'execution', None),
+                           'request_uuid',
+                           None)
+            api = getattr(getattr(execute_job, 'execution', None),
+                          'request_api',
+                          None)
+            if uuid and api:
+                watchlist.append(TFRequest(api=api, uuid=uuid))
+        wait_for_requests_to_finish(ctx=ctx, requests=watchlist)
+
     # process each stored execute file
-    for execute_job in ctx.load_execute_jobs('execute-'):
+    for execute_job in execute_jobs:
         # in record_id we combine short_id and jira_id make it more 'unique'
         # as using jira_id only may not be sufficient
         # especially when not processing --issue-config file
