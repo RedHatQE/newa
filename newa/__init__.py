@@ -10,6 +10,7 @@ import re
 import subprocess
 import time
 import urllib
+from functools import reduce
 
 try:
     from attrs import asdict, define, evolve, field, frozen, validators
@@ -453,7 +454,14 @@ class ErrataTool:
             krb=True,
             response_content=ResponseContentType.JSON)
 
-    def get_errata(self, event: Event) -> list[Erratum]:
+    def fetch_blocking_errata(self, erratum_id: str) -> JSON:
+        return get_request(
+            url=f"{self.url}/errata/blocking_errata_for/{Q(erratum_id)}.json",
+            # not using krb=True due to an authentization error/bug, we did auth already
+            # krb=True,
+            response_content=ResponseContentType.JSON)
+
+    def get_errata(self, event: Event, process_blocking_errata: bool = True) -> list[Erratum]:
         """
         Creates a list of Erratum instances based on given errata ID
 
@@ -489,11 +497,16 @@ class ErrataTool:
         #   ]
         # }
 
+        blocking_errata = []
+        if process_blocking_errata:
+            blocking_errata = self.get_blocking_errata(event.id)
+
         info_json = self.fetch_info(event.id)
         releases_json = self.fetch_releases(event.id)
         for release in releases_json:
             builds = []
             builds_json = releases_json[release]
+            blocking_builds = []
             archs = set()
             for item in builds_json:
                 for (build, channels) in item.items():
@@ -510,6 +523,11 @@ class ErrataTool:
                 else:
                     components = [NVRParser(build).name for build in builds]
 
+                if blocking_errata:
+                    for e in blocking_errata:
+                        if release == e.release:
+                            blocking_builds.extend(e.builds)
+
                 errata.append(
                     Erratum(
                         id=event.id,
@@ -520,6 +538,7 @@ class ErrataTool:
                         people_assigned_to=info_json["people"]["assigned_to"],
                         release=release,
                         builds=builds,
+                        blocking_builds=blocking_builds,
                         archs=Arch.architectures(list(archs)),
                         components=components,
                         url=f"{self.url}/advisory/{event.id}"))
@@ -527,6 +546,14 @@ class ErrataTool:
                 raise Exception(f"No builds found in ER#{event.id}")
 
         return errata
+
+    def get_blocking_errata(self, erratum_id: str) -> list[Erratum]:
+        blockers = list(self.fetch_blocking_errata(erratum_id).keys())
+        errata = [self.get_errata(Event(type_=EventType.ERRATUM, id=e),
+                                  process_blocking_errata=False) for e in blockers]
+        if errata:
+            return reduce(lambda l1, l2: l1 + l2, errata)
+        return []
 
 
 @define
@@ -580,6 +607,7 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     url: str = field()
     archs: list[Arch] = field(factory=list)
     builds: list[str] = field(factory=list)
+    blocking_builds: list[str] = field(factory=list)
     components: list[str] = field(factory=list)
 
 
