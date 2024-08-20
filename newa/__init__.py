@@ -670,6 +670,9 @@ class RawRecipeReportPortalConfigDimension(TypedDict, total=False):
     launch_name: Optional[str]
     launch_description: Optional[str]
     suite_description: Optional[str]
+    # these are not used for the config but for storing runtime details
+    launch_uuid: Optional[str]
+    launch_url: Optional[str]
 
 
 _RecipeReportPortalConfigDimensionKey = Literal['launch_name',
@@ -808,6 +811,8 @@ class Request(Cloneable, Serializable):
         rp_token = ctx.settings.rp_token
         rp_url = ctx.settings.rp_url
         rp_project = ctx.settings.rp_project
+        if self.reportportal:
+            rp_launch = self.reportportal.get("launch_uuid", None)
         if not rp_token:
             raise Exception('ERROR: ReportPortal token is not set')
         if not rp_url:
@@ -816,19 +821,21 @@ class Request(Cloneable, Serializable):
             raise Exception('ERROR: ReportPortal project is not set')
         if (not self.reportportal) or (not self.reportportal['launch_name']):
             raise Exception('ERROR: ReportPortal launch name is not specified')
-        command += [
-            '--tmt-environment',
-            f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"',
-            '--tmt-environment',
-            f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL="{rp_url}"',
-            '--tmt-environment',
-            f'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT="{rp_project}"',
-            '--tmt-environment',
-            f"""TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH='{self.reportportal["launch_name"]}'""",
-            '--tmt-environment',
-            'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
-            '--context', f'newa_batch={self.get_hash(ctx.timestamp)}',
-            ]
+        command += ['--tmt-environment',
+                    f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"',
+                    '--tmt-environment',
+                    f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL="{rp_url}"',
+                    '--tmt-environment',
+                    f'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT="{rp_project}"',
+                    '--tmt-environment',
+                    f"""TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH='{rp_launch}'""",
+                    '--tmt-environment',
+                    f"""TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH='{self.reportportal["launch_name"]}'""",
+                    '--tmt-environment',
+                    'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
+                    '--context',
+                    f'newa_batch={self.get_hash(ctx.timestamp)}',
+                    ]
         # check compose
         if not self.compose:
             raise Exception('ERROR: compose is not specified for the request')
@@ -922,7 +929,8 @@ class Execution(Cloneable, Serializable):
     """ A test job execution """
 
     batch_id: str
-    return_code: Optional[int] = None
+    state: Optional[str] = None
+    result: Optional[str] = None
     request_uuid: Optional[str] = None
     request_api: Optional[str] = None
     artifacts_url: Optional[str] = None
@@ -1358,9 +1366,70 @@ class ReportPortal:
     url: str
     project: str
 
-    def get_launch_url(self, launch_id: str) -> str:
+    def create_launch(self,
+                      launch_name: str,
+                      description: str,
+                      attributes: Optional[dict[str, str]] = None) -> str | None:
+        query_data: JSON = {
+            "attributes": [],
+            "name": launch_name,
+            'description': description,
+            'startTime': str(int(time.time() * 1000)),
+            }
+        if attributes:
+            for key, value in attributes.items():
+                query_data['attributes'].append({"key": key.strip(), "value": value.strip()})
+        data = self.post_request('/launch', json=query_data)
+        if data:
+            return str(data['id'])
+        return None
+
+    def finish_launch(self, launch_uuid: str, description: Optional[str] = None) -> str | None:
+        query_data: JSON = {
+            'endTime': str(int(time.time() * 1000)),
+            "status": "PASSED",
+            }
+        if description:
+            query_data['description'] = description
+        data = self.put_request(f'/launch/{launch_uuid}/finish', json=query_data)
+        if data:
+            return launch_uuid
+        return None
+
+    def update_launch(self,
+                      launch_uuid: str,
+                      description: Optional[str] = None,
+                      attributes: Optional[dict[str, str]] = None,
+                      extend: bool = False) -> str | None:
+        # RP API for update requires launch ID, not UUID
+        info = self.get_launch_info(launch_uuid)
+        launch_id = info['id']
+        query_data: JSON = {
+            "mode": "DEFAULT",
+            }
+        if description:
+            if extend:
+                query_data['description'] = f"{info['description']}<br>{description}"
+            else:
+                query_data['description'] = description
+        if attributes:
+            if extend:
+                query_data['attributes'] = info['attributes']
+            else:
+                query_data['attributes'] = []
+            for key, value in attributes.items():
+                query_data['attributes'].append({"key": key.strip(), "value": value.strip()})
+        data = self.put_request(f'/launch/{launch_id}/update', json=query_data, version=1)
+        if data:
+            return launch_uuid
+        return None
+
+    def get_launch_info(self, launch_uuid: str) -> JSON:
+        return self.get_request(f'/launch/uuid/{launch_uuid}')
+
+    def get_launch_url(self, launch_uuid: str) -> str:
         return urllib.parse.urljoin(
-            self.url, f"/ui/#{Q(self.project)}/launches/all/{Q(launch_id)}")
+            self.url, f"/ui/#{Q(self.project)}/launches/all/{Q(launch_uuid)}")
 
     def get_request(self,
                     path: str,
@@ -1377,6 +1446,18 @@ class ReportPortal:
             return req.json()
         return None
 
+    def put_request(self,
+                    path: str,
+                    json: JSON,
+                    version: int = 1) -> JSON:
+        url = urllib.parse.urljoin(
+            self.url, f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
+        headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
+        req = requests.put(url, headers=headers, json=json)
+        if req.status_code == 200:
+            return req.json()
+        return None
+
     def post_request(self,
                      path: str,
                      json: JSON,
@@ -1386,42 +1467,8 @@ class ReportPortal:
             f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
         req = requests.post(url, headers=headers, json=json)
-        if req.status_code == 200:
+        if req.status_code in [200, 201]:
             return req.json()
-        return None
-
-    def find_launches_by_attr(self, attr: str, value: str) -> list[str]:
-        """ Searches for RP launching having the respective attribute=value set. """
-        path = '/launch'
-        params = {'filter.has.compositeAttribute': f'{attr}:{value}'}
-        data = self.get_request(path, params)
-        if not data:
-            return []
-        return [launch['id'] for launch in data['content']]
-
-    def merge_launches(self,
-                       launch_ids: list[str],
-                       launch_name: str,
-                       description: str,
-                       attributes: Optional[dict[str, str]] = None) -> str | None:
-        query_data: JSON = {
-            "attributes": [],
-            'description': description,
-            'name': launch_name,
-            "mergeType": "BASIC",
-            'mode': 'DEFAULT',
-            "extendSuitesDescription": 'false',
-            "launches": launch_ids,
-            }
-        if attributes:
-            for key, value in attributes.items():
-                query_data['attributes'].append({"key": key.strip(), "value": value.strip()})
-        print(f'Merging launches: {launch_ids}')
-        data = self.post_request('/launch/merge', json=query_data)
-        if data:
-            print('Launches successfully merged')
-            return str(data['id'])
-        print('Failed to merge launches')
         return None
 
 
