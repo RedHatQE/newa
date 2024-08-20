@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import re
 import time
+from collections.abc import Generator
 from functools import partial
 from pathlib import Path
 from typing import Optional
@@ -342,6 +343,14 @@ def cmd_jira(
     if assignee and unassigned:
         raise Exception('Options --assignee and --unassigned cannot be used together')
 
+    def _jira_fake_id_generator() -> Generator[str, int, None]:
+        n = 1
+        while True:
+            yield f'{JIRA_NONE_ID}_{n}'
+            n += 1
+
+    jira_none_id = _jira_fake_id_generator()
+
     for artifact_job in ctx.load_artifact_jobs('event-'):
         # when issue_config is defined, --issue and --job-recipe are ignored
         # as it will be set depending on the --issue-config content
@@ -561,7 +570,7 @@ def cmd_jira(
             else:
                 # when --issue is not specified, we would use an empty string as ID
                 # so we will skip Jira reporting steps in later stages
-                new_issue = Issue(JIRA_NONE_ID)
+                new_issue = Issue(next(jira_none_id))
 
             jira_job = JiraJob(event=artifact_job.event,
                                erratum=artifact_job.erratum,
@@ -689,6 +698,12 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
     ctx.enter_command('execute')
     ctx.continue_execution = _continue
 
+    # initialize RP connection
+    rp_project = ctx.settings.rp_project
+    rp_url = ctx.settings.rp_url
+    rp = ReportPortal(url=rp_url,
+                      token=ctx.settings.rp_token,
+                      project=rp_project)
     # store timestamp of this execution
     ctx.timestamp = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
     tf_token = ctx.settings.tf_token
@@ -697,6 +712,54 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
     # make TESTING_FARM_API_TOKEN available to workers as envvar if it has been
     # defined only though the settings file
     os.environ["TESTING_FARM_API_TOKEN"] = tf_token
+
+    # before actual scheduling prepare RP launches and store their ids
+    # we will create one launch per Jira issue so we need to sort out
+    # schedule_jobs per Jira id
+    jira_schedule_job_mapping = {}
+    # load all jobs at first as we would be rewriting them later
+    for schedule_job in ctx.load_schedule_jobs('schedule-'):
+        jira_id = schedule_job.jira.id
+        if jira_id not in jira_schedule_job_mapping:
+            jira_schedule_job_mapping[jira_id] = [schedule_job]
+        else:
+            jira_schedule_job_mapping[jira_id].append(schedule_job)
+    # store all launch uuids for later finishing
+    launch_list = []
+    # now we process jobs for each jira_id
+    for jira_id in jira_schedule_job_mapping:
+        # when --continue the launch was probably already created
+        # check the 1st job for launch_uuid
+        job = jira_schedule_job_mapping[jira_id][0]
+        launch_uuid = job.request.reportportal.get('launch_uuid', None)
+        if launch_uuid:
+            ctx.logger.debug(
+                f'Skipping RP launch creation for {jira_id} as {launch_uuid} already exists.')
+            launch_list.append(launch_uuid)
+            continue
+        # otherwise we proceed with launch creation
+        # get launch details from the first schedule job
+        launch_name = jira_schedule_job_mapping[jira_id][0].request.reportportal['launch_name']
+        launch_description = jira_schedule_job_mapping[jira_id][0].request.reportportal.get(
+            'launch_description', '')
+        if launch_description:
+            launch_description += '<br><br>'
+        # add the number of jobs
+        if not jira_id.startswith(JIRA_NONE_ID):
+            launch_description += f'{jira_id}: '
+        launch_description += (f'{len(jira_schedule_job_mapping[jira_id])} '
+                               'request(s) in total')
+        # create the actual launch
+        launch_uuid = rp.create_launch(launch_name, launch_description)
+        if not launch_uuid:
+            raise Exception('Failed to create RP launch')
+        launch_list.append(launch_uuid)
+        # save each schedule job with launch_uuid and launch_url
+        ctx.logger.info(f'Created RP launch {launch_uuid} for issue {jira_id}')
+        for job in jira_schedule_job_mapping[jira_id]:
+            job.request.reportportal['launch_uuid'] = launch_uuid
+            job.request.reportportal['launch_url'] = rp.get_launch_url(launch_uuid)
+            ctx.save_schedule_job('schedule-', job)
 
     # get a list of files to be scheduled so that they can be distributed across workers
     schedule_list = [
@@ -709,7 +772,14 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
         # small sleep to avoid race conditions inside tmt code
         time.sleep(0.1)
 
-    print('Done')
+    ctx.logger.info('Finished execution')
+
+    # finish all RP launches so that they won't remain unfinished
+    # in the report step we will update description with additional
+    # details about the result
+    for launch_uuid in launch_list:
+        ctx.logger.info(f'Finishing launch {launch_uuid}')
+        rp.finish_launch(launch_uuid)
 
 
 def worker(ctx: CLIContext, schedule_file: Path) -> None:
@@ -784,41 +854,27 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     # finish without knowing request details
     if not tf_request.details:
         raise Exception(f"Failed to read details of TF request {tf_request.uuid}")
-    log(f'finished with result: {tf_request.details["result"]["overall"]}')
+    result = tf_request.details['result']['overall']
+    log(f'finished with result: {result}')
     # now write execution details once more
-    # FIXME: we pretend return_code to be 0
     execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
-    execute_job.execution.return_code = 0
+    execute_job.execution.state = state
+    execute_job.execution.result = result
     ctx.save_execute_job('execute-', execute_job)
 
 
 @main.command(name='report')
-@click.option(
-    '--rp-project',
-    default='',
-    help='Overrides ReportPortal project name.',
-    )
 @click.pass_obj
-@click.option(
-    '--rp-url',
-    default='',
-    help='Overrides ReportPortal URL.',
-    )
-def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
+def cmd_report(ctx: CLIContext) -> None:
     ctx.enter_command('report')
 
-    jira_request_mapping: dict[str, dict[str, list[str]]] = {}
-    jira_launch_mapping: dict[str, RawRecipeReportPortalConfigDimension] = {}
-    # jira_group_mapping will store comment restrictions only when defined
-    jira_group_mapping: dict[str, str] = {}
-    if not rp_project:
-        rp_project = ctx.settings.rp_project
-    if not rp_url:
-        rp_url = ctx.settings.rp_url
+    # initialize RP connection
+    rp_project = ctx.settings.rp_project
+    rp_url = ctx.settings.rp_url
     rp = ReportPortal(url=rp_url,
                       token=ctx.settings.rp_token,
                       project=rp_project)
-    # initialize Jira connection as well
+    # initialize Jira connection
     jira_url = ctx.settings.jira_url
     if not jira_url:
         raise Exception('Jira URL is not configured!')
@@ -827,81 +883,56 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
         raise Exception('Jira token is not configured!')
 
     # process each stored execute file
+    # before actual reporting split jobs per jira id
+    jira_execute_job_mapping = {}
+    # load all jobs at first as we would be rewriting them later
     for execute_job in ctx.load_execute_jobs('execute-'):
-        # in record_id we combine short_id and jira_id make it more 'unique'
-        # as using jira_id only may not be sufficient
-        # especially when not processing --issue-config file
-        # we use (artifacts_job) short_id as this is what defines the "granularity"
-        # prior the execution of 'jira' subcommand
-        short_id = execute_job.short_id
         jira_id = execute_job.jira.id
-        record_id = f'{short_id}%{jira_id}'
-        if execute_job.jira.group:
-            jira_group_mapping[record_id] = execute_job.jira.group
-        request_id = execute_job.request.id
-        # it is sufficient to process each record_id only once
-        if record_id not in jira_request_mapping:
-            jira_request_mapping[record_id] = {}
-            jira_launch_mapping[record_id] = RawRecipeReportPortalConfigDimension(
-                launch_name=execute_job.request.reportportal['launch_name'],
-                launch_description=execute_job.request.reportportal.get(
-                    'launch_description', None))
-        # for each Jira and request ID we build a list of RP launches
-        jira_request_mapping[record_id][request_id] = rp.find_launches_by_attr(
-            'newa_batch', execute_job.execution.batch_id)
+        if jira_id not in jira_execute_job_mapping:
+            jira_execute_job_mapping[jira_id] = [execute_job]
+        else:
+            jira_execute_job_mapping[jira_id].append(execute_job)
 
-    # proceed with RP launch merge
-    for record_id in jira_request_mapping:
-        launch_list = []
-        jira_id = record_id.split('%')[-1]
-        # prepare launch description
-        # start with description specified in the recipe file
-        description = jira_launch_mapping[record_id].get('launch_description', None)
-        if description:
-            description += '<br><br>'
-        else:
-            description = ''
-        # add info about the number of recipies scheduled and completed
-        description += f'{jira_id}: {len(jira_request_mapping[record_id])} requests in total<br>'
-        for request in sorted(jira_request_mapping[record_id].keys()):
-            if len(jira_request_mapping[record_id][request]):
-                description += f'  {request}: COMPLETED<br>'
-                launch_list.extend(jira_request_mapping[record_id][request])
-            else:
-                description += f'  {request}: MISSING<br>'
-        # prepare launch name
-        if jira_launch_mapping[record_id]['launch_name']:
-            name = str(jira_launch_mapping[record_id]['launch_name'])
-        else:
-            # should not happen
-            name = 'unspecified_newa_launch_name'
-        if not len(launch_list):
-            ctx.logger.error('Failed to find any related ReportPortal launches')
-        else:
-            if len(launch_list) > 1:
-                merged_launch = rp.merge_launches(
-                    launch_list, name, description, {})
-                if not merged_launch:
-                    ctx.logger.error('Failed to merge ReportPortal launches')
-                else:
-                    launch_list = [merged_launch]
-            # report results back to Jira
-            launch_urls = [rp.get_launch_url(str(launch)) for launch in launch_list]
-            ctx.logger.info(f'RP launch urls: {" ".join(launch_urls)}')
+    # now for each jira id finish the respective launch and report results
+    for jira_id in jira_execute_job_mapping:
+        # get RP launch details
+        launch_uuid = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
+            'launch_uuid', None)
+        launch_url = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
+            'launch_url', None)
+        if launch_uuid:
+            # prepare description with individual results
+            results = []
+            for job in jira_execute_job_mapping[jira_id]:
+                results.append(
+                    f"""{job.request.id}: {job.execution.state}, {job.execution.result}""")
+            results.sort()
+            launch_description = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
+                'launch_description', '')
+            if launch_description:
+                launch_description += '<br><br>'
+            if not jira_id.startswith(JIRA_NONE_ID):
+                launch_description += f'{jira_id}: '
+            launch_description += f'{len(jira_execute_job_mapping[jira_id])} request(s) in total:'
+            launch_description += '<br>' + '<br>'.join(results)
+            ctx.logger.info(f'Updating launch {launch_uuid} description')
+            # finish launch just in case it hasn't been finished already
+            # and update description with more detailed results
+            rp.finish_launch(launch_uuid)
+            rp.update_launch(launch_uuid, description=launch_description)
             # do not report to Jira if JIRA_NONE_ID was used
-            if jira_id != JIRA_NONE_ID:
+            if not jira_id.startswith(JIRA_NONE_ID):
                 jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
+                jira_description = launch_description.replace('<br>', '\n')
                 try:
-                    joined_urls = '\n'.join(launch_urls)
-                    description = description.replace('<br>', '\n')
                     jira_connection.add_comment(
                         jira_id,
-                        f"NEWA has imported test results to\n{joined_urls}\n\n{description}",
+                        f"NEWA has imported test results to {launch_url}\n\n{jira_description}",
                         visibility={
                             'type': 'group',
-                            'value': jira_group_mapping[record_id]}
-                        if record_id in jira_group_mapping else None)
+                            'value': execute_job.jira.group}
+                        if execute_job.jira.group else None)
                     ctx.logger.info(
-                        f'Jira issue {jira_id} was updated with a RP launch URL')
+                        f'Jira issue {jira_id} was updated with a RP launch URL {launch_url}')
                 except jira.JIRAError as e:
                     raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
