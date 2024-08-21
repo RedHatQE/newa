@@ -1398,12 +1398,14 @@ class CLIContext:
     state_dirpath: Path
     cli_environment: RecipeEnvironment = field(factory=dict)
     cli_context: RecipeContext = field(factory=dict)
+    commands_run: list[str] = field(factory=list)
     timestamp: str = ''
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(
             f'[%(asctime)s] [{command.ljust(8, " ")}] %(message)s',
             )
+        self.commands_run.append(command)
 
     def load_initial_erratum(self, filepath: Path) -> InitialErratum:
         erratum = InitialErratum.from_yaml_file(filepath)

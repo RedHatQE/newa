@@ -3,7 +3,6 @@ import logging
 import multiprocessing
 import os.path
 import re
-import sys
 import time
 from functools import partial
 from pathlib import Path
@@ -705,7 +704,7 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
 
     # before reporting check if all TF requests are finished
     # unless we have previously executed 'execute' subcommand
-    if 'execute' not in sys.argv:
+    if 'execute' not in ctx.commands_run:
         watchlist = []
         for execute_job in execute_jobs:
             uuid = getattr(getattr(execute_job, 'execution', None),
