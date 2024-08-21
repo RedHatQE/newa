@@ -38,6 +38,7 @@ import jira
 import jira.client
 import requests
 import ruamel.yaml
+import ruamel.yaml.error
 import ruamel.yaml.nodes
 import ruamel.yaml.representer
 import urllib3.response
@@ -400,7 +401,12 @@ class Serializable:
                     url=location,
                     response_content=ResponseContentType.TEXT))
             else:
-                data = yaml_parser().load(Path(location).read_text())
+                try:
+                    data = yaml_parser().load(Path(location).read_text())
+                except ruamel.yaml.error.YAMLError as e:
+                    raise Exception(
+                        f'Unable to load and parse YAML file from location {location}') from e
+
             # process 'include' attribute
             if 'include' in data:
                 locations = data['include']
