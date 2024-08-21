@@ -444,19 +444,25 @@ class ErrataTool:
 
     def fetch_info(self, erratum_id: str) -> JSON:
         return get_request(
-            url=f"{self.url}/advisory/{Q(erratum_id)}.json",
+            url=urllib.parse.urljoin(
+                self.url,
+                f"/advisory/{Q(erratum_id)}.json"),
             krb=True,
             response_content=ResponseContentType.JSON)
 
     def fetch_releases(self, erratum_id: str) -> JSON:
         return get_request(
-            url=f"{self.url}/advisory/{Q(erratum_id)}/builds.json",
+            url=urllib.parse.urljoin(
+                self.url,
+                f"/advisory/{Q(erratum_id)}/builds.json"),
             krb=True,
             response_content=ResponseContentType.JSON)
 
     def fetch_blocking_errata(self, erratum_id: str) -> JSON:
         return get_request(
-            url=f"{self.url}/errata/blocking_errata_for/{Q(erratum_id)}.json",
+            url=urllib.parse.urljoin(
+                self.url,
+                f"/errata/blocking_errata_for/{Q(erratum_id)}.json"),
             # not using krb=True due to an authentization error/bug, we did auth already
             # krb=True,
             response_content=ResponseContentType.JSON)
@@ -541,7 +547,7 @@ class ErrataTool:
                         blocking_builds=blocking_builds,
                         archs=Arch.architectures(list(archs)),
                         components=components,
-                        url=f"{self.url}/advisory/{event.id}"))
+                        url=urllib.parse.urljoin(self.url, f"/advisory/{event.id}")))
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
@@ -549,9 +555,12 @@ class ErrataTool:
 
     def get_blocking_errata(self, erratum_id: str) -> list[Erratum]:
         blockers = list(self.fetch_blocking_errata(erratum_id).keys())
+        # FIXME: cowardly evaluating just the 1st level of blocking errata to avoid recursion
         errata = [self.get_errata(Event(type_=EventType.ERRATUM, id=e),
                                   process_blocking_errata=False) for e in blockers]
         if errata:
+            # each get_errata() call may return a list of objects so we need
+            # to turn this list of list into a single list
             return reduce(lambda l1, l2: l1 + l2, errata)
         return []
 
@@ -1349,14 +1358,16 @@ class ReportPortal:
     project: str
 
     def get_launch_url(self, launch_id: str) -> str:
-        return f"{self.url}/ui/#{Q(self.project)}/launches/all/{Q(launch_id)}"
+        return urllib.parse.urljoin(
+            self.url, f"/ui/#{Q(self.project)}/launches/all/{Q(launch_id)}")
 
     def get_request(self,
                     path: str,
                     params: Optional[dict[str, str]] = None,
                     version: int = 1) -> JSON:
         url = urllib.parse.urljoin(
-            self.url, f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
+            self.url,
+            f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
         if params:
             url = f'{url}?{urllib.parse.urlencode(params)}'
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
@@ -1369,7 +1380,9 @@ class ReportPortal:
                      path: str,
                      json: JSON,
                      version: int = 1) -> JSON:
-        url = f'{self.url}/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}'
+        url = urllib.parse.urljoin(
+            self.url,
+            f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
         req = requests.post(url, headers=headers, json=json)
         if req.status_code == 200:
