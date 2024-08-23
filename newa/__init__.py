@@ -38,9 +38,6 @@ import jira
 import jira.client
 import requests
 import ruamel.yaml
-import ruamel.yaml.error
-import ruamel.yaml.nodes
-import ruamel.yaml.representer
 import urllib3.response
 from requests_kerberos import HTTPKerberosAuth
 
