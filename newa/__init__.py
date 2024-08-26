@@ -887,6 +887,7 @@ class Execution(Cloneable, Serializable):
     batch_id: str
     return_code: Optional[int] = None
     request_uuid: Optional[str] = None
+    request_api: Optional[str] = None
     artifacts_url: Optional[str] = None
     command: Optional[str] = None
 
@@ -1394,6 +1395,7 @@ class CLIContext:
     cli_environment: RecipeEnvironment = field(factory=dict)
     cli_context: RecipeContext = field(factory=dict)
     timestamp: str = ''
+    continue_execution: bool = False
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(
