@@ -234,7 +234,7 @@ def cmd_jira(
 
     jira_token = ctx.settings.jira_token
     if not jira_token:
-        raise Exception('Jira URL is not configured!')
+        raise Exception('Jira token is not configured!')
 
     if assignee and unassigned:
         raise Exception('Options --assignee and --unassigned cannot be used together')
@@ -672,7 +672,7 @@ def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
         raise Exception('Jira URL is not configured!')
     jira_token = ctx.settings.jira_token
     if not jira_token:
-        raise Exception('Jira URL is not configured!')
+        raise Exception('Jira token is not configured!')
 
     # process each stored execute file
     for execute_job in ctx.load_execute_jobs('execute-'):
