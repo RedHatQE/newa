@@ -34,6 +34,7 @@ from . import (
     ReportPortal,
     ScheduleJob,
     Settings,
+    TFRequest,
     eval_test,
     get_url_basename,
     render_template,
@@ -564,9 +565,16 @@ def cmd_schedule(ctx: CLIContext, arch: str) -> None:
     '--workers',
     default=8,
     )
+@click.option(
+    '--continue',
+    '_continue',
+    is_flag=True,
+    default=False,
+    )
 @click.pass_obj
-def cmd_execute(ctx: CLIContext, workers: int) -> None:
+def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
     ctx.enter_command('execute')
+    ctx.continue_execution = _continue
 
     # store timestamp of this execution
     ctx.timestamp = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
@@ -601,42 +609,68 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     # read request details
     schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
 
-    log('initiating TF request')
-    tf_request = schedule_job.request.initiate_tf_request(ctx)
-    log(f'TF request filed with uuid {tf_request.uuid}')
+    start_new_request = True
+    skip_initial_sleep = False
+    # if --continue, then read ExecuteJob details as well
+    if ctx.continue_execution:
+        parent = schedule_file.parent
+        name = schedule_file.name
+        execute_job_file = Path(os.path.join(parent, name.replace('schedule-', 'execute-', 1)))
+        if execute_job_file.exists():
+            execute_job = ExecuteJob.from_yaml_file(execute_job_file)
+            tf_request = TFRequest(api=execute_job.execution.request_api,
+                                   uuid=execute_job.execution.request_uuid)
+            start_new_request = False
+            skip_initial_sleep = True
 
-    # generate Tf command so we can log it
-    command_args, environment = schedule_job.request.generate_tf_exec_command(ctx)
-    command = ' '.join(command_args)
-    # hide tokens
-    command = command.replace(ctx.settings.rp_token, '***')
-    # export Execution to YAML so that we can report it even later
-    # we won't report 'return_code' since it is not known yet
-    # This is something to be implemented later
-    execute_job = ExecuteJob(
-        event=schedule_job.event,
-        erratum=schedule_job.erratum,
-        compose=schedule_job.compose,
-        jira=schedule_job.jira,
-        recipe=schedule_job.recipe,
-        request=schedule_job.request,
-        execution=Execution(request_uuid=tf_request.uuid,
-                            batch_id=schedule_job.request.get_hash(ctx.timestamp),
-                            command=command),
-        )
-    ctx.save_execute_job('execute-', execute_job)
+    if start_new_request:
+        log('initiating TF request')
+        tf_request = schedule_job.request.initiate_tf_request(ctx)
+        log(f'TF request filed with uuid {tf_request.uuid}')
+
+        # generate Tf command so we can log it
+        command_args, environment = schedule_job.request.generate_tf_exec_command(ctx)
+        command = ' '.join(command_args)
+        # hide tokens
+        command = command.replace(ctx.settings.rp_token, '***')
+        # export Execution to YAML so that we can report it even later
+        # we won't report 'return_code' since it is not known yet
+        # This is something to be implemented later
+        execute_job = ExecuteJob(
+            event=schedule_job.event,
+            erratum=schedule_job.erratum,
+            compose=schedule_job.compose,
+            jira=schedule_job.jira,
+            recipe=schedule_job.recipe,
+            request=schedule_job.request,
+            execution=Execution(request_uuid=tf_request.uuid,
+                                request_api=tf_request.api,
+                                batch_id=schedule_job.request.get_hash(ctx.timestamp),
+                                command=command),
+            )
+        ctx.save_execute_job('execute-', execute_job)
+
     # wait for TF job to finish
     finished = False
     delay = int(ctx.settings.tf_recheck_delay)
     while not finished:
-        time.sleep(delay)
+        if not skip_initial_sleep:
+            time.sleep(delay)
+        skip_initial_sleep = False
         tf_request.fetch_details()
-        state = tf_request.details['state']
-        envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
-                         for e in tf_request.details['environments_requested']])
-        log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
-        finished = state in ['complete', 'error']
+        if tf_request.details:
+            state = tf_request.details['state']
+            envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
+                             for e in tf_request.details['environments_requested']])
+            log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
+            finished = state in ['complete', 'error']
+        else:
+            log(f'Could not read details of TF request {tf_request.uuid}')
 
+    # this is to silence the linter, this cannot happen as the former loop cannot
+    # finish without knowing request details
+    if not tf_request.details:
+        raise Exception(f"Failed to read details of TF request {tf_request.uuid}")
     log(f'finished with result: {tf_request.details["result"]["overall"]}')
     # now write execution details once more
     # FIXME: we pretend return_code to be 0
