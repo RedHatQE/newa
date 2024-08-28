@@ -393,7 +393,7 @@ class Serializable:
             else:
                 stack = [location]
             data: dict[str, Any] = {}
-            if location.startswith('https://'):
+            if re.search('^https?://', location):
                 data = yaml_parser().load(get_request(
                     url=location,
                     response_content=ResponseContentType.TEXT))
