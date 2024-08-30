@@ -228,20 +228,19 @@ def cmd_event(
         new_string = string
         for m in mapping:
             r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
-            if r:
-                pattern, value = r.groups()
-                # for regexp=True apply each matching regexp
-                if regexp and re.search(pattern, new_string):
-                    new_string = re.sub(pattern, value, new_string)
-                    ctx.logger.debug(
-                        f'Found match in {new_string} for mapping {m}, new value {new_string}')
-                # for string matching return the first match
-                if (not regexp) and new_string == pattern:
-                    ctx.logger.debug(
-                        f'Found match in {new_string} for mapping {m}, new value {new_string}')
-                    return value
-            else:
+            if not r:
                 raise Exception(f"Mapping {m} does not having expected format 'patten=value'")
+            pattern, value = r.groups()
+            # for regexp=True apply each matching regexp
+            if regexp and re.search(pattern, new_string):
+                new_string = re.sub(pattern, value, new_string)
+                ctx.logger.debug(
+                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+            # for string matching return the first match
+            if (not regexp) and new_string == pattern:
+                ctx.logger.debug(
+                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+                return value
         return new_string
 
     # process errata IDs
