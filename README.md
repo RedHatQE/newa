@@ -66,7 +66,7 @@ $ REQUESTS_CA_BUNDLE=/etc/pki/tls/cert.pem newa event --erratum 124115 jira --is
 
 Gets event details either from a command line
 ```shell
-newa event --errata 12345
+newa event --erratum 12345
 ```
 or from a files having `init-` prefix.
 
