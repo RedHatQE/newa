@@ -249,11 +249,12 @@ def cmd_event(
             errata = ErrataTool(url=et_url).get_errata(event)
             for erratum in errata:
                 release = erratum.release.strip()
-                # when compose_mapping is provided, apply it
+                # when compose_mapping is provided, apply it with regexp disabled
                 if compose_mapping:
                     compose = apply_mapping(release, compose_mapping, regexp=False)
+                # otherwise use the built-in default mapping
                 else:
-                    compose = apply_mapping(release, [], regexp=True)
+                    compose = apply_mapping(release)
                 # skip compose if it has been transformed to an empty compose
                 if not compose:
                     ctx.logger.info(
