@@ -188,6 +188,11 @@ def main(click_context: click.Context,
     '--compose-mapping', 'compose_mapping',
     default=[],
     multiple=True,
+    help=('Custom Erratum release to Testing Farm compose mapping in the form '
+          '"RELEASE=COMPOSE". For example, '
+          '"--compose-mapping RHEL-9.4.0.Z.MAIN+EUS=RHEL-9.4.0-Nightly". '
+          'Can be specified multiple times, the 1st match is used'
+          ),
     )
 @click.pass_obj
 def cmd_event(
@@ -225,14 +230,16 @@ def cmd_event(
             r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
             if r:
                 pattern, value = r.groups()
+                # for regexp=True apply each matching regexp
                 if regexp and re.search(pattern, new_string):
                     new_string = re.sub(pattern, value, new_string)
                     ctx.logger.debug(
                         f'Found match in {new_string} for mapping {m}, new value {new_string}')
+                # for string matching return the first match
                 if (not regexp) and new_string == pattern:
-                    new_string = value
                     ctx.logger.debug(
                         f'Found match in {new_string} for mapping {m}, new value {new_string}')
+                    return value
             else:
                 raise Exception(f"Mapping {m} does not having expected format 'patten=value'")
         return new_string
