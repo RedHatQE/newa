@@ -70,25 +70,30 @@ def default_state_dir() -> Path:
 @click.option(
     '--state-dir',
     default=default_state_dir,
+    help='Specify state directory.',
     )
 @click.option(
     '--conf-file',
     default='$HOME/.newa',
+    help='Path to newa configuration file.',
     )
 @click.option(
     '--debug',
     is_flag=True,
     default=False,
+    help='Enable debug logging',
     )
 @click.option(
     '-e', '--environment', 'envvars',
     default=[],
     multiple=True,
+    help='Specify custom environment variable, e.g. "-e FOO=BAR".',
     )
 @click.option(
     '-c', '--context', 'contexts',
     default=[],
     multiple=True,
+    help='Specify custom tmt context, e.g. "-c foo=bar".',
     )
 @click.pass_context
 def main(click_context: click.Context,
@@ -109,7 +114,7 @@ def main(click_context: click.Context,
 
     if debug:
         ctx.logger.setLevel(logging.DEBUG)
-    ctx.logger.info(f'Using state directory {ctx.state_dirpath}')
+    ctx.logger.info(f'Using --state-dir={ctx.state_dirpath}')
     if not ctx.state_dirpath.exists():
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
         ctx.state_dirpath.mkdir(parents=True)
@@ -133,11 +138,13 @@ def main(click_context: click.Context,
     '-e', '--erratum', 'errata_ids',
     default=[],
     multiple=True,
+    help='Specifies erratum-type event for a given advisory ID.',
     )
 @click.option(
     '-c', '--compose', 'compose_ids',
     default=[],
     multiple=True,
+    help='Specifies compose-type event for a given compose.',
     )
 @click.pass_obj
 def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) -> None:
@@ -197,26 +204,32 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
 @main.command(name='jira')
 @click.option(
     '--issue-config',
+    help='Specifies path to a Jira issue configuration file.',
     )
 @click.option(
     '--recreate',
     is_flag=True,
     default=False,
+    help='Instructs newa to ignore closed isseus and created new ones.',
     )
 @click.option(
     '--issue',
+    help='Specifies Jira issue ID to be used.',
     )
 @click.option(
     '--job-recipe',
+    help='Specifies job recipe file or URL to be used.',
     )
 @click.option(
     '--assignee', 'assignee',
+    help='Overrides Jira assignee from the issue config file.',
     default=None,
     )
 @click.option(
     '--unassigned',
     is_flag=True,
     default=False,
+    help='Create unassigned Jira issues, overriding values from the issue config file.',
     )
 @click.pass_obj
 def cmd_jira(
@@ -466,6 +479,7 @@ def cmd_jira(
 @click.option(
     '--arch',
     default=None,
+    help='Restrics system architectures to use when scheduling, e.g. "--arch=x86_64,aarch64".',
     )
 @click.pass_obj
 def cmd_schedule(ctx: CLIContext, arch: str) -> None:
@@ -564,12 +578,14 @@ def cmd_schedule(ctx: CLIContext, arch: str) -> None:
 @click.option(
     '--workers',
     default=8,
+    help='Limits the number of requests executed in parallel.',
     )
 @click.option(
     '--continue',
     '_continue',
     is_flag=True,
     default=False,
+    help='Continue with the previous execution, expects --state-dir usage.',
     )
 @click.pass_obj
 def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
@@ -683,11 +699,13 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
 @click.option(
     '--rp-project',
     default='',
+    help='Overrides ReportPortal project name.',
     )
 @click.pass_obj
 @click.option(
     '--rp-url',
     default='',
+    help='Overrides ReportPortal URL.',
     )
 def cmd_report(ctx: CLIContext, rp_project: str, rp_url: str) -> None:
     ctx.enter_command('report')
