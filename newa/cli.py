@@ -215,14 +215,14 @@ def cmd_event(
         # define default mapping
         if not mapping:
             mapping = [
-                '\\.GA$=',
-                '\\.Z\\.(MAIN\\+)?EUS$=',
-                'RHEL-10\\.0\\.BETA=RHEL-10-Beta',
-                '$=-Nightly',
+                r'\.GA$=',
+                r'\.Z\.(MAIN\+)?EUS$=',
+                r'RHEL-10\.0\.BETA=RHEL-10-Beta',
+                r'$=-Nightly',
                 ]
         new_string = string
         for m in mapping:
-            r = re.fullmatch('([^\\s=]+)=([^=]*)', m)
+            r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
             if r:
                 pattern, value = r.groups()
                 if regexp and re.search(pattern, new_string):
