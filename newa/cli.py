@@ -1,7 +1,7 @@
 import datetime
 import logging
 import multiprocessing
-import os.path
+import os
 import re
 import time
 from functools import partial
@@ -41,6 +41,8 @@ from . import (
     )
 
 JIRA_NONE_ID = '_NO_ISSUE'
+STATEDIR_PARENT_DIR = Path('/var/tmp/newa')
+STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -48,29 +50,52 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-def default_state_dir() -> Path:
-    """ Returns the first unused directory matching /var/tmp/newa/run-[0-9]+ """
-    parent_dir = Path('/var/tmp/newa')
-    pattern = '^run-([0-9]+)$'
+def get_state_dir(use_ppid: bool = False) -> Path:
+    """ When not using ppid returns the first unused directory
+        matching /var/tmp/newa/run-[0-9]+, starting with run-1
+        When using ppid searches for the latest state-dir directory
+        containing file $PPID.ppid
+    """
     counter = 0
+    ppid_filename = f'{os.getppid()}.ppid'
     try:
-        obj = os.scandir(parent_dir)
-    except FileNotFoundError:
-        return parent_dir / f'run-{counter}'
+        obj = os.scandir(STATEDIR_PARENT_DIR)
+    except FileNotFoundError as e:
+        if use_ppid:
+            raise Exception(f'{STATEDIR_PARENT_DIR} does not exist') from e
+        # return initial value run-1
+        return STATEDIR_PARENT_DIR / f'run-{counter+1}'
+    # iterate through subdirectories and find the latest matching dir
     for entry in obj:
-        r = re.match(pattern, entry.name)
+        r = re.match(STATEDIR_NAME_PATTERN, entry.name)
         if entry.is_dir() and r:
             c = int(r.group(1))
-            if c >= counter:
-                counter = c + 1
-    return parent_dir / f'run-{counter}'
+            if use_ppid:
+                ppid_file = STATEDIR_PARENT_DIR / entry.name / ppid_filename
+                if ppid_file.exists() and c > counter:
+                    counter = c
+            elif c > counter:
+                counter = c
+    # for use_ppid use the largest counter value when found
+    if use_ppid:
+        if counter:
+            return STATEDIR_PARENT_DIR / f'run-{counter}'
+        raise Exception(f'File {ppid_filename} not found under {STATEDIR_PARENT_DIR}')
+    # otherwise return the first unused value
+    return STATEDIR_PARENT_DIR / f'run-{counter+1}'
 
 
 @click.group(chain=True)
 @click.option(
     '--state-dir',
-    default=default_state_dir,
+    default='',
     help='Specify state directory.',
+    )
+@click.option(
+    '--prev-state-dir',
+    is_flag=True,
+    default=False,
+    help='Use the latest state-dir used previously within this shell session',
     )
 @click.option(
     '--conf-file',
@@ -98,10 +123,19 @@ def default_state_dir() -> Path:
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
+         prev_state_dir: bool,
          conf_file: str,
          debug: bool,
          envvars: list[str],
          contexts: list[str]) -> None:
+
+    # handle state_dir settings
+    if prev_state_dir and state_dir:
+        raise Exception('Use either --state-dir or --prev-state-dir')
+    if prev_state_dir:
+        state_dir = str(get_state_dir(use_ppid=True))
+    elif not state_dir:
+        state_dir = str(get_state_dir())
 
     ctx = CLIContext(
         settings=Settings.load(Path(os.path.expandvars(conf_file))),
@@ -118,6 +152,9 @@ def main(click_context: click.Context,
     if not ctx.state_dirpath.exists():
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
         ctx.state_dirpath.mkdir(parents=True)
+    # create empty ppid file
+    with open(os.path.join(ctx.state_dirpath, f'{os.getppid()}.ppid'), 'w'):
+        pass
 
     def _split(s: str) -> tuple[str, str]:
         """ split key='some value' into a tuple (key, value) """
