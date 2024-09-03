@@ -11,6 +11,9 @@ fixtures:
     launch_name: "newa_demo1"
     launch_description: "NEWA demo1 description"
     suite_description: "color = {{ CONTEXT.color }}, city = {{ ENVIRONMENT.CITY }}"
+    launch_attributes:
+      city: "{{ ENVIRONMENT.CITY }}"
+      color: "{{ CONTEXT.color }}"
 
 dimensions:
   cities:

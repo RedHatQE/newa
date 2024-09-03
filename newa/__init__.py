@@ -666,17 +666,22 @@ class RawRecipeTFConfigDimension(TypedDict, total=False):
 _RecipeTFConfigDimensionKey = Literal['cli_args']
 
 
+ReportPortalAttributes = dict[str, str]
+
+
 class RawRecipeReportPortalConfigDimension(TypedDict, total=False):
     launch_name: Optional[str]
     launch_description: Optional[str]
     suite_description: Optional[str]
-    # these are not used for the config but for storing runtime details
     launch_uuid: Optional[str]
     launch_url: Optional[str]
+    launch_attributes: Optional[ReportPortalAttributes]
 
 
 _RecipeReportPortalConfigDimensionKey = Literal['launch_name',
-                                                'launch_description', 'suite_description']
+                                                'launch_description',
+                                                'suite_description',
+                                                'launch_attributes']
 
 
 class RawRecipeConfigDimension(TypedDict, total=False):

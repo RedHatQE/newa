@@ -7,7 +7,7 @@ import time
 from collections.abc import Generator
 from functools import partial
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 import jira
@@ -628,7 +628,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
             config.fixtures['reportportal']['launch_name'] = os.path.splitext(
                 get_url_basename(jira_job.recipe.url))[0]
         # build requests
-        jinja_vars = {
+        jinja_vars: dict[str, Any] = {
             'ERRATUM': jira_job.erratum,
             }
 
@@ -637,6 +637,12 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
 
         # create ScheduleJob object for each request
         for request in requests:
+            # prepare dict for Jinja template rendering
+            jinja_vars = {
+                'ERRATUM': jira_job.erratum,
+                'COMPOSE': jira_job.compose,
+                'CONTEXT': request.context,
+                'ENVIRONMENT': request.environment}
             # before yaml export render all fields as Jinja templates
             for attr in (
                     "reportportal",
@@ -648,26 +654,19 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
                 # compose value is a string, not dict
                 if attr == 'compose':
                     value = getattr(request, attr, '')
-                    new_value = render_template(
-                        value,
-                        ERRATUM=jira_job.erratum,
-                        COMPOSE=jira_job.compose,
-                        CONTEXT=request.context,
-                        ENVIRONMENT=request.environment,
-                        )
+                    new_value = render_template(value, **jinja_vars)
                     if new_value:
                         setattr(request, attr, new_value)
                 else:
                     # getattr(request, attr) could also be None due to 'attr' being None
                     mapping = getattr(request, attr, {}) or {}
                     for (key, value) in mapping.items():
-                        mapping[key] = render_template(
-                            value,
-                            ERRATUM=jira_job.erratum,
-                            COMPOSE=jira_job.compose,
-                            CONTEXT=request.context,
-                            ENVIRONMENT=request.environment,
-                            )
+                        # launch_attributes is a dict
+                        if key == 'launch_attributes':
+                            for (k, v) in value.items():
+                                mapping[key][k] = render_template(v, **jinja_vars)
+                        else:
+                            mapping[key] = render_template(value, **jinja_vars)
 
             # export schedule_job yaml
             schedule_job = ScheduleJob(
@@ -740,6 +739,9 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
         # otherwise we proceed with launch creation
         # get launch details from the first schedule job
         launch_name = jira_schedule_job_mapping[jira_id][0].request.reportportal['launch_name']
+        launch_attrs = jira_schedule_job_mapping[jira_id][0].request.reportportal.get(
+            'launch_attributes', {})
+        launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
         launch_description = jira_schedule_job_mapping[jira_id][0].request.reportportal.get(
             'launch_description', '')
         if launch_description:
@@ -750,7 +752,9 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
         launch_description += (f'{len(jira_schedule_job_mapping[jira_id])} '
                                'request(s) in total')
         # create the actual launch
-        launch_uuid = rp.create_launch(launch_name, launch_description)
+        launch_uuid = rp.create_launch(launch_name,
+                                       launch_description,
+                                       attributes=launch_attrs)
         if not launch_uuid:
             raise Exception('Failed to create RP launch')
         launch_list.append(launch_uuid)
