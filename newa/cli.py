@@ -283,16 +283,21 @@ def cmd_jira(
                                                  JOB=artifact_job,
                                                  EVENT=artifact_job.event,
                                                  ERRATUM=artifact_job.erratum,
-                                                 COMPOSE=artifact_job.compose):
+                                                 COMPOSE=artifact_job.compose,
+                                                 ENVIRONMENT=ctx.cli_environment):
                     ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
                     continue
 
                 rendered_summary = render_template(
                     action.summary,
                     ERRATUM=artifact_job.erratum,
-                    COMPOSE=artifact_job.compose)
+                    COMPOSE=artifact_job.compose,
+                    ENVIRONMENT=ctx.cli_environment)
                 rendered_description = render_template(
-                    action.description, ERRATUM=artifact_job.erratum, COMPOSE=artifact_job.compose)
+                    action.description,
+                    ERRATUM=artifact_job.erratum,
+                    COMPOSE=artifact_job.compose,
+                    ENVIRONMENT=ctx.cli_environment)
                 if assignee:
                     rendered_assignee = assignee
                 elif unassigned:
@@ -301,14 +306,16 @@ def cmd_jira(
                     rendered_assignee = render_template(
                         action.assignee,
                         ERRATUM=artifact_job.erratum,
-                        COMPOSE=artifact_job.compose)
+                        COMPOSE=artifact_job.compose,
+                        ENVIRONMENT=ctx.cli_environment)
                 else:
                     rendered_assignee = None
                 if action.newa_id:
                     action.newa_id = render_template(
                         action.newa_id,
                         ERRATUM=artifact_job.erratum,
-                        COMPOSE=artifact_job.compose)
+                        COMPOSE=artifact_job.compose,
+                        ENVIRONMENT=ctx.cli_environment)
 
                 # Detect that action has parent available (if applicable), if we went trough the
                 # actions already and parent was not found, we abort.
