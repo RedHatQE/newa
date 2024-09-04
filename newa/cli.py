@@ -483,13 +483,14 @@ def cmd_jira(
 
 
 @main.command(name='schedule')
-@click.option(
-    '--arch',
-    default=None,
-    help='Restrics system architectures to use when scheduling, e.g. "--arch=x86_64,aarch64".',
-    )
+@click.option('--arch',
+              default=[],
+              multiple=True,
+              help=('Restrics system architectures to use when scheduling. '
+                    'Can be specified multiple times. Example: --arch x86_64'),
+              )
 @click.pass_obj
-def cmd_schedule(ctx: CLIContext, arch: str) -> None:
+def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
     ctx.enter_command('schedule')
 
     for jira_job in ctx.load_jira_jobs('jira-'):
@@ -501,7 +502,7 @@ def cmd_schedule(ctx: CLIContext, arch: str) -> None:
         compose = jira_job.compose.id if jira_job.compose else None
         if arch:
             architectures = Arch.architectures(
-                [Arch(a.strip()) for a in arch.split(',')])
+                [Arch(a.strip()) for a in arch])
         else:
             architectures = jira_job.erratum.archs if (
                 jira_job.erratum and jira_job.erratum.archs) else Arch.architectures()
