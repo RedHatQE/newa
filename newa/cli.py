@@ -6,6 +6,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
+from typing import Optional
 
 import click
 import jira
@@ -183,8 +184,22 @@ def main(click_context: click.Context,
     multiple=True,
     help='Specifies compose-type event for a given compose.',
     )
+@click.option(
+    '--compose-mapping', 'compose_mapping',
+    default=[],
+    multiple=True,
+    help=('Custom Erratum release to Testing Farm compose mapping in the form '
+          '"RELEASE=COMPOSE". For example, '
+          '"--compose-mapping RHEL-9.4.0.Z.MAIN+EUS=RHEL-9.4.0-Nightly". '
+          'Can be specified multiple times, the 1st match is used'
+          ),
+    )
 @click.pass_obj
-def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) -> None:
+def cmd_event(
+        ctx: CLIContext,
+        errata_ids: list[str],
+        compose_ids: list[str],
+        compose_mapping: list[str]) -> None:
     ctx.enter_command('event')
 
     # Errata IDs were not given, try to load them from init- files.
@@ -199,6 +214,35 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
     if not errata_ids and not compose_ids:
         raise Exception('Missing event IDs!')
 
+    def apply_mapping(string: str,
+                      mapping: Optional[list[str]] = None,
+                      regexp: bool = True) -> str:
+        # define default mapping
+        if not mapping:
+            mapping = [
+                r'\.GA$=',
+                r'\.Z\.(MAIN\+)?EUS$=',
+                r'RHEL-10\.0\.BETA=RHEL-10-Beta',
+                r'$=-Nightly',
+                ]
+        new_string = string
+        for m in mapping:
+            r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
+            if not r:
+                raise Exception(f"Mapping {m} does not having expected format 'patten=value'")
+            pattern, value = r.groups()
+            # for regexp=True apply each matching regexp
+            if regexp and re.search(pattern, new_string):
+                new_string = re.sub(pattern, value, new_string)
+                ctx.logger.debug(
+                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+            # for string matching return the first match
+            if (not regexp) and new_string == pattern:
+                ctx.logger.debug(
+                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+                return value
+        return new_string
+
     # process errata IDs
     if errata_ids:
         # Abort if there are still no errata IDs.
@@ -210,13 +254,21 @@ def cmd_event(ctx: CLIContext, errata_ids: list[str], compose_ids: list[str]) ->
             event = Event(type_=EventType.ERRATUM, id=erratum_id)
             errata = ErrataTool(url=et_url).get_errata(event)
             for erratum in errata:
-                # identify compose to be used, just a dump conversion for now
-                compose = erratum.release.strip()
-                if compose.endswith('.GA'):
-                    compose = compose[:-3]
-                compose += '-Nightly'
-                # handle compose differences between ET and TF
-                compose = compose.replace('RHEL-10.0.BETA', 'RHEL-10-Beta')
+                release = erratum.release.strip()
+                # when compose_mapping is provided, apply it with regexp disabled
+                if compose_mapping:
+                    compose = apply_mapping(release, compose_mapping, regexp=False)
+                # otherwise use the built-in default mapping
+                else:
+                    compose = apply_mapping(release)
+                # skip compose if it has been transformed to an empty compose
+                if not compose:
+                    ctx.logger.info(
+                        f"""Erratum release {release} transformed to an empty string, skipping""")
+                    continue
+                ctx.logger.info(
+                    f"""Erratum release {release} transformed to a compose {compose}""")
+
                 if erratum.content_type in (ErratumContentType.RPM, ErratumContentType.MODULE):
                     artifact_job = ArtifactJob(event=event, erratum=erratum,
                                                compose=Compose(id=compose))
