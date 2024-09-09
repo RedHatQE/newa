@@ -1408,6 +1408,9 @@ class ReportPortal:
                       extend: bool = False) -> str | None:
         # RP API for update requires launch ID, not UUID
         info = self.get_launch_info(launch_uuid)
+        if not info:
+            raise Exception(
+                f"Could not find launch {launch_uuid} in ReportPortal project {self.project}")
         launch_id = info['id']
         query_data: JSON = {
             "mode": "DEFAULT",
