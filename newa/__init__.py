@@ -1140,7 +1140,13 @@ class IssueHandler:
 
     @connection.default  # pyright: ignore [reportAttributeAccessIssue]
     def connection_factory(self) -> jira.JIRA:
-        return jira.JIRA(self.url, token_auth=self.token)
+        conn = jira.JIRA(self.url, token_auth=self.token)
+        # try connection first
+        try:
+            conn.myself()
+        except jira.JIRAError as e:
+            raise Exception('Could not authenticate to Jira. Wrong token?') from e
+        return conn
 
     def newa_id(self, action: IssueAction, partial: bool = False) -> str:
         """
