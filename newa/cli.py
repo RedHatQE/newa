@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 import os
 import re
+import sys
 import time
 from collections.abc import Generator
 from functools import partial
@@ -150,6 +151,12 @@ def main(click_context: click.Context,
 
     if debug:
         ctx.logger.setLevel(logging.DEBUG)
+
+    # this is here just to suppress state-dir creation
+    # and further processing in case of 'list' subcommand
+    if 'list' in sys.argv:
+        return
+
     ctx.logger.info(f'Using --state-dir={ctx.state_dirpath}')
     if not ctx.state_dirpath.exists():
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
@@ -170,6 +177,85 @@ def main(click_context: click.Context,
     # store environment variables and context provided on a cmdline
     ctx.cli_environment.update(dict(_split(s) for s in envvars))
     ctx.cli_context.update(dict(_split(s) for s in contexts))
+
+
+@main.command(name='list')
+@click.option(
+    '--last',
+    default=10,
+    help='Print details of recent newa executions.',
+    show_default=True,
+    )
+@click.pass_obj
+def cmd_list(ctx: CLIContext, last: int) -> None:
+    ctx.enter_command('list')
+    # when not in DEBUG, decrese log verbosity so it won't be too noisy
+    # when loading individual YAML files
+    if ctx.logger.level != logging.DEBUG:
+        ctx.logger.setLevel(logging.WARN)
+    # when existing state-dir has been provided, use it
+    if ctx.state_dirpath.is_dir():
+        state_dirs = [ctx.state_dirpath]
+    # otherwise choose last N dirs
+    else:
+        try:
+            entries = os.scandir(STATEDIR_PARENT_DIR)
+        except FileNotFoundError as e:
+            raise Exception(f'{STATEDIR_PARENT_DIR} does not exist') from e
+        sorted_entries = sorted(entries, key=lambda entry: int(entry.name.split('-')[1]))
+        state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
+
+    def _print(indent: int, s: str, end: str = '\n') -> None:
+        print(f'{" "*indent}{s}', end=end)
+
+    for state_dir in state_dirs:
+        print(f'{state_dir}:')
+        ctx.state_dirpath = state_dir
+        event_jobs = list(ctx.load_artifact_jobs('event-'))
+        for event_job in event_jobs:
+            if event_job.erratum:
+                _print(2, f'event {event_job.id} - {event_job.erratum.summary}')
+                _print(2, event_job.erratum.url)
+            else:
+                _print(2, f'event {event_job.id}')
+            jira_file_prefix = f'jira-{event_job.event.id}-{event_job.short_id}'
+            jira_jobs = list(ctx.load_jira_jobs(jira_file_prefix))
+            for jira_job in jira_jobs:
+                jira_summary = f'- {jira_job.jira.summary}' if jira_job.jira.summary else ''
+                _print(4, f'issue {jira_job.jira.id} {jira_summary}')
+                if jira_job.jira.url:
+                    _print(4, jira_job.jira.url)
+                schedule_file_prefix = (f'schedule-{event_job.event.id}-'
+                                        f'{event_job.short_id}-{jira_job.jira.id}')
+                schedule_jobs = list(ctx.load_schedule_jobs(schedule_file_prefix))
+                # print RP launch URL, should be common for all execute jobs
+                if schedule_jobs and schedule_jobs[0].request.reportportal:
+                    launch_url = schedule_jobs[0].request.reportportal.get('launch_url', None)
+                    if launch_url:
+                        _print(6, f'RP launch: {launch_url}')
+                for schedule_job in schedule_jobs:
+                    _print(6, f'{schedule_job.request.id}', end='')
+                    execute_file_prefix = (f'execute-{event_job.event.id}-'
+                                           f'{event_job.short_id}-{jira_job.jira.id}-'
+                                           f'{schedule_job.request.id}')
+                    execute_jobs = list(ctx.load_execute_jobs(execute_file_prefix))
+                    if execute_jobs:
+                        for execute_job in execute_jobs:
+                            if hasattr(execute_job, 'execution'):
+                                state = getattr(execute_job.execution, "state", "unknown")
+                                # if state was None check of request_uuid
+                                if (not state) and getattr(
+                                        execute_job.execution, "request_uuid", None):
+                                    state = 'running'
+                                result = getattr(execute_job.execution, "result", "unknown")
+                                url = getattr(
+                                    execute_job.execution, "artifacts_url", "not available")
+                                print(f' - state: {state}, result: {result}, artifacts: {url}')
+                    else:
+                        print(' - not executed')
+        print()
+    # no other command will be processed
+    sys.exit(0)
 
 
 @main.command(name='event')

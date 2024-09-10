@@ -629,7 +629,9 @@ class Issue(Cloneable, Serializable):
     # usually JiraHandler.group takes priority but this value
     # will be used when JiraHandler is not available
     group: Optional[str] = None
+    summary: Optional[str] = None
     closed: Optional[bool] = None
+    url: Optional[str] = None
 
     def __str__(self) -> str:
         return self.id
@@ -1302,7 +1304,10 @@ class IssueHandler:
                     "labels": [
                         *jira_issue.fields.labels,
                         IssueHandler.newa_label]})
-            return Issue(jira_issue.key, group=self.group)
+            return Issue(jira_issue.key,
+                         group=self.group,
+                         summary=summary,
+                         url=urllib.parse.urljoin(self.url, f'/browse/{jira_issue.key}'))
         except jira.JIRAError as e:
             raise Exception("Unable to create issue!") from e
 
