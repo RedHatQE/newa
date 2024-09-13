@@ -992,11 +992,14 @@ def cmd_report(ctx: CLIContext) -> None:
             'launch_url', None)
         if launch_uuid:
             # prepare description with individual results
-            results = []
+            results: dict[str, dict[str, str]] = {}
             for job in jira_execute_job_mapping[jira_id]:
-                results.append(
-                    f"""{job.request.id}: {job.execution.state}, {job.execution.result}""")
-            results.sort()
+                results[job.request.id] = {
+                    'id': job.request.id,
+                    'state': job.execution.state,
+                    'result': job.execution.result,
+                    'uuid': job.execution.request_uuid,
+                    'url': job.execution.artifacts_url}
             launch_description = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
                 'launch_description', '')
             if launch_description:
@@ -1004,7 +1007,12 @@ def cmd_report(ctx: CLIContext) -> None:
             if not jira_id.startswith(JIRA_NONE_ID):
                 launch_description += f'{jira_id}: '
             launch_description += f'{len(jira_execute_job_mapping[jira_id])} request(s) in total:'
-            launch_description += '<br>' + '<br>'.join(results)
+            jira_description = launch_description.replace('<br>', '\n')
+            for req in sorted(results.keys()):
+                # it would be nice to use hyperlinks in launch description however we
+                # would hit description length limit. Therefore using plain text
+                launch_description += "<br>{id}: {state}, {result}".format(**results[req])
+                jira_description += "\n[{id}|{url}]: {state}, {result}".format(**results[req])
             ctx.logger.info(f'Updating launch {launch_uuid} description')
             # finish launch just in case it hasn't been finished already
             # and update description with more detailed results
@@ -1013,11 +1021,11 @@ def cmd_report(ctx: CLIContext) -> None:
             # do not report to Jira if JIRA_NONE_ID was used
             if not jira_id.startswith(JIRA_NONE_ID):
                 jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
-                jira_description = launch_description.replace('<br>', '\n')
                 try:
                     jira_connection.add_comment(
                         jira_id,
-                        f"NEWA has imported test results to {launch_url}\n\n{jira_description}",
+                        (f"NEWA has imported test results to RP launch "
+                         f"{launch_url}\n\n{jira_description}"),
                         visibility={
                             'type': 'group',
                             'value': execute_job.jira.group}
