@@ -88,6 +88,16 @@ def get_state_dir(use_ppid: bool = False) -> Path:
     return STATEDIR_PARENT_DIR / f'run-{counter+1}'
 
 
+def initialize_jira_connection(ctx: CLIContext) -> Any:
+    jira_url = ctx.settings.jira_url
+    if not jira_url:
+        raise Exception('Jira URL is not configured!')
+    jira_token = ctx.settings.jira_token
+    if not jira_token:
+        raise Exception('Jira token is not configured!')
+    return jira.JIRA(jira_url, token_auth=jira_token)
+
+
 @click.group(chain=True)
 @click.option(
     '--state-dir',
@@ -649,7 +659,7 @@ def cmd_jira(
                 raise Exception("Option --job-recipe is mandatory when --issue-config is not set")
             if issue:
                 # verify that specified Jira issue truly exists
-                jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
+                jira_connection = initialize_jira_connection(ctx)
                 jira_connection.issue(issue)
                 ctx.logger.info(f"Using issue {issue}")
                 new_issue = Issue(issue)
@@ -846,10 +856,27 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
         launch_list.append(launch_uuid)
         # save each schedule job with launch_uuid and launch_url
         ctx.logger.info(f'Created RP launch {launch_uuid} for issue {jira_id}')
+        launch_url = rp.get_launch_url(launch_uuid)
         for job in jira_schedule_job_mapping[jira_id]:
             job.request.reportportal['launch_uuid'] = launch_uuid
-            job.request.reportportal['launch_url'] = rp.get_launch_url(launch_uuid)
+            job.request.reportportal['launch_url'] = launch_url
             ctx.save_schedule_job('schedule-', job)
+
+        # update Jira issue with a note about the RP launch
+        jira_connection = initialize_jira_connection(ctx)
+        try:
+            jira_connection.add_comment(
+                jira_id,
+                ("NEWA has scheduled automated test recipe for this issue, test "
+                 f"results will be uploaded to ReportPortal launch\n{launch_url}"),
+                visibility={
+                    'type': 'group',
+                    'value': job.jira.group}
+                if job.jira.group else None)
+            ctx.logger.info(
+                f'Jira issue {jira_id} was updated with a RP launch URL {launch_url}')
+        except jira.JIRAError as e:
+            raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
 
     # get a list of files to be scheduled so that they can be distributed across workers
     schedule_list = [
@@ -965,12 +992,7 @@ def cmd_report(ctx: CLIContext) -> None:
                       token=ctx.settings.rp_token,
                       project=rp_project)
     # initialize Jira connection
-    jira_url = ctx.settings.jira_url
-    if not jira_url:
-        raise Exception('Jira URL is not configured!')
-    jira_token = ctx.settings.jira_token
-    if not jira_token:
-        raise Exception('Jira token is not configured!')
+    jira_connection = initialize_jira_connection(ctx)
 
     # process each stored execute file
     # before actual reporting split jobs per jira id
@@ -1020,7 +1042,6 @@ def cmd_report(ctx: CLIContext) -> None:
             rp.update_launch(launch_uuid, description=launch_description)
             # do not report to Jira if JIRA_NONE_ID was used
             if not jira_id.startswith(JIRA_NONE_ID):
-                jira_connection = jira.JIRA(jira_url, token_auth=jira_token)
                 try:
                     jira_connection.add_comment(
                         jira_id,
