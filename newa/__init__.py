@@ -330,7 +330,7 @@ class Arch(Enum):
         _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
 
         if not preset:
-            return [Arch('x86_64')]
+            return _all
         # 'noarch' should be tested on all architectures
         if Arch('noarch') in preset:
             return _all
@@ -614,7 +614,10 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     people_assigned_to: str = field(repr=False)
     release: str = field()
     url: str = field()
-    archs: list[Arch] = field(factory=list)
+    archs: list[Arch] = field(factory=list,  # type: ignore[var-annotated]
+                              converter=lambda arch_list: [
+                                  (a if isinstance(a, Arch) else Arch(a))
+                                  for a in arch_list])
     builds: list[str] = field(factory=list)
     blocking_builds: list[str] = field(factory=list)
     components: list[str] = field(factory=list)
@@ -773,10 +776,11 @@ class RecipeConfig(Cloneable, Serializable):
             if condition:
                 compose: Optional[str] = combination.get('compose', '')
                 # we will expose COMPOSE, ENVIRONMENT, CONTEXT to evaluate a condition
+                arch = combination.get('arch', None)
                 test_result = eval_test(
                     condition,
                     COMPOSE=Compose(compose) if compose else None,
-                    ARCH=combination.get('arch', None),
+                    ARCH=arch.value if arch else None,
                     ENVIRONMENT=combination.get('environment', None),
                     CONTEXT=combination.get('context', None),
                     **(jinja_vars if jinja_vars else {}))
