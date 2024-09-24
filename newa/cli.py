@@ -256,7 +256,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                                 # if state was None check of request_uuid
                                 if (not state) and getattr(
                                         execute_job.execution, "request_uuid", None):
-                                    state = 'running'
+                                    state = 'executed, not reported'
                                 result = getattr(execute_job.execution, "result", "unknown")
                                 url = getattr(
                                     execute_job.execution, "artifacts_url", "not available")
