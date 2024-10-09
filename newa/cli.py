@@ -750,7 +750,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
                 # compose value is a string, not dict
                 if attr == 'compose':
                     value = getattr(request, attr, '')
-                    new_value = render_template(value, **jinja_vars)
+                    new_value = render_template(str(value), **jinja_vars)
                     if new_value:
                         setattr(request, attr, new_value)
                 else:
@@ -760,9 +760,9 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
                         # launch_attributes is a dict
                         if key == 'launch_attributes':
                             for (k, v) in value.items():
-                                mapping[key][k] = render_template(v, **jinja_vars)
+                                mapping[key][k] = render_template(str(v), **jinja_vars)
                         else:
-                            mapping[key] = render_template(value, **jinja_vars)
+                            mapping[key] = render_template(str(value), **jinja_vars)
 
             # export schedule_job yaml
             schedule_job = ScheduleJob(
