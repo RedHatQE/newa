@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import time
+import urllib
 from collections.abc import Generator
 from functools import partial
 from pathlib import Path
@@ -822,6 +823,7 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
     # store all launch uuids for later finishing
     launch_list = []
     # now we process jobs for each jira_id
+    jira_url = ctx.settings.jira_url
     for jira_id in jira_schedule_job_mapping:
         # when --continue the launch was probably already created
         # check the 1st job for launch_uuid
@@ -844,7 +846,10 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
             launch_description += '<br><br>'
         # add the number of jobs
         if not jira_id.startswith(JIRA_NONE_ID):
-            launch_description += f'{jira_id}: '
+            issue_url = urllib.parse.urljoin(
+                jira_url,
+                f"/browse/{jira_id}")
+            launch_description += f'[{jira_id}]({issue_url}): '
         launch_description += (f'{len(jira_schedule_job_mapping[jira_id])} '
                                'request(s) in total')
         # create the actual launch
