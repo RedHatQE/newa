@@ -1102,6 +1102,7 @@ class IssueAction:  # type: ignore[no-untyped-def]
     job_recipe: Optional[str] = None
     when: Optional[str] = None
     newa_id: Optional[str] = None
+    fields: Optional[dict[str, str | float | list[str]]] = None
 
 
 @define
@@ -1113,6 +1114,14 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
     group: Optional[str] = None
+
+
+@define
+class JiraField:
+    id_: str
+    name: str
+    type_: Optional[str]
+    items: Optional[str]
 
 
 @frozen
@@ -1127,12 +1136,9 @@ class IssueHandler:
     # Each project can have different semantics of issue status.
     transitions: dict[str, list[str]] = field()
 
-    # We assume that all projects have the following two custom fields mapped
-    # as follows.
-    custom_field_map: ClassVar[dict[str, str]] = {
-        "field_epic_link": "customfield_12311140",
-        "field_epic_name": "customfield_12311141",
-        }
+    # field name=>JiraField mapping will be obtained from Jira later
+    # see https://JIRASERVER/rest/api/2/field
+    field_map: ClassVar[dict[str, JiraField]] = {}
 
     # Actual Jira connection.
     connection: jira.JIRA = field(init=False)
@@ -1150,6 +1156,16 @@ class IssueHandler:
         # try connection first
         try:
             conn.myself()
+            # read field map from Jira and store its simplified version
+            fields = conn.fields()
+            for f in fields:
+                self.field_map[f['name']] = JiraField(
+                    name=f['name'],
+                    id_=f['id'],
+                    type_=f['schema']['type'] if 'schema' in f else None,
+                    items=f['schema']['items']
+                    if ('schema' in f and 'items' in f['schema'])
+                    else None)
         except jira.JIRAError as e:
             raise Exception('Could not authenticate to Jira. Wrong token?') from e
         return conn
@@ -1270,7 +1286,8 @@ class IssueHandler:
                      description: str,
                      assignee_email: str | None = None,
                      parent: Issue | None = None,
-                     group: Optional[str] = None) -> Issue:
+                     group: Optional[str] = None,
+                     fields: Optional[dict[str, str | float | list[str]]] = None) -> Issue:
         """ Create issue """
 
         data = {
@@ -1284,12 +1301,12 @@ class IssueHandler:
         if action.type == IssueType.EPIC:
             data |= {
                 "issuetype": {"name": "Epic"},
-                IssueHandler.custom_field_map["field_epic_name"]: data["summary"],
+                IssueHandler.field_map["Epic Name"].id_: data["summary"],
                 }
         elif action.type == IssueType.TASK:
             data |= {"issuetype": {"name": "Task"}}
             if parent:
-                data |= {IssueHandler.custom_field_map["field_epic_link"]: parent.id}
+                data |= {IssueHandler.field_map["Epic Link"].id_: parent.id}
         elif action.type == IssueType.SUBTASK:
             if not parent:
                 raise Exception("Missing task while creating sub-task!")
@@ -1303,11 +1320,43 @@ class IssueHandler:
 
         try:
             jira_issue = self.connection.create_issue(data)
-            jira_issue.update(
-                fields={
-                    "labels": [
-                        *jira_issue.fields.labels,
-                        IssueHandler.newa_label]})
+            if fields is None:
+                fields = {}
+            # always add NEWA label to fields
+            if "Labels" in fields and isinstance(fields['Labels'], list):
+                fields['Labels'].append(IssueHandler.newa_label)
+            else:
+                fields['Labels'] = [IssueHandler.newa_label]
+            # populate fdata with configuration provided by the user
+            fdata: dict[str, str | float | list[Any]] = {}
+            for field in fields:
+                field_id = IssueHandler.field_map[field].id_
+                field_type = IssueHandler.field_map[field].type_
+                field_items = IssueHandler.field_map[field].items
+                value = fields[field]
+                # to ease processing set field_values to be always a list of strings
+                if isinstance(value, (float, int, str)):
+                    field_values = [str(value)]
+                elif isinstance(value, list):
+                    field_values = list(map(str, value))
+                else:
+                    raise Exception(f'Unsupported Jira field conversion for {type(value)}')
+                # now we need to distinguish different types of fields and values
+                if field_type == 'string':
+                    fdata[field_id] = field_values[0]
+                elif field_type == 'number':
+                    fdata[field_id] = float(field_values[0])
+                elif field_type == 'array':
+                    if field_items == 'string':
+                        fdata[field_id] = field_values
+                    elif field_items == 'option':
+                        fdata[field_id] = [{"value": v} for v in field_values]
+                    else:
+                        raise Exception(f'Unsupported Jira field item {field_items}')
+                else:
+                    raise Exception(f'Unsupported Jira field type {field_type}')
+
+            jira_issue.update(fields=fdata)
             return Issue(jira_issue.key,
                          group=self.group,
                          summary=summary,
