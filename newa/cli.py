@@ -607,12 +607,14 @@ def cmd_jira(
                     if action.parent_id:
                         parent = processed_actions.get(action.parent_id, None)
 
-                    new_issue = jira_handler.create_issue(action,
-                                                          rendered_summary,
-                                                          rendered_description,
-                                                          rendered_assignee,
-                                                          parent,
-                                                          group=config.group)
+                    new_issue = jira_handler.create_issue(
+                        action,
+                        rendered_summary,
+                        rendered_description,
+                        rendered_assignee,
+                        parent,
+                        group=config.group,
+                        fields=action.fields)
 
                     processed_actions[action.id] = new_issue
                     created_action_ids.append(action.id)
