@@ -870,20 +870,21 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
             ctx.save_schedule_job('schedule-', job)
 
         # update Jira issue with a note about the RP launch
-        jira_connection = initialize_jira_connection(ctx)
-        try:
-            jira_connection.add_comment(
-                jira_id,
-                ("NEWA has scheduled automated test recipe for this issue, test "
-                 f"results will be uploaded to ReportPortal launch\n{launch_url}"),
-                visibility={
-                    'type': 'group',
-                    'value': job.jira.group}
-                if job.jira.group else None)
-            ctx.logger.info(
-                f'Jira issue {jira_id} was updated with a RP launch URL {launch_url}')
-        except jira.JIRAError as e:
-            raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
+        if not jira_id.startswith(JIRA_NONE_ID):
+            jira_connection = initialize_jira_connection(ctx)
+            try:
+                jira_connection.add_comment(
+                    jira_id,
+                    ("NEWA has scheduled automated test recipe for this issue, test "
+                     f"results will be uploaded to ReportPortal launch\n{launch_url}"),
+                    visibility={
+                        'type': 'group',
+                        'value': job.jira.group}
+                    if job.jira.group else None)
+                ctx.logger.info(
+                    f'Jira issue {jira_id} was updated with a RP launch URL {launch_url}')
+            except jira.JIRAError as e:
+                raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
 
     # get a list of files to be scheduled so that they can be distributed across workers
     schedule_list = [
