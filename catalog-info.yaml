@@ -15,8 +15,6 @@ metadata:
         - title: code
           url: https://github.com/RedhatQE/newa
           icon: github
-        - title: pypi
-          url: https://pypi.org/project/sentaku/
         - title: copr repository
           url: https://copr.fedorainfracloud.org/coprs/packit/RedHatQE-newa-main/
           icon: externalLink
@@ -24,6 +22,7 @@ metadata:
 
     # https://console.one.redhat.com/docs/quality-community/Component/qe-toolbelt-catalog/onboarding/#tags
     tags:
+        - errata
         - jira
         - python
         - reportportal
