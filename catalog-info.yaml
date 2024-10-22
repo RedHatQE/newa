@@ -42,6 +42,9 @@ spec:
     # https://backstage.io/docs/features/software-catalog/descriptor-format/#speclifecycle-required
     lifecycle: experimental
     # https://rover.redhat.com/groups/group/rhel-ssg-security
-    owner: user:redhat/rhel-ssg-security
+    owner: group:redhat/rhel-ssg-security
     # https://console.one.redhat.com/catalog/quality-community/domain/quality-community
     domain: quality-community/quality-community
+    # https://backstage.io/docs/features/software-catalog/descriptor-format#specdependson-optional
+    dependsOn:
+        - system:quality-community/testing-farm
