@@ -43,3 +43,17 @@ repos:
     rev: v8.18.1
     hooks:
       - id: gitleaks
+
+  # Backstage linter
+  # https://console.one.redhat.com/docs/quality-community/Component/qe-toolbelt-catalog/onboarding/#pre-commit
+  - repo: local
+    hooks:
+      - id: backstage-entity-validator
+        name: backstage-entity-validator
+        language: system
+        files: catalog-info\.yaml$
+        entry: npx @roadiehq/backstage-entity-validator validate-entity
+        exclude: |
+          (?x)^(
+            user_repo.*
+          )$
