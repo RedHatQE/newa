@@ -1,0 +1,48 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+    name: Newa
+    description: |
+      New Errata Workflow Automation.
+      Automation tool for automated testing of Red Hat Erratums using tmt, Testing Farm, ReportPortal and Jira.
+
+    # https://backstage.io/docs/features/software-catalog/descriptor-format#links-optional
+    links:
+        - title: user guide
+          url: https://docs.google.com/document/d/1kRBXCGVopImAJYX7KMZA0RJFhW2a_U03yYFJ_2Bg-eA/edit?usp=sharing
+          icon: techdocs
+        - title: code
+          url: https://github.com/RedhatQE/newa
+          icon: github
+        - title: pypi
+          url: https://pypi.org/project/sentaku/
+        - title: copr repository
+          url: https://copr.fedorainfracloud.org/coprs/packit/RedHatQE-newa-main/
+          icon: externalLink
+          type: copr
+
+    # https://console.one.redhat.com/docs/quality-community/Component/qe-toolbelt-catalog/onboarding/#tags
+    tags:
+        - jira
+        - python
+        - reportportal
+        - test-framework
+        - test-reporting
+        - testing-farm
+
+    # https://console.one.redhat.com/catalog/quality-community/domain/quality-community
+    namespace: quality-community
+
+    # https://backstage.io/docs/features/software-catalog/well-known-annotations/
+    annotations:
+        github.com/project-slug: RedhatQE/newa
+spec:
+    # https://backstage.io/docs/features/software-catalog/descriptor-format#spectype-required
+    type: library
+    # https://backstage.io/docs/features/software-catalog/descriptor-format/#speclifecycle-required
+    lifecycle: experimental
+    # https://rover.redhat.com/groups/group/rhel-ssg-security
+    owner: user:redhat/rhel-ssg-security
+    # https://console.one.redhat.com/catalog/quality-community/domain/quality-community
+    domain: quality-community/quality-community
