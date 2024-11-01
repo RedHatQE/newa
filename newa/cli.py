@@ -842,6 +842,13 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
         launch_attrs = jira_schedule_job_mapping[jira_id][0].request.reportportal.get(
             'launch_attributes', {})
         launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
+        # we store CLI --context definitions as well but not overriding
+        # existing launch_attributes
+        for (k, v) in ctx.cli_context.items():
+            if k in launch_attrs:
+                ctx.logger.debug(f'Not storing context {k} as launch attribute due to a collision')
+            else:
+                launch_attrs[k] = v
         launch_description = jira_schedule_job_mapping[jira_id][0].request.reportportal.get(
             'launch_description', '')
         if launch_description:
