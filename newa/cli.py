@@ -1068,7 +1068,7 @@ def cmd_report(ctx: CLIContext) -> None:
                 launch_description += f'{jira_id}: '
             launch_description += f'{len(jira_execute_job_mapping[jira_id])} request(s) in total:'
             jira_description = launch_description.replace('<br>', '\n')
-            for req in sorted(results.keys()):
+            for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
                 # it would be nice to use hyperlinks in launch description however we
                 # would hit description length limit. Therefore using plain text
                 launch_description += "<br>{id}: {state}, {result}".format(**results[req])
