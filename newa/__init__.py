@@ -122,6 +122,16 @@ def render_template(
         raise Exception("Could not render template.") from exc
 
 
+def global_request_counter() -> Iterator[int]:
+    i = 1
+    while True:
+        yield i
+        i += 1
+
+
+gen_global_request_counter = global_request_counter()
+
+
 @define
 class Settings:
     """ Class storing newa settings """
@@ -790,8 +800,9 @@ class RecipeConfig(Cloneable, Serializable):
         # now build Request instances
         total = len(filtered_combinations)
         for combination in filtered_combinations:
-            yield Request(id=f'REQ-{next(recipe_id_gen)}.{total}',
-                          **combination)
+            yield Request(
+                id=f'REQ-{next(recipe_id_gen)}.{total}.{next(gen_global_request_counter)}',
+                **combination)
 
 
 @define
