@@ -1115,6 +1115,13 @@ def cmd_execute(
         launch_attrs = schedule_jobs[0].request.reportportal.get(
             'launch_attributes', {})
         launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
+        # we store CLI --context definitions as well but not overriding
+        # existing launch_attributes
+        for (k, v) in ctx.cli_context.items():
+            if k in launch_attrs:
+                ctx.logger.debug(f'Not storing context {k} as launch attribute due to a collision')
+            else:
+                launch_attrs[k] = v
         launch_description = schedule_jobs[0].request.reportportal.get(
             'launch_description', '')
         if launch_description:
