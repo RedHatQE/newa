@@ -26,6 +26,7 @@ jobs:
       - epel-9-x86_64
       - epel-9-aarch64
     enable_net: false
+    osh_diff_scan_after_copr_build: false
     actions:
       create-archive:
         - hatch build -t sdist
@@ -48,6 +49,7 @@ jobs:
       - epel-9-x86_64
       - epel-9-aarch64
     enable_net: false
+    osh_diff_scan_after_copr_build: false
     list_on_homepage: true
     preserve_project: true
     release_suffix: "{PACKIT_PROJECT_BRANCH}"
