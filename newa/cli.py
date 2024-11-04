@@ -394,6 +394,13 @@ def cmd_event(
     help='Specifies path to a Jira issue configuration file.',
     )
 @click.option(
+    '--map-issue',
+    default=[],
+    multiple=True,
+    help=('Map issue id from the issue-config file to an existing Jira issue. '
+          'Example: --map-issue jira_epic=RHEL-123456'),
+    )
+@click.option(
     '--recreate',
     is_flag=True,
     default=False,
@@ -422,6 +429,7 @@ def cmd_event(
 def cmd_jira(
         ctx: CLIContext,
         issue_config: str,
+        map_issue: list[str],
         recreate: bool,
         issue: str,
         job_recipe: str,
@@ -447,6 +455,15 @@ def cmd_jira(
             n += 1
 
     jira_none_id = _jira_fake_id_generator()
+
+    # load issue mapping specified on a command line
+    issue_mapping = {}
+    for m in map_issue:
+        r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
+        if not r:
+            raise Exception(f"Mapping {m} does not having expected format 'key=value'")
+        key, value = r.groups()
+        issue_mapping[key] = value
 
     for artifact_job in ctx.load_artifact_jobs('event-'):
         # when issue_config is defined, --issue and --job-recipe are ignored
@@ -531,7 +548,8 @@ def cmd_jira(
                     queue_length = len(issue_actions)
                     last_queue_length = endless_loop_check.get(action.id, 0)
                     if last_queue_length == queue_length:
-                        raise Exception(f"Parent {action.parent_id} for {action.id} not found!")
+                        raise Exception(f"Parent {action.parent_id} for {action.id} not found!"
+                                        "It does not exists or is closed.")
 
                     endless_loop_check[action.id] = queue_length
                     ctx.logger.info(f"Skipped for now (parent {action.parent_id} not yet found)")
@@ -539,47 +557,60 @@ def cmd_jira(
                     issue_actions.append(action)
                     continue
 
-                # Find existing issues related to artifact_job and action
-                # If we are supposed to recreate closed issues, search only for opened ones
-                if recreate:
-                    search_result = jira_handler.get_related_issues(
-                        action, all_respins=True, closed=False)
-                else:
-                    search_result = jira_handler.get_related_issues(
-                        action, all_respins=True, closed=True)
-
                 # Issues related to the curent respin and previous one(s).
                 new_issues: list[Issue] = []
                 old_issues: list[Issue] = []
-                for jira_issue_key, jira_issue in search_result.items():
-                    ctx.logger.info(f"Checking {jira_issue_key}")
 
-                    # In general, issue is new (relevant to the current respin) if it has newa_id
-                    # of this action in the description. Otherwise, it is old (relevant to the
-                    # previous respins).
-                    #
-                    # However, it might happen that we encounter an issue that is new but its
-                    # original parent has been replaced by a newly created issue. In such a case
-                    # we have to re-create the issue as well and drop the old one.
-                    is_new = False
-                    if jira_handler.newa_id(action) in jira_issue["description"] \
-                        and (not action.parent_id
-                             or action.parent_id not in created_action_ids):
-                        is_new = True
+                # first check if we have a match in issue_mapping
+                if action.id and action.id in issue_mapping and issue_mapping[action.id].strip():
+                    mapped_issue = Issue(
+                        issue_mapping[action.id].strip(),
+                        group=config.group)
+                    jira_issue = jira_handler.get_details(mapped_issue)
+                    mapped_issue.closed = jira_issue.get_field(
+                        "status").name in jira_handler.transitions['closed']
+                    new_issues.append(mapped_issue)
 
-                    if is_new:
-                        new_issues.append(
-                            Issue(
-                                jira_issue_key,
-                                group=config.group,
-                                closed=jira_issue["status"] == "closed"))
-                    # opened old issues may be reused
-                    elif jira_issue["status"] == "opened":
-                        old_issues.append(
-                            Issue(
-                                jira_issue_key,
-                                group=config.group,
-                                closed=False))
+                # otherwise we need to search for the issue in Jira
+                else:
+                    # Find existing issues related to artifact_job and action
+                    # If we are supposed to recreate closed issues, search only for opened ones
+                    if recreate:
+                        search_result = jira_handler.get_related_issues(
+                            action, all_respins=True, closed=False)
+                    else:
+                        search_result = jira_handler.get_related_issues(
+                            action, all_respins=True, closed=True)
+
+                    for jira_issue_key, jira_issue in search_result.items():
+                        ctx.logger.info(f"Checking {jira_issue_key}")
+
+                        # In general, issue is new (relevant to the current respin) if it has
+                        # newa_id of this action in the description. Otherwise, it is old
+                        # (relevant to the previous respins).
+                        # However, it might happen that we encounter an issue that is new but
+                        # its original parent has been replaced by a newly created issue.
+                        # In such a case we have to re-create the issue as well and drop the
+                        # old one.
+                        is_new = False
+                        if jira_handler.newa_id(action) in jira_issue["description"] \
+                            and (not action.parent_id
+                                 or action.parent_id not in created_action_ids):
+                            is_new = True
+
+                        if is_new:
+                            new_issues.append(
+                                Issue(
+                                    jira_issue_key,
+                                    group=config.group,
+                                    closed=jira_issue["status"] == "closed"))
+                        # opened old issues may be reused
+                        elif jira_issue["status"] == "opened":
+                            old_issues.append(
+                                Issue(
+                                    jira_issue_key,
+                                    group=config.group,
+                                    closed=False))
 
                 # Old opened issue(s) can be re-used for the current respin.
                 if old_issues and action.on_respin == OnRespinAction.KEEP:
@@ -629,7 +660,6 @@ def cmd_jira(
                     processed_actions[action.id] = new_issue
 
                     # If the old issue was reused, re-fresh it.
-                    parent = processed_actions[action.parent_id] if action.parent_id else None
                     jira_handler.refresh_issue(action, new_issue)
                     ctx.logger.info(f"Issue {new_issue} re-used")
 

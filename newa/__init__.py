@@ -1170,7 +1170,7 @@ class IssueHandler:
             raise Exception('Could not authenticate to Jira. Wrong token?') from e
         return conn
 
-    def newa_id(self, action: IssueAction, partial: bool = False) -> str:
+    def newa_id(self, action: Optional[IssueAction] = None, partial: bool = False) -> str:
         """
         NEWA identifier
 
@@ -1178,6 +1178,9 @@ class IssueHandler:
         action for errata. By default it defines issues related to the current
         respin. If 'partial' is defined it defines issues relevant for all respins.
         """
+
+        if not action:
+            return f"::: {IssueHandler.newa_label}"
 
         if action.newa_id:
             return f"::: {IssueHandler.newa_label} {action.newa_id}"
@@ -1369,15 +1372,23 @@ class IssueHandler:
 
         issue_details = self.get_details(issue)
         description = issue_details.fields.description
+        labels = issue_details.fields.labels
+        new_description = ""
 
-        # Issue does not have any NEWA ID - error.
-        if isinstance(description, str) and self.newa_id(action, True) not in description:
-            raise Exception(f"Issue {issue} is missing NEWA identifier!")
+        # add NEWA label if missing
+        if self.newa_label not in labels:
+            issue_details.add_field_value('labels', self.newa_label)
+
+        # Issue does not have any NEWA ID yet
+        if isinstance(description, str) and self.newa_id() not in description:
+            new_description = f"{self.newa_id(action)}\n{description}"
 
         # Issue has NEWA ID but not the current respin - update it.
-        if isinstance(description, str) and self.newa_id(action) not in description:
-            new_description = re.sub(f"^{re.escape(self.newa_id(action, partial=True))}.*\n",
+        elif isinstance(description, str) and self.newa_id(action) not in description:
+            new_description = re.sub(f"^{re.escape(self.newa_id())}.*\n",
                                      f"{self.newa_id(action)}\n", description)
+
+        if new_description:
             try:
                 self.get_details(issue).update(fields={"description": new_description})
                 self.comment_issue(
