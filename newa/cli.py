@@ -458,19 +458,33 @@ def cmd_jira(
 
     # load issue mapping specified on a command line
     issue_mapping = {}
-    for m in map_issue:
-        r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
-        if not r:
-            raise Exception(f"Mapping {m} does not having expected format 'key=value'")
-        key, value = r.groups()
-        issue_mapping[key] = value
+    artifact_jobs = ctx.load_artifact_jobs('event-')
 
-    for artifact_job in ctx.load_artifact_jobs('event-'):
+    # issue mapping is relevant only when using issue-config file
+    # check for wrong ids provided on a cmdline
+    if issue_config:
+        # read Jira issue configuration
+        config = IssueConfig.from_yaml_with_include(os.path.expandvars(issue_config))
+
+        # read --map-issue keys and values into a dictionary
+        for m in map_issue:
+            r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
+            if not r:
+                raise Exception(f"Mapping {m} does not having expected format 'key=value'")
+            key, value = r.groups()
+            issue_mapping[key] = value
+        # gather ids from the config file
+        ids = [getattr(action, "id", None) for action in config.issues[:]]
+        # check for keys not present in a config file
+        for key in issue_mapping:
+            if key not in ids:
+                raise Exception(f"Key '{key}' from mapping '{m}' doesn't match issue item id "
+                                f"from '{os.path.expandvars(issue_config)}'. Typo?")
+
+    for artifact_job in artifact_jobs:
         # when issue_config is defined, --issue and --job-recipe are ignored
         # as it will be set depending on the --issue-config content
         if issue_config:
-            # read Jira issue configuration
-            config = IssueConfig.from_yaml_with_include(os.path.expandvars(issue_config))
 
             jira_handler = IssueHandler(
                 artifact_job,
