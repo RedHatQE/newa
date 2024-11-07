@@ -47,6 +47,7 @@ from . import (
 JIRA_NONE_ID = '_NO_ISSUE'
 STATEDIR_PARENT_DIR = Path('/var/tmp/newa')
 STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
+TF_RESULT_PASSED = 'passed'
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -97,6 +98,22 @@ def initialize_jira_connection(ctx: CLIContext) -> Any:
     if not jira_token:
         raise Exception('Jira token is not configured!')
     return jira.JIRA(jira_url, token_auth=jira_token)
+
+
+def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
+    try:
+        # if the transition has a format status.resolution close with resolution
+        if '.' in transition:
+            status, resolution = transition.split('.', 1)
+            connection.transition_issue(issue_id,
+                                        transition=status,
+                                        resolution={'name': resolution})
+        # otherwise close just using the status
+        else:
+            connection.transition_issue(issue_id,
+                                        transition=transition)
+    except jira.JIRAError as e:
+        raise Exception(f"Cannot transition issue {issue_id} into {transition}!") from e
 
 
 @click.group(chain=True)
@@ -575,11 +592,22 @@ def cmd_jira(
                 new_issues: list[Issue] = []
                 old_issues: list[Issue] = []
 
+                # read transition settings
+                transition_passed = None
+                transition_processed = None
+                if action.auto_transition:
+                    if jira_handler.transitions.passed:
+                        transition_passed = jira_handler.transitions.passed[0]
+                    if jira_handler.transitions.processed:
+                        transition_processed = jira_handler.transitions.processed[0]
+
                 # first check if we have a match in issue_mapping
                 if action.id and action.id in issue_mapping and issue_mapping[action.id].strip():
                     mapped_issue = Issue(
                         issue_mapping[action.id].strip(),
-                        group=config.group)
+                        group=config.group,
+                        transition_passed=transition_passed,
+                        transition_processed=transition_processed)
                     jira_issue = jira_handler.get_details(mapped_issue)
                     mapped_issue.closed = jira_issue.get_field(
                         "status").name in jira_handler.transitions.closed
@@ -617,14 +645,18 @@ def cmd_jira(
                                 Issue(
                                     jira_issue_key,
                                     group=config.group,
-                                    closed=jira_issue["status"] == "closed"))
+                                    closed=jira_issue["status"] == "closed",
+                                    transition_passed=transition_passed,
+                                    transition_processed=transition_processed))
                         # opened old issues may be reused
                         elif jira_issue["status"] == "opened":
                             old_issues.append(
                                 Issue(
                                     jira_issue_key,
                                     group=config.group,
-                                    closed=False))
+                                    closed=False,
+                                    transition_passed=transition_passed,
+                                    transition_processed=transition_processed))
 
                 # Old opened issue(s) can be re-used for the current respin.
                 if old_issues and action.on_respin == OnRespinAction.KEEP:
@@ -693,6 +725,14 @@ def cmd_jira(
                                        jira=new_issue,
                                        recipe=Recipe(url=recipe_url))
                     ctx.save_jira_job('jira-', jira_job)
+
+                # when there is no job_recipe we process transition if enabled
+                elif action.auto_transition and transition_processed:
+                    issue_transition(jira_handler.connection,
+                                     transition_processed,
+                                     new_issue.id)
+                    ctx.logger.info(
+                        f'Issue {new_issue.id} state changed to {transition_processed}')
 
                 # Processing old issues - we only expect old issues that are to be closed (if any).
                 if old_issues:
@@ -1064,6 +1104,7 @@ def cmd_report(ctx: CLIContext) -> None:
 
     # now for each jira id finish the respective launch and report results
     for jira_id in jira_execute_job_mapping:
+        all_tests_passed = True
         # get RP launch details
         launch_uuid = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
             'launch_uuid', None)
@@ -1079,6 +1120,8 @@ def cmd_report(ctx: CLIContext) -> None:
                     'result': job.execution.result,
                     'uuid': job.execution.request_uuid,
                     'url': job.execution.artifacts_url}
+                if job.execution.result != TF_RESULT_PASSED:
+                    all_tests_passed = False
             launch_description = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
                 'launch_description', '')
             if launch_description:
@@ -1112,3 +1155,17 @@ def cmd_report(ctx: CLIContext) -> None:
                         f'Jira issue {jira_id} was updated with a RP launch URL {launch_url}')
                 except jira.JIRAError as e:
                     raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
+                # change Jira issue state if required
+                if execute_job.jira.transition_passed and all_tests_passed:
+                    issue_transition(jira_connection,
+                                     execute_job.jira.transition_passed,
+                                     jira_id)
+                    ctx.logger.info(
+                        f'Issue {jira_id} state changed to {execute_job.jira.transition_passed}')
+                elif execute_job.jira.transition_processed:
+                    issue_transition(jira_connection,
+                                     execute_job.jira.transition_processed,
+                                     jira_id)
+                    ctx.logger.info(
+                        f'Issue {jira_id} state changed '
+                        f'to {execute_job.jira.transition_processed}')
