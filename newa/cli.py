@@ -668,11 +668,16 @@ def cmd_jira(
                     raise Exception(f"More than one new {action.id} found ({new_issues})!")
 
                 if action.job_recipe:
+                    recipe_url = render_template(
+                        action.job_recipe,
+                        ERRATUM=artifact_job.erratum,
+                        COMPOSE=artifact_job.compose,
+                        ENVIRONMENT=ctx.cli_environment)
                     jira_job = JiraJob(event=artifact_job.event,
                                        erratum=artifact_job.erratum,
                                        compose=artifact_job.compose,
                                        jira=new_issue,
-                                       recipe=Recipe(url=action.job_recipe))
+                                       recipe=Recipe(url=recipe_url))
                     ctx.save_jira_job('jira-', jira_job)
 
                 # Processing old issues - we only expect old issues that are to be closed (if any).
