@@ -645,8 +645,8 @@ class Issue(Cloneable, Serializable):
     summary: Optional[str] = None
     closed: Optional[bool] = None
     url: Optional[str] = None
-    transition_pass: Optional[str] = None
-    transition_results: Optional[str] = None
+    transition_processed: Optional[str] = None
+    transition_passed: Optional[str] = None
 
     def __str__(self) -> str:
         return self.id
@@ -1110,7 +1110,7 @@ class IssueAction:  # type: ignore[no-untyped-def]
     type: IssueType = field(converter=IssueType)
     on_respin: OnRespinAction = field(  # type: ignore[var-annotated]
         converter=lambda value: OnRespinAction(value), default=OnRespinAction.CLOSE)
-    transition: bool = False
+    auto_transition: bool = False
     assignee: Optional[str] = None
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
@@ -1123,8 +1123,8 @@ class IssueAction:  # type: ignore[no-untyped-def]
 class IssueTransitions(Serializable):
     closed: list[str] = field()
     dropped: list[str] = field()
-    passed: Optional[list[str]] = field()
-    results: Optional[list[str]] = field()
+    processed: Optional[list[str]] = None
+    passed: Optional[list[str]] = None
 
 
 @define

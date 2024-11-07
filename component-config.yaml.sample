@@ -7,7 +7,7 @@ transitions:
     - Completed
   dropped:
     - Dropped
-  results:
+  processed:
     - In Progress
   passed:
     - Done
@@ -28,6 +28,7 @@ issues:
    type: epic
    id: errata_epic
    on_respin: keep
+   auto_transition: True
 
  - summary: "Errata filelist check"
    description: "Compare errata filelist with a previously released advisory"
@@ -60,4 +61,5 @@ issues:
    id: subtask_regression
    parent_id: errata_task
    on_respin: close
+   auto_transition: True
    job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/ks_recipe_job/component-recipe.yaml.sample
