@@ -568,7 +568,7 @@ def cmd_jira(
                         group=config.group)
                     jira_issue = jira_handler.get_details(mapped_issue)
                     mapped_issue.closed = jira_issue.get_field(
-                        "status").name in jira_handler.transitions['closed']
+                        "status").name in jira_handler.transitions.closed
                     new_issues.append(mapped_issue)
 
                 # otherwise we need to search for the issue in Jira

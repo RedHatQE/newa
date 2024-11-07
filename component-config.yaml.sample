@@ -7,6 +7,10 @@ transitions:
     - Completed
   dropped:
     - Dropped
+  results:
+    - In Progress
+  passed:
+    - Done
 
 issues:
 

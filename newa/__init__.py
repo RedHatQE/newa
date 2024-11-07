@@ -645,6 +645,8 @@ class Issue(Cloneable, Serializable):
     summary: Optional[str] = None
     closed: Optional[bool] = None
     url: Optional[str] = None
+    transition_pass: Optional[str] = None
+    transition_results: Optional[str] = None
 
     def __str__(self) -> str:
         return self.id
@@ -1108,6 +1110,7 @@ class IssueAction:  # type: ignore[no-untyped-def]
     type: IssueType = field(converter=IssueType)
     on_respin: OnRespinAction = field(  # type: ignore[var-annotated]
         converter=lambda value: OnRespinAction(value), default=OnRespinAction.CLOSE)
+    transition: bool = False
     assignee: Optional[str] = None
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
@@ -1117,10 +1120,19 @@ class IssueAction:  # type: ignore[no-untyped-def]
 
 
 @define
+class IssueTransitions(Serializable):
+    closed: list[str] = field()
+    dropped: list[str] = field()
+    passed: Optional[list[str]] = field()
+    results: Optional[list[str]] = field()
+
+
+@define
 class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
 
     project: str = field()
-    transitions: dict[str, list[str]] = field()
+    transitions: IssueTransitions = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, IssueTransitions) else IssueTransitions(**x))
     issues: list[IssueAction] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
@@ -1136,7 +1148,7 @@ class JiraField:
 
 
 @frozen
-class IssueHandler:
+class IssueHandler:  # type: ignore[no-untyped-def]
     """ An interface to Jira instance handling a specific ArtifactJob """
 
     artifact_job: ArtifactJob = field()
@@ -1145,7 +1157,8 @@ class IssueHandler:
     project: str = field()
 
     # Each project can have different semantics of issue status.
-    transitions: dict[str, list[str]] = field()
+    transitions: IssueTransitions = field(  # type: ignore[var-annotated]
+        converter=lambda x: x if isinstance(x, IssueTransitions) else IssueTransitions(**x))
 
     # field name=>JiraField mapping will be obtained from Jira later
     # see https://JIRASERVER/rest/api/2/field
@@ -1273,7 +1286,7 @@ class IssueHandler:
                 f"project = '{self.project}' AND " + \
                 f"labels in ({IssueHandler.newa_label}) AND " + \
                 f"description ~ '{newa_description}' AND " + \
-                f"status not in ({','.join(self.transitions['closed'])})"
+                f"status not in ({','.join(self.transitions.closed)})"
         search_result = self.connection.search_issues(query, fields=fields, json_result=True)
         if not isinstance(search_result, dict):
             raise Exception(f"Unexpected search result type {type(search_result)}!")
@@ -1286,7 +1299,7 @@ class IssueHandler:
         for jira_issue in search_result["issues"]:
             if newa_description in jira_issue["fields"]["description"]:
                 result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
-                if jira_issue["fields"]["status"]["name"] in self.transitions['closed']:
+                if jira_issue["fields"]["status"]["name"] in self.transitions.closed:
                     result[jira_issue["key"]] |= {"status": "closed"}
                 else:
                     result[jira_issue["key"]] |= {"status": "opened"}
@@ -1433,15 +1446,15 @@ class IssueHandler:
                         'value': self.group} if self.group else None,
                     })
             # if the transition has a format status.resolution close with resolution
-            if '.' in self.transitions["dropped"][0]:
-                status, resolution = self.transitions["dropped"][0].split('.', 1)
+            if '.' in self.transitions.dropped[0]:
+                status, resolution = self.transitions.dropped[0].split('.', 1)
                 self.connection.transition_issue(issue.id,
                                                  transition=status,
                                                  resolution={'name': resolution})
             # otherwise close just using the status
             else:
                 self.connection.transition_issue(issue.id,
-                                                 transition=self.transitions["dropped"][0])
+                                                 transition=self.transitions.dropped[0])
         except jira.JIRAError as e:
             raise Exception(f"Cannot close issue {issue}!") from e
 
