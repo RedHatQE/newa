@@ -18,7 +18,7 @@ issues:
    on_respin: keep
 
  - summary: "Errata respin {{ ERRATUM.respin_count }}"
-   description: "{{ ERRATUM.srpms }}"
+   description: "{{ ERRATUM.builds|join(' ') }}"
    assignee: '{{ ERRATUM.people_assigned_to }}'
    type: task
    id: errata_task
