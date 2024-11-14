@@ -1,0 +1,17 @@
+include:
+  - tests/unit/data/issue-config-include-child1.yaml
+  - tests/unit/data/issue-config-include-child2.yaml
+
+defaults:
+  assignee: null
+  fields:
+    "Pool Team": "parents_team"
+
+issues:
+ - summary: "Parent issue"
+   description: "Parent issue"
+   type: epic
+   assignee: "me"
+   id: parent
+   fields:
+     "Story Points": 3

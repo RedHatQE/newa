@@ -474,14 +474,14 @@ def cmd_jira(
     jira_none_id = _jira_fake_id_generator()
 
     # load issue mapping specified on a command line
-    issue_mapping = {}
+    issue_mapping: dict[str, str] = {}
     artifact_jobs = ctx.load_artifact_jobs('event-')
 
     # issue mapping is relevant only when using issue-config file
     # check for wrong ids provided on a cmdline
     if issue_config:
         # read Jira issue configuration
-        config = IssueConfig.from_yaml_with_include(os.path.expandvars(issue_config))
+        config = IssueConfig.read_file(os.path.expandvars(issue_config))
 
         # read --map-issue keys and values into a dictionary
         for m in map_issue:
@@ -532,6 +532,8 @@ def cmd_jira(
             # put it back at the end of the queue.
             while issue_actions:
                 action = issue_actions.pop(0)
+                if not action.id:
+                    raise Exception(f"Action {action} does not have 'id' assigned")
 
                 ctx.logger.info(f"Processing {action.id}")
 
@@ -543,6 +545,11 @@ def cmd_jira(
                                                  ENVIRONMENT=ctx.cli_environment):
                     ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
                     continue
+
+                if not action.summary:
+                    raise Exception(f"Action {action} does not have a 'summary' defined.")
+                if not action.description:
+                    raise Exception(f"Action {action} does not have a 'description' defined.")
 
                 rendered_summary = render_template(
                     action.summary,

@@ -16,7 +16,7 @@ try:
     from attrs import asdict, define, evolve, field, frozen, validators
 except ModuleNotFoundError:
     from attr import asdict, define, evolve, field, frozen, validators
-from collections.abc import Iterable, Iterator
+from collections.abc import Generator, Iterable, Iterator
 from configparser import ConfigParser
 from enum import Enum
 from pathlib import Path
@@ -390,52 +390,6 @@ class Serializable:
     def from_yaml_url(cls: type[SerializableT], url: str) -> SerializableT:
         r = get_request(url=url, response_content=ResponseContentType.TEXT)
         return cls.from_yaml(r)
-
-    @classmethod
-    def from_yaml_with_include(cls: type[SerializableT], location: str) -> SerializableT:
-
-        def load_data_from_location(location: str,
-                                    stack: Optional[list[str]] = None) -> dict[str, Any]:
-            if stack and location in stack:
-                raise Exception(f"Recursion encountered when loading YAML from {location}")
-            # include location into the stack so we can detect recursion
-            if stack:
-                stack.append(location)
-            else:
-                stack = [location]
-            data: dict[str, Any] = {}
-            if re.search('^https?://', location):
-                data = yaml_parser().load(get_request(
-                    url=location,
-                    response_content=ResponseContentType.TEXT))
-            else:
-                try:
-                    data = yaml_parser().load(Path(location).read_text())
-                except ruamel.yaml.error.YAMLError as e:
-                    raise Exception(
-                        f'Unable to load and parse YAML file from location {location}') from e
-
-            # process 'include' attribute
-            if 'include' in data:
-                locations = data['include']
-                # drop 'include' so it won't be processed again
-                del data['include']
-                for loc in locations:
-                    included_data = load_data_from_location(loc, stack)
-                    if included_data:
-                        # explicitly join 'issues' lists first
-                        if data.get('issues', []) and included_data.get('issues', []):
-                            data['issues'].extend(included_data['issues'])
-                        # now update data from included YAML with data from the importing YAML
-                        # so that the importing data takes precedence (except 'issues' that have
-                        # been joined)
-                        included_data.update(data)
-                        data = copy.deepcopy(included_data)
-
-            return data
-
-        data = load_data_from_location(location)
-        return cls(**data)
 
 
 @define
@@ -1102,21 +1056,52 @@ class OnRespinAction(Enum):
     CLOSE = 'close'
 
 
+def _default_action_id_generator() -> Generator[str, int, None]:
+    n = 1
+    while True:
+        yield f'DEFAULT_ACTION_ID_{n}'
+        n += 1
+
+
+default_action_id = _default_action_id_generator()
+
+
 @define
-class IssueAction:  # type: ignore[no-untyped-def]
-    summary: str
-    description: str
-    id: str
-    type: IssueType = field(converter=IssueType)
+class IssueAction(Serializable):  # type: ignore[no-untyped-def]
+    type: IssueType = field(converter=IssueType, default=IssueType.TASK)
     on_respin: OnRespinAction = field(  # type: ignore[var-annotated]
         converter=lambda value: OnRespinAction(value), default=OnRespinAction.CLOSE)
-    auto_transition: bool = False
+    auto_transition: Optional[bool] = False
+    summary: Optional[str] = None
+    description: Optional[str] = None
+    id: Optional[str] = field(  # type: ignore[var-annotated]
+        converter=lambda s: s if s else next(default_action_id),
+        default=None)
     assignee: Optional[str] = None
     parent_id: Optional[str] = None
     job_recipe: Optional[str] = None
     when: Optional[str] = None
     newa_id: Optional[str] = None
     fields: Optional[dict[str, str | float | list[str]]] = None
+
+    # function to handle issue-config file defaults
+
+    def update_with_defaults(
+            self,
+            defaults: Optional[IssueAction] = None) -> None:
+        if not isinstance(defaults, IssueAction):
+            return
+        for attr_name in dir(defaults):
+            attr = getattr(defaults, attr_name)
+            if attr and (not attr_name.startswith('_') or callable(attr)):
+                if attr_name == 'fields' and defaults.fields:
+                    if self.fields:
+                        self.fields = copy.deepcopy({**defaults.fields, **self.fields})
+                    else:
+                        setattr(self, attr_name, copy.deepcopy(defaults.fields))
+                elif not getattr(self, attr_name, None):
+                    setattr(self, attr_name, copy.deepcopy(attr))
+        return
 
 
 @define
@@ -1129,14 +1114,91 @@ class IssueTransitions(Serializable):
 
 @define
 class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
-
     project: str = field()
     transitions: IssueTransitions = field(  # type: ignore[var-annotated]
         converter=lambda x: x if isinstance(x, IssueTransitions) else IssueTransitions(**x))
+    defaults: Optional[IssueAction] = field(  # type: ignore[var-annotated]
+        converter=lambda action: IssueAction(**action) if action else None, default=None)
     issues: list[IssueAction] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
     group: Optional[str] = None
+
+    @classmethod
+    def from_yaml_with_include(cls: type[IssueConfig], location: str) -> IssueConfig:
+
+        def load_data_from_location(location: str,
+                                    stack: Optional[list[str]] = None) -> dict[str, Any]:
+            if stack and location in stack:
+                raise Exception(f"Recursion encountered when loading YAML from {location}")
+            # include location into the stack so we can detect recursion
+            if stack:
+                stack.append(location)
+            else:
+                stack = [location]
+            data: dict[str, Any] = {}
+            if re.search('^https?://', location):
+                data = yaml_parser().load(get_request(
+                    url=location,
+                    response_content=ResponseContentType.TEXT))
+            else:
+                try:
+                    data = yaml_parser().load(Path(location).read_text())
+                except ruamel.yaml.error.YAMLError as e:
+                    raise Exception(
+                        f'Unable to load and parse YAML file from location {location}') from e
+
+            # process 'include' attribute
+            if 'include' in data:
+                locations = data['include']
+                # drop 'include' so it won't be processed again
+                del data['include']
+                # processing files in reversed order so that later definition takes priority
+                for loc in reversed(locations):
+                    included_data = load_data_from_location(loc, stack)
+                    if included_data:
+                        for key in included_data:
+                            # special handing of 'issues'
+                            # explicitly join 'issues' lists
+                            if key == 'issues':
+                                if key in data:
+                                    data[key].extend(included_data[key])
+                                else:
+                                    data[key] = copy.deepcopy(included_data[key])
+                            # special handing of 'defaults'
+                            elif key == 'defaults':
+                                if key not in data:
+                                    data[key] = copy.deepcopy(included_data[key])
+                                else:
+                                    for (k, v) in included_data[key].items():
+                                        if k not in data[key]:
+                                            data[key][k] = copy.deepcopy(v)
+                                        else:
+                                            # 'fields' we extend, original values having priority
+                                            if k == 'fields':
+                                                # entend fields configuration
+                                                data[key][k] = copy.deepcopy(
+                                                    {**included_data[key][k], **data[key][k]})
+                                            # other defined keys are not modified
+                            else:
+                                if key not in data:
+                                    data[key] = copy.deepcopy(included_data[key])
+
+            return data
+
+        data = load_data_from_location(location)
+        return cls(**data)
+
+    @classmethod
+    def read_file(cls: type[IssueConfig], location: str) -> IssueConfig:
+
+        config = cls.from_yaml_with_include(location)
+
+        for action in config.issues:
+            if config.defaults:
+                # update action object with default attributes when not present
+                action.update_with_defaults(config.defaults)
+        return config
 
 
 @define

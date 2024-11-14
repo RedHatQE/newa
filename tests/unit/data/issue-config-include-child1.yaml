@@ -1,0 +1,24 @@
+project: CHILD1PROJECT
+
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Dropped
+  processed:
+    - In Progress
+  passed:
+    - Closed.Done
+
+defaults:
+  assignee: child1
+  auto_transition: False
+  fields:
+    "Pool Team": "child1_team"
+    "Story Points": 1
+
+issues:
+ - summary: "Child1 issue"
+   description: "Child1 issue"
+   type: task
+   parent_id: parent
