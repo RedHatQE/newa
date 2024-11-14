@@ -46,6 +46,81 @@ TESTING_FARM_API_TOKEN
 NEWA_TF_RECHECK_DELAY
 ```
 
+## Jira issue configuration file
+
+This is a configuration for the `newa jira` subcommand and typically it targets a particular package and event, e.g. it prescribes which Jira issues should be created for an advisory.
+This configuration file is passed to newa command like this:
+```
+newa ... jira --issue-config CONFIG_FILE ...
+```
+Issue config file may utilize Jinja2 templates in order to adjust configuration with event specific data.
+
+Example of the Jira issue configuration file:
+```
+include: global_settings.yaml
+
+project: MYPROJECT
+
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Closed.Obsolete
+  processed:
+    - In Progress
+  passed:
+    - Closed.Done
+
+defaults:
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+#  fields:
+#    "Pool Team": "my_great_team"
+#    "Story Points": 0
+
+issues:
+
+ - summary: "Errata Workflow Checklist {% if ERRATUM.respin_count > 0 %}(respin {{ ERRATUM.respin_count }}){% endif %}"
+   description: "Task tracking particular respin of errata."
+   type: task
+   id: errata_task
+   parent_id: errata_epic
+   on_respin: close
+```
+
+Individual settings are described below.
+
+### include
+
+Allows user to import snippet of a file from a different URL location or a file.
+If the same section exists in both files, definitions from the included file
+has lower priority and the whole section is replaced completely.
+The only exceptions are are `issues` and `defaults` which are merged.
+To unset a value defined in an included file one can set the value to `null`.
+
+### project
+
+Defines Jira project to be used by NEWA.
+
+### transitions
+
+This is a mapping which tells NEWA which particular issue states (and resolutions) it should be using. This settings depends on a particular Jira project. It is also possible to specify resolution separated by a dot, e.g. `Closed.Obsolete`.
+
+The following transitions can be defined:
+
+ - `closed` - Required, multiple states can be listed. Used to identify closed Jira issues.
+ - `dropped` - Required, single state required. Tells NEWA which state to use when an issue is obsoleted by a newer issue.
+ - `processed` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when issue processing is finished by NEWA.
+ - `passed` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when all automated tests scheduled by NEWA pass.
+
+### defaults
+
+Defines the default settings for individual records in the `issues` list.
+
+### issues
+
+Each record represents a single Jira issue that will be processed by NEWA.
+
+
 ## Quick demo
 
 Make sure you have your `$HOME/.newa` configuration file defined prior running this file.
@@ -96,7 +171,7 @@ event:
 ### Subcommand `jira`
 
 Processes multiple files having `event-` prefix. For each event/file reads
-Jira configuration file and for each item from the configuration it
+Jira issue configuration file and for each item from the configuration it
 creates or updates a Jira issue and produces `jira-` file, populating it
 with `jira` and `recipe` keys.
 

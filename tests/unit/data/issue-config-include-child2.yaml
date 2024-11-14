@@ -1,0 +1,13 @@
+project: CHILD2PROJECT
+
+defaults:
+  assignee: child2
+  auto_transition: True
+  fields:
+    "Pool Team": "child2_team"
+
+issues:
+ - summary: "Child2 issue"
+   description: "Child2 issue"
+   type: task
+   parent_id: parent

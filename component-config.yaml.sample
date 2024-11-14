@@ -12,11 +12,16 @@ transitions:
   passed:
     - Done
 
+defaults:
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+#  fields:
+#    "Pool Team": "my_great_team"
+#    "Story Points": 0
+
 issues:
 
  - summary: "Errata Workflow Checklist {% if ERRATUM.respin_count > 0 %}(respin {{ ERRATUM.respin_count }}){% endif %}"
    description: "Task tracking particular respin of errata."
-   assignee: '{{ ERRATUM.people_assigned_to }}'
    type: task
    id: errata_task
    parent_id: errata_epic
@@ -24,7 +29,6 @@ issues:
 
  - summary: "Testing ER#{{ ERRATUM.id }} {{ ERRATUM.summary }} ({{ERRATUM.release}})"
    description: "Epic tracking all work on errata related to a specific release."
-   assignee: '{{ ERRATUM.people_assigned_to }}'
    type: epic
    id: errata_epic
    on_respin: keep
@@ -32,7 +36,6 @@ issues:
 
  - summary: "Errata filelist check"
    description: "Compare errata filelist with a previously released advisory"
-   assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
    id: subtask_filelist
    parent_id: errata_task
@@ -40,25 +43,19 @@ issues:
 
  - summary: "SPEC file review"
    description: "Review changes made in the SPEC file"
-   assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
-   id: subtask_spec
    parent_id: errata_task
    on_respin: close
 
  - summary: "rpminspect review"
    description: "Review rpminspect results in the CI Dashboard for all builds"
-   assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
-   id: subtask_rpminspect
    parent_id: errata_task
    on_respin: close
 
  - summary: "regression testing"
    description: "Run automated tests"
-   assignee: '{{ ERRATUM.people_assigned_to }}'
    type: subtask
-   id: subtask_regression
    parent_id: errata_task
    on_respin: close
    auto_transition: True
