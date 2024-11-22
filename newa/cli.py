@@ -1142,10 +1142,10 @@ def cmd_report(ctx: CLIContext) -> None:
                 # would hit description length limit. Therefore using plain text
                 launch_description += "<br>{id}: {state}, {result}".format(**results[req])
                 jira_description += "\n[{id}|{url}]: {state}, {result}".format(**results[req])
-            ctx.logger.info(f'Updating launch {launch_uuid} description')
             # finish launch just in case it hasn't been finished already
             # and update description with more detailed results
             rp.finish_launch(launch_uuid)
+            ctx.logger.info(f'Updating launch description, {launch_url}')
             rp.update_launch(launch_uuid, description=launch_description)
             # do not report to Jira if JIRA_NONE_ID was used
             if not jira_id.startswith(JIRA_NONE_ID):
