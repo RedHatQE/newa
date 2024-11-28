@@ -286,6 +286,39 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
     sys.exit(0)
 
 
+def apply_release_mapping(string: str,
+                          mapping: Optional[list[str]] = None,
+                          regexp: bool = True,
+                          logger: Optional[logging.Logger] = None) -> str:
+    # define default mapping
+    if not mapping:
+        mapping = [
+            r'\.GA$=',
+            r'\.Z\.(MAIN)?(\+)?(AUS|EUS|E4S|TUS)?$=',
+            r'RHEL-10\.0\.BETA=RHEL-10-Beta',
+            r'$=-Nightly',
+            ]
+    new_string = string
+    for m in mapping:
+        r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
+        if not r:
+            raise Exception(f"Mapping {m} does not having expected format 'patten=value'")
+        pattern, value = r.groups()
+        # for regexp=True apply each matching regexp
+        if regexp and re.search(pattern, new_string):
+            new_string = re.sub(pattern, value, new_string)
+            if logger:
+                logger.debug(
+                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+        # for string matching return the first match
+        if (not regexp) and new_string == pattern:
+            if logger:
+                logger.debug(
+                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+            return value
+    return new_string
+
+
 @main.command(name='event')
 @click.option(
     '-e', '--erratum', 'errata_ids',
@@ -329,35 +362,6 @@ def cmd_event(
     if not errata_ids and not compose_ids:
         raise Exception('Missing event IDs!')
 
-    def apply_mapping(string: str,
-                      mapping: Optional[list[str]] = None,
-                      regexp: bool = True) -> str:
-        # define default mapping
-        if not mapping:
-            mapping = [
-                r'\.GA$=',
-                r'\.Z\.(MAIN\+)?(AUS|EUS|E4S|TUS)$=',
-                r'RHEL-10\.0\.BETA=RHEL-10-Beta',
-                r'$=-Nightly',
-                ]
-        new_string = string
-        for m in mapping:
-            r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
-            if not r:
-                raise Exception(f"Mapping {m} does not having expected format 'patten=value'")
-            pattern, value = r.groups()
-            # for regexp=True apply each matching regexp
-            if regexp and re.search(pattern, new_string):
-                new_string = re.sub(pattern, value, new_string)
-                ctx.logger.debug(
-                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
-            # for string matching return the first match
-            if (not regexp) and new_string == pattern:
-                ctx.logger.debug(
-                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
-                return value
-        return new_string
-
     # process errata IDs
     if errata_ids:
         # Abort if there are still no errata IDs.
@@ -372,10 +376,11 @@ def cmd_event(
                 release = erratum.release.strip()
                 # when compose_mapping is provided, apply it with regexp disabled
                 if compose_mapping:
-                    compose = apply_mapping(release, compose_mapping, regexp=False)
+                    compose = apply_release_mapping(
+                        release, compose_mapping, regexp=False, logger=ctx.logger)
                 # otherwise use the built-in default mapping
                 else:
-                    compose = apply_mapping(release)
+                    compose = apply_release_mapping(release, logger=ctx.logger)
                 # skip compose if it has been transformed to an empty compose
                 if not compose:
                     ctx.logger.info(
