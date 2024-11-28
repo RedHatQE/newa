@@ -802,6 +802,9 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
         initial_config = RawRecipeConfigDimension(compose=compose,
                                                   environment=ctx.cli_environment,
                                                   context=ctx.cli_context)
+        # when testing erratum, add special context erratum=XXXX
+        if jira_job.erratum:
+            initial_config['context'].update({'erratum': str(jira_job.erratum.id)})
 
         if re.search('^https?://', jira_job.recipe.url):
             config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
