@@ -733,14 +733,6 @@ def cmd_jira(
                                        recipe=Recipe(url=recipe_url))
                     ctx.save_jira_job('jira-', jira_job)
 
-                # when there is no job_recipe we process transition if enabled
-                elif action.auto_transition and transition_processed:
-                    issue_transition(jira_handler.connection,
-                                     transition_processed,
-                                     new_issue.id)
-                    ctx.logger.info(
-                        f'Issue {new_issue.id} state changed to {transition_processed}')
-
                 # Processing old issues - we only expect old issues that are to be closed (if any).
                 if old_issues:
                     if action.on_respin != OnRespinAction.CLOSE:
