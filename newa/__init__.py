@@ -500,7 +500,8 @@ class ErrataTool:
 
                 errata.append(
                     Erratum(
-                        id=event.id,
+                        # on purpose not using event.id since it could look like '2024:0770'
+                        id=str(info_json['id']),
                         content_type=content_type,
                         respin_count=int(
                             info_json["respin_count"]),
@@ -509,6 +510,7 @@ class ErrataTool:
                         release=release,
                         builds=builds,
                         blocking_builds=blocking_builds,
+                        blocking_errata=[e.id for e in blocking_errata],
                         archs=Arch.architectures(list(archs)),
                         components=components,
                         url=urllib.parse.urljoin(self.url, f"/advisory/{event.id}")))
@@ -584,6 +586,7 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
                                   for a in arch_list])
     builds: list[str] = field(factory=list)
     blocking_builds: list[str] = field(factory=list)
+    blocking_errata: list[ErratumId] = field(factory=list)
     components: list[str] = field(factory=list)
 
 
