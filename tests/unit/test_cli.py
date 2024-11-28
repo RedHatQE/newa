@@ -31,6 +31,7 @@ def _mock_errata_tool(monkeypatch):
     def mock_et_fetch_info(self, id: str):
         """ Return a meaningful json with info """
         return {
+            "id": 12345,
             "synopsis": "testing errata",
             "content_types": ["rpm"],
             "people": {
