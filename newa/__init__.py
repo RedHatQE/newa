@@ -803,19 +803,19 @@ class Request(Cloneable, Serializable):
         if (not self.reportportal) or (not self.reportportal['launch_name']):
             raise Exception('ERROR: ReportPortal launch name is not specified')
         command += ['--tmt-environment',
-                    f'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"',
+                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"'""",
                     '--tmt-environment',
-                    f'TMT_PLUGIN_REPORT_REPORTPORTAL_URL="{rp_url}"',
+                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_URL="{rp_url}"'""",
                     '--tmt-environment',
-                    f'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT="{rp_project}"',
+                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT="{rp_project}"'""",
                     '--tmt-environment',
-                    f"""TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH='{rp_launch}'""",
+                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH="{rp_launch}"'""",
                     '--tmt-environment',
-                    f"""TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH='{self.reportportal["launch_name"]}'""",
+                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH="{self.reportportal["launch_name"]}"'""",
                     '--tmt-environment',
-                    'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
+                    """TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1""",
                     '--context',
-                    f'newa_batch={self.get_hash(ctx.timestamp)}',
+                    f"""newa_batch={self.get_hash(ctx.timestamp)}""",
                     ]
         # check compose
         if not self.compose:
@@ -846,18 +846,18 @@ class Request(Cloneable, Serializable):
             # as due to SUITE_PER_PLAN enabled the launch description will end up
             # in suite description as well once
             # https://github.com/teemtee/tmt/issues/2990 is implemented
+            desc = self.reportportal.get("suite_description")
             command += [
                 '--tmt-environment',
-                f"""TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION='{
-                    self.reportportal.get("suite_description")}'"""]
+                f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION="{desc}"'"""]
         # process context
         if self.context:
             for k, v in self.context.items():
-                command += ['-c', f'{k}="{v}"']
+                command += ['-c', f"""'{k}="{v}"'"""]
         # process environment
         if self.environment:
             for k, v in self.environment.items():
-                command += ['-e', f'{k}="{v}"']
+                command += ['-e', f"""'{k}="{v}"'"""]
 
         return command, environment
 
