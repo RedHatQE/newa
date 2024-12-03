@@ -1379,6 +1379,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                      assignee_email: str | None = None,
                      parent: Issue | None = None,
                      group: Optional[str] = None,
+                     transition_passed: Optional[str] = None,
+                     transition_processed: Optional[str] = None,
                      fields: Optional[dict[str, str | float | list[str]]] = None) -> Issue:
         """ Create issue """
 
@@ -1452,7 +1454,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             return Issue(jira_issue.key,
                          group=self.group,
                          summary=summary,
-                         url=urllib.parse.urljoin(self.url, f'/browse/{jira_issue.key}'))
+                         url=urllib.parse.urljoin(self.url, f'/browse/{jira_issue.key}'),
+                         transition_passed=transition_passed,
+                         transition_processed=transition_processed)
         except jira.JIRAError as e:
             raise Exception("Unable to create issue!") from e
 

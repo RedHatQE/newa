@@ -704,6 +704,8 @@ def cmd_jira(
                         rendered_assignee,
                         parent,
                         group=config.group,
+                        transition_passed=transition_passed,
+                        transition_processed=transition_processed,
                         fields=action.fields)
 
                     processed_actions[action.id] = new_issue
