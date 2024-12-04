@@ -38,5 +38,5 @@ export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}
 %{_bindir}/newa
 
 %changelog
-* Tue June 06 2024 Miroslav Vadkerti <mvadkert@redhat.com> - 0.1-1
+* Thu June 06 2024 Miroslav Vadkerti <mvadkert@redhat.com> - 0.1-1
 - Initial packaging
