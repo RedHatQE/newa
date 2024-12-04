@@ -35,7 +35,11 @@ def _mock_errata_tool(monkeypatch):
             "synopsis": "testing errata",
             "content_types": ["rpm"],
             "people": {
-                "assigned_to": "user@domain.com"},
+                "assigned_to": "user@domain.com",
+                "package_owner": "user2@domain.com",
+                "qe_group": "group1@domain.com",
+                "devel_group": "group2@domain.com",
+                },
             "respin_count": "1"}
 
     def mock_et_fetch_releases(self, id: str):
