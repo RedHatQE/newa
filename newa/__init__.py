@@ -506,14 +506,18 @@ class ErrataTool:
                         respin_count=int(
                             info_json["respin_count"]),
                         summary=info_json["synopsis"],
-                        people_assigned_to=info_json["people"]["assigned_to"],
                         release=release,
                         builds=builds,
                         blocking_builds=blocking_builds,
                         blocking_errata=[e.id for e in blocking_errata],
                         archs=Arch.architectures(list(archs)),
                         components=components,
-                        url=urllib.parse.urljoin(self.url, f"/advisory/{event.id}")))
+                        url=urllib.parse.urljoin(self.url, f"/advisory/{event.id}"),
+                        people_assigned_to=info_json["people"]["assigned_to"],
+                        people_package_owner=info_json["people"]["package_owner"],
+                        people_qe_group=info_json["people"]["qe_group"],
+                        people_devel_group=info_json["people"]["devel_group"]))
+
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
@@ -577,7 +581,6 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
         converter=lambda value: ErratumContentType(value) if value else None)
     respin_count: int = field(repr=False)
     summary: str = field(repr=False)
-    people_assigned_to: str = field(repr=False)
     release: str = field()
     url: str = field()
     archs: list[Arch] = field(factory=list,  # type: ignore[var-annotated]
@@ -588,6 +591,10 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     blocking_builds: list[str] = field(factory=list)
     blocking_errata: list[ErratumId] = field(factory=list)
     components: list[str] = field(factory=list)
+    people_assigned_to: Optional[str] = None
+    people_package_owner: Optional[str] = None
+    people_qe_group: Optional[str] = None
+    people_devel_group: Optional[str] = None
 
 
 @define
