@@ -1667,6 +1667,7 @@ class CLIContext:
     cli_context: RecipeContext = field(factory=dict)
     timestamp: str = ''
     continue_execution: bool = False
+    restart_result: list[str] = field(factory=list)
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(
