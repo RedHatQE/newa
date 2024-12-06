@@ -889,10 +889,20 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
     default=False,
     help='Continue with the previous execution, expects --state-dir usage.',
     )
+@click.option('--restart-result',
+              default=[],
+              multiple=True,
+              help=('Restart finished TF jobs having the specified result.'
+                    'Can be specified multiple times. Implies --continue.'
+                    'Example: --restart-result error'),
+              )
 @click.pass_obj
-def cmd_execute(ctx: CLIContext, workers: int, _continue: bool) -> None:
+def cmd_execute(ctx: CLIContext, workers: int, _continue: bool, restart_result: list[str]) -> None:
     ctx.enter_command('execute')
     ctx.continue_execution = _continue
+    if restart_result:
+        ctx.restart_result = restart_result
+        ctx.continue_execution = True
 
     # initialize RP connection
     rp_project = ctx.settings.rp_project
@@ -1024,10 +1034,14 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         execute_job_file = Path(os.path.join(parent, name.replace('schedule-', 'execute-', 1)))
         if execute_job_file.exists():
             execute_job = ExecuteJob.from_yaml_file(execute_job_file)
-            tf_request = TFRequest(api=execute_job.execution.request_api,
-                                   uuid=execute_job.execution.request_uuid)
-            start_new_request = False
-            skip_initial_sleep = True
+            if execute_job.execution.result and execute_job.execution.result in ctx.restart_result:
+                log(f'Restarting request {execute_job.request.id}'
+                    f' with result {execute_job.execution.result}')
+            else:
+                tf_request = TFRequest(api=execute_job.execution.request_api,
+                                       uuid=execute_job.execution.request_uuid)
+                start_new_request = False
+                skip_initial_sleep = True
 
     if start_new_request:
         log('initiating TF request')
