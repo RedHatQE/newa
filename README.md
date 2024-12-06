@@ -9,8 +9,8 @@ $ make system/fedora
 $ hatch env create dev
 $ hatch -e dev shell
 $ newa
-Newa!
-$
+Usage: newa [OPTIONS] COMMAND1 [ARGS]... [COMMAND2 [ARGS]...
+...
 ```
 
 ## NEWA configuration file
@@ -291,7 +291,7 @@ request:
   when: null
 ```
 
-### Subcommand `import`
+### Subcommand `report`
 
 This subcommand currently takes care of the results reporting to Jira and
 interaction with ReportPortal. It processes multiple files having `execute-` prefix,
@@ -299,6 +299,18 @@ reads RP launch details and searches for all the relevant launches, subsequently
 merging them into a single launch. Later, it updates the respective Jira issue
 with a note about test results availalability and a link to ReportPortal launch.
 This subcommand doesn't produce any files.
+
+
+### Subcommand `list`
+
+With this subcommand you get a brief listing of the most recent newa invocations.
+This information is based on state-directories on the default path /var/tmp/newa.
+
+Example:
+
+```
+$ newa list
+```
 
 ## In-config tests
 
