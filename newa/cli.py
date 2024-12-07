@@ -1,9 +1,11 @@
 import datetime
+import io
 import logging
 import multiprocessing
 import os
 import re
 import sys
+import tarfile
 import time
 import urllib
 from collections.abc import Generator
@@ -151,6 +153,11 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     multiple=True,
     help='Specify custom tmt context, e.g. "-c foo=bar".',
     )
+@click.option(
+    '--extract-state-dir',
+    default='',
+    help='Extract YAML files from the specified archive to state-dir.',
+    )
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
@@ -158,7 +165,8 @@ def main(click_context: click.Context,
          conf_file: str,
          debug: bool,
          envvars: list[str],
-         contexts: list[str]) -> None:
+         contexts: list[str],
+         extract_state_dir: str) -> None:
 
     # handle state_dir settings
     if prev_state_dir and state_dir:
@@ -189,6 +197,19 @@ def main(click_context: click.Context,
     if not ctx.state_dirpath.exists():
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
         ctx.state_dirpath.mkdir(parents=True)
+
+    # extract YAML files from the given archive to state-dir
+    if extract_state_dir:
+        if re.match('^https?://', extract_state_dir):
+            data = urllib.request.urlopen(extract_state_dir).read()
+            tf = tarfile.open(fileobj=io.BytesIO(data), mode='r:*')
+        else:
+            tf = tarfile.open(Path(extract_state_dir), mode='r:*')
+        for item in tf.getmembers():
+            if item.name.endswith('.yaml'):
+                item.name = os.path.basename(item.name)
+                tf.extract(item, path=ctx.state_dirpath, filter='data')
+
     # create empty ppid file
     with open(os.path.join(ctx.state_dirpath, f'{os.getppid()}.ppid'), 'w'):
         pass
