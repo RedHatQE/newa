@@ -897,6 +897,34 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
             ctx.save_schedule_job('schedule-', schedule_job)
 
 
+@main.command(name='cancel')
+@click.pass_obj
+def cmd_cancel(ctx: CLIContext) -> None:
+    ctx.enter_command('cancel')
+    # make TESTING_FARM_API_TOKEN available to workers as envvar if it has been
+    # defined only though the settings file
+    tf_token = ctx.settings.tf_token
+    if not tf_token:
+        raise ValueError("TESTING_FARM_API_TOKEN not set!")
+    os.environ["TESTING_FARM_API_TOKEN"] = tf_token
+
+    for execute_job in ctx.load_execute_jobs('execute-'):
+        # if not execute_job.execution.result:
+        tf_request = TFRequest(
+            api=execute_job.execution.request_api,
+            uuid=execute_job.execution.request_uuid)
+        tf_request.cancel(ctx)
+        tf_request.fetch_details()
+        if tf_request.details:
+            execute_job.execution.state = tf_request.details['state']
+            if 'cancel' in execute_job.execution.state:
+                execute_job.execution.state = 'canceled'
+                execute_job.execution.result = 'error'
+            if tf_request.details['result']:
+                execute_job.execution.result = tf_request.details['result']['overall']
+            ctx.save_execute_job('execute-', execute_job)
+
+
 @main.command(name='execute')
 @click.option(
     '--workers',
@@ -1104,7 +1132,7 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
             envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
                              for e in tf_request.details['environments_requested']])
             log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
-            finished = state in ['complete', 'error']
+            finished = state in ['complete', 'error', 'canceled']
         else:
             log(f'Could not read details of TF request {tf_request.uuid}')
 
@@ -1112,7 +1140,7 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     # finish without knowing request details
     if not tf_request.details:
         raise Exception(f"Failed to read details of TF request {tf_request.uuid}")
-    result = tf_request.details['result']['overall']
+    result = tf_request.details['result']['overall'] if tf_request.details['result'] else 'error'
     log(f'finished with result: {result}')
     # now write execution details once more
     execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']

@@ -251,6 +251,15 @@ request:
   tmt_path: ''
 ```
 
+### Subcommand `cancel`
+
+Cancels TF reqests found in `execute-` files within the given state-dir.
+
+Example:
+```
+$ newa --prev-state-dir cancel
+```
+
 ### Subcommand `execute`
 
 Processes multiple files having `schedule-` prefix. For each such file it

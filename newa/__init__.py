@@ -906,6 +906,33 @@ class TFRequest(Cloneable, Serializable):
     uuid: str
     details: Optional[dict[str, Any]] = None
 
+    def cancel(self, ctx: CLIContext) -> None:
+        env = copy.deepcopy(os.environ)
+        # disable colors and escape control sequences
+        env['NO_COLOR'] = "1"
+        env['NO_TTY'] = "1"
+        command: list[str] = ['testing-farm', 'cancel', self.uuid]
+        try:
+            process = subprocess.run(
+                command,
+                env=env,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True)
+            output = process.stdout
+        except subprocess.CalledProcessError as e:
+            output = e.stdout
+        if 'cancellation requested' in output:
+            ctx.logger.info(f'Cancellation of TF request {self.uuid} requested.')
+        elif 'already canceled' in output:
+            ctx.logger.info(f'TF request {self.uuid} has been already cancelled.')
+        elif 'already finished' in output:
+            ctx.logger.info(f'TF request {self.uuid} has been already finished.')
+        else:
+            ctx.logger.error(f'Failed cancelling TF request {self.uuid}.')
+            ctx.logger.debug(output)
+
     def fetch_details(self) -> None:
         self.details = get_request(
             url=self.api,
