@@ -33,7 +33,7 @@ token = *TESTING_FARM_API_TOKEN*
 recheck_delay = 120
 ```
 
-This settings can be overriden by environment variables that takes precedence.
+This settings can be overriden by environment variables that take precedence.
 ```
 NEWA_ET_URL
 NEWA_JIRA_URL
@@ -97,9 +97,15 @@ has lower priority and the whole section is replaced completely.
 The only exceptions are are `issues` and `defaults` which are merged.
 To unset a value defined in an included file one can set the value to `null`.
 
-### project
+### project and group
 
-Defines Jira project to be used by NEWA.
+Defines Jira project to be used by NEWA and optionally also a user group for access restrictions.
+
+Example:
+```
+project: MYPROJECT
+group: "Company users"
+```
 
 ### transitions
 
@@ -112,14 +118,153 @@ The following transitions can be defined:
  - `processed` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when issue processing is finished by NEWA.
  - `passed` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when all automated tests scheduled by NEWA pass.
 
+Example:
+```
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Closed.Obsolete
+  processed:
+    - In Progress
+# here, not using transition for passed tests
+# passed:
+#  - Closed.Done
+```
+
 ### defaults
 
-Defines the default settings for individual records in the `issues` list.
+Defines the default settings for individual records in the `issues` list. This settings can be overriden by a value defined in a particular issue.
+
+Example:
+```
+defaults:
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   fields:
+     "Pool Team": "my_great_team"
+     "Story Points": 1
+```
+See `issues` section below for available options.
 
 ### issues
 
 Each record represents a single Jira issue that will be processed by NEWA.
+The following options are available:
+ - `summary`: Jira issue summary to use
+ - `description`: Jira issue description to use
+ - `type`: Jira issue type, could be `epic`, `task`, `sub-task`
+ - `id`: unique identifier within the scope of issue-config file, it is used to identify this specific config item.
+ - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
+ - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are `close` (i.e. create a new issue) and `keep` (i.e. reuse existing issue).
+ - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
+ - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
 
+## Recipe config file
+
+This configuration prescribes which automated jobs should be triggered in Testing Farm.
+A recipe file is associated with a Jira issue through the `job_recipe` attribute in the issue config file and this Jira issue gets later updated with test results once all Testing Farm requests are completed. Recipe files may also utilize Jinja2 templates in order to adjust configuration with event specific data.
+
+Recipe configuration file enables users to describe a complex test matrix. This is achieved by using a set of parameters passed to each Testing Farm requests and parameterized tmt plans enabling runtime adjustments.
+
+A recipe file configuration is split into two sections. The first section is named `fixtures` and contains configuration that is relevant to all test jobs triggered by the recipe file.
+
+The second section is named` dimensions` and it outlines how the test matrix looks like. Each dimension is identified by its name and defines a list of possible values, each value representing  a configuration snippet that would be used for the respective test job. `newa` does a Cartesian product of defined dimensions, building all possible combinations.
+
+Example:
+Using the recipe file
+```
+fixtures:
+    environment:
+        PLANET: Earth
+dimensions:
+    states:
+        - environment:
+              STATE: USA
+        - environment:
+              STATE: India
+    cities:
+        - environment:
+              CITY: Salem
+        - environment:
+              CITY: Delhi
+```
+`newa` will generate the following combinations:
+```
+PLANET=Earth, STATE=USA, CITY=Salem
+PLANET=Earth, STATE=India, CITY=Salem
+PLANET=Earth, STATE=USA, CITY=Delhi
+PLANET=Earth, STATE=India, CITY=Delhi
+```
+
+Individual dimension values may also contain additional keys like `context`, `reportportal` etc. Individual options are described below.
+
+### environment
+
+Defines environment varibles to use. See the example above.
+
+### context
+
+Defines custom `tmt` context setting that will be passed to TestingFarm / `tmt`.
+
+Example:
+```
+  context:
+    swtpm: yes
+```
+
+### tmt
+
+Identifies test plans that should be executed. Possible parameters are:
+ - `url`: URL of a repository with `tmt` plans.
+ - `ref`: Git repo `ref` within a repository.
+ - `path`: Path to `tmt` root within a repository.
+ - `plan`: Identifies `tmt` test plans to execute, a regexp used to filter plans by name.
+
+### testingfarm
+
+May define additional options passed to the `testing-farm request ...` command.
+The only possible option is:
+ - `cli_args`: String containing extra CLI options.
+
+Example:
+```
+  testingfarm:
+    cli_args: "--pipeline-type tmt-multihost"
+```
+
+### reportportal
+
+Contains ReportPortal launch and suite related settings. Possible parameters are:
+ - `launch_name`: RP launch name to use.
+ - `launch_description`: RP launch description.
+ - `suite_description`: RP suite description.
+ - `launch_attributes`: RP launch attributes (tags) to set for a given launch (and suite). In addition to this attributes, `tmt` contexts used for a particular `tmt` plan will be set as attributes of the respective RP suite.
+
+Example:
+```
+  reportportal:
+    launch_name: "keylime"
+    launch_description: "keylime_server system role interoperability"
+    suite_description: "Testing keylime_server role on {{ ENVIRONMENT.COMPOSE_CONTROLLER }} against keylime on {{ ENVIRONMENT.COMPOSE_KEYLIME }}"
+    launch_attributes:
+      tier: 1
+      trigger: build
+```
+
+### when
+A condition that restricts when an item should be used. See "In-config tests" section for examples.
+
+Example:
+```
+dimensions:
+    versions:
+      - environment:
+            COMPOSE_VERIFIER: "{{ COMPOSE.id }}"
+            COMPOSE_REGISTRAR: "{{ COMPOSE.id }}"
+            COMPOSE_AGENT: "{{ COMPOSE.id }}"
+            COMPOSE_AGENT2: RHEL-9.5.0-Nightly
+        when: 'COMPOSE.id is not match("RHEL-9.5.0-Nightly")'
+```
 
 ## Quick demo
 
