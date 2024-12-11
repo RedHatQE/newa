@@ -45,6 +45,7 @@ from . import (
     eval_test,
     get_url_basename,
     render_template,
+    yaml_parser,
     )
 
 JIRA_NONE_ID = '_NO_ISSUE'
@@ -847,8 +848,17 @@ def cmd_jira(
               help=('Restrics system architectures to use when scheduling. '
                     'Can be specified multiple times. Example: --arch x86_64'),
               )
+@click.option('--fixture',
+              'fixtures',
+              default=[],
+              multiple=True,
+              help=('Sets a single fixture default on a cmdline. '
+                    'Use with caution, hic sun leones. '
+                    'Can be specified multiple times. '
+                    'Example: --fixture testingfarm.cli_args="--repository-file URL"'),
+              )
 @click.pass_obj
-def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
+def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
     ctx.enter_command('schedule')
 
     for jira_job in ctx.load_jira_jobs('jira-'):
@@ -867,6 +877,27 @@ def cmd_schedule(ctx: CLIContext, arch: list[str]) -> None:
         initial_config = RawRecipeConfigDimension(compose=compose,
                                                   environment=ctx.cli_environment,
                                                   context=ctx.cli_context)
+        ctx.logger.debug(f'Initial config: {initial_config})')
+        if fixtures:
+            for fixture in fixtures:
+                r = re.fullmatch(r'([^\s=]+)=([^=]*)', fixture)
+                if not r:
+                    raise Exception(
+                        f"Fixture {fixture} does not having expected format 'name=value'")
+                fixture_name, fixture_value = r.groups()
+                fixture_config = initial_config
+                # descent through keys to the lowest level
+                while '.' in fixture_name:
+                    prefix, suffix = fixture_name.split('.', 1)
+                    fixture_config = fixture_config.setdefault(prefix, {})  # type: ignore [misc]
+                    fixture_name = suffix
+                # now we are at the lowest level
+                # Is it beneficial to parse the input as yaml?
+                # It enables us to define list and dicts but there might be drawbacks as well
+                value = yaml_parser().load(fixture_value)
+                fixture_config[fixture_name] = value  # type: ignore[literal-required]
+            ctx.logger.debug(f'Initial config modified through --fixture: {initial_config})')
+
         # when testing erratum, add special context erratum=XXXX
         if jira_job.erratum:
             initial_config['context'].update({'erratum': str(jira_job.erratum.id)})
