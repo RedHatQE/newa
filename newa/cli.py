@@ -945,10 +945,23 @@ def cmd_cancel(ctx: CLIContext) -> None:
                     'Can be specified multiple times. Implies --continue.'
                     'Example: --restart-result error'),
               )
+@click.option(
+    '--no-wait',
+    is_flag=True,
+    default=False,
+    help='Do not wait for TF requests to finish.',
+    )
 @click.pass_obj
-def cmd_execute(ctx: CLIContext, workers: int, _continue: bool, restart_result: list[str]) -> None:
+def cmd_execute(
+        ctx: CLIContext,
+        workers: int,
+        _continue: bool,
+        no_wait: bool,
+        restart_result: list[str]) -> None:
     ctx.enter_command('execute')
     ctx.continue_execution = _continue
+    ctx.no_wait = no_wait
+
     if restart_result:
         ctx.restart_result = restart_result
         ctx.continue_execution = True
@@ -1056,12 +1069,14 @@ def cmd_execute(ctx: CLIContext, workers: int, _continue: bool, restart_result: 
 
     ctx.logger.info('Finished execution')
 
-    # finish all RP launches so that they won't remain unfinished
-    # in the report step we will update description with additional
-    # details about the result
-    for launch_uuid in launch_list:
-        ctx.logger.info(f'Finishing launch {launch_uuid}')
-        rp.finish_launch(launch_uuid)
+    # let's keep the RP lauch unfinished when using --no-wait
+    if not ctx.no_wait:
+        # finish all RP launches so that they won't remain unfinished
+        # in the report step we will update description with additional
+        # details about the result
+        for launch_uuid in launch_list:
+            ctx.logger.info(f'Finishing launch {launch_uuid}')
+            rp.finish_launch(launch_uuid)
 
 
 def worker(ctx: CLIContext, schedule_file: Path) -> None:
@@ -1118,6 +1133,10 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
                                 command=command),
             )
         ctx.save_execute_job('execute-', execute_job)
+
+    if ctx.no_wait:
+        log(f'Not waiting for TF request {tf_request.uuid} to finish (--no-wait set).')
+        return
 
     # wait for TF job to finish
     finished = False
