@@ -140,6 +140,7 @@ class Settings:
     rp_url: str = ''
     rp_token: str = ''
     rp_project: str = ''
+    rp_test_param_filter: str = ''
     jira_url: str = ''
     jira_token: str = ''
     jira_project: str = ''
@@ -166,15 +167,47 @@ class Settings:
             return env if env else cp.get(section, key, fallback=str(default))
 
         return Settings(
-            et_url=_get(cp, 'erratatool/url', 'NEWA_ET_URL'),
-            rp_url=_get(cp, 'reportportal/url', 'NEWA_REPORTPORTAL_URL'),
-            rp_token=_get(cp, 'reportportal/token', 'NEWA_REPORTPORTAL_TOKEN'),
-            rp_project=_get(cp, 'reportportal/project', 'NEWA_REPORTPORTAL_PROJECT'),
-            jira_project=_get(cp, 'jira/project', 'NEWA_JIRA_PROJECT'),
-            jira_url=_get(cp, 'jira/url', 'NEWA_JIRA_URL'),
-            jira_token=_get(cp, 'jira/token', 'NEWA_JIRA_TOKEN'),
-            tf_token=_get(cp, 'testingfarm/token', 'TESTING_FARM_API_TOKEN'),
-            tf_recheck_delay=_get(cp, 'testingfarm/recheck_delay', 'NEWA_TF_RECHECK_DELAY', "60"),
+            et_url=_get(
+                cp,
+                'erratatool/url',
+                'NEWA_ET_URL'),
+            rp_url=_get(
+                cp,
+                'reportportal/url',
+                'NEWA_REPORTPORTAL_URL'),
+            rp_token=_get(
+                cp,
+                'reportportal/token',
+                'NEWA_REPORTPORTAL_TOKEN'),
+            rp_project=_get(
+                cp,
+                'reportportal/project',
+                'NEWA_REPORTPORTAL_PROJECT'),
+            rp_test_param_filter=_get(
+                cp,
+                'reportportal/test_param_filter',
+                'NEWA_REPORTPORTAL_TEST_PARAM_FILTER'),
+            jira_project=_get(
+                cp,
+                'jira/project',
+                'NEWA_JIRA_PROJECT'),
+            jira_url=_get(
+                cp,
+                'jira/url',
+                'NEWA_JIRA_URL'),
+            jira_token=_get(
+                cp,
+                'jira/token',
+                'NEWA_JIRA_TOKEN'),
+            tf_token=_get(
+                cp,
+                'testingfarm/token',
+                'TESTING_FARM_API_TOKEN'),
+            tf_recheck_delay=_get(
+                cp,
+                'testingfarm/recheck_delay',
+                'NEWA_TF_RECHECK_DELAY',
+                "60"),
             )
 
 
@@ -799,6 +832,7 @@ class Request(Cloneable, Serializable):
         rp_token = ctx.settings.rp_token
         rp_url = ctx.settings.rp_url
         rp_project = ctx.settings.rp_project
+        rp_test_param_filter = ctx.settings.rp_test_param_filter
         if self.reportportal:
             rp_launch = self.reportportal.get("launch_uuid", None)
         if not rp_token:
@@ -857,6 +891,10 @@ class Request(Cloneable, Serializable):
             command += [
                 '--tmt-environment',
                 f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION="{desc}"'"""]
+        if rp_test_param_filter:
+            command += [
+                '--tmt-environment',
+                f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES="{rp_test_param_filter}"'"""]
         # process context
         if self.context:
             for k, v in self.context.items():
