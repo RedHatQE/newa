@@ -1,19 +1,28 @@
 # newa
 
-## Contribute
+## About
 
-Currently the code expects a stable Fedora release.
+The New Errata Workflow Automation (NEWA) is an attempt to replace legacy testing workflow with a new one based on the use of `tmt` (Test Management Tool), Testing Farm, Jira and ReportPortal. It ensures transparency and consistency by “standardizing” the errata testing.
 
-```shell
-$ make system/fedora
-$ hatch env create dev
-$ hatch -e dev shell
-$ newa
-Usage: newa [OPTIONS] COMMAND1 [ARGS]... [COMMAND2 [ARGS]...
-...
-```
+## NEWA based workflow
 
-## NEWA configuration file
+This is the assumed workflow utilizing NEWA in short:
+ 1. The tester (in the future an automated job in Jenkins) runs NEWA command on erratum update.
+ 2. NEWA populates Jira with issues that will be used for tracking testing progress.
+ 3. For Jira issues associated with a recipe file NEWA will trigger Testing Farm jobs.
+ 4. When all TF jobs are finished NEWA updates the respective Jira issue with a link to RP launch so that a tester can review test results and eventually mark the issue as Done.
+
+
+## NEWA configuration
+
+The workflow described above requires NEWA to be properly configured by a user. In particular, a user needs to prepare:
+ - NEWA configuration file providing URLs and access tokens to individual tools.
+ - NEWA issue-config YAML file defining which Jira issues should be created. These issues could represent fully manual steps (like errata checklist items) or steps that are fully or partially automated through the associated recipe YAML file.
+ - NEWA recipe YAML file containing necessary metadata for the test execution, for example test repository and tmt plans to be executed.  These plans are parametrized using environment variables defined by the recipe file, ensuring that all required scenarios are tested.
+
+All these files are described in detail below.
+
+### NEWA configuration file
 
 By default, NEWA settings is loaded from file `$HOME/.newa`.
 
@@ -46,7 +55,7 @@ TESTING_FARM_API_TOKEN
 NEWA_TF_RECHECK_DELAY
 ```
 
-## Jira issue configuration file
+### Jira issue configuration file
 
 This is a configuration for the `newa jira` subcommand and typically it targets a particular package and event, e.g. it prescribes which Jira issues should be created for an advisory.
 This configuration file is passed to newa command like this:
@@ -89,7 +98,7 @@ issues:
 
 Individual settings are described below.
 
-### include
+#### include
 
 Allows user to import snippet of a file from a different URL location or a file.
 If the same section exists in both files, definitions from the included file
@@ -97,7 +106,7 @@ has lower priority and the whole section is replaced completely.
 The only exceptions are are `issues` and `defaults` which are merged.
 To unset a value defined in an included file one can set the value to `null`.
 
-### project and group
+#### project and group
 
 Defines Jira project to be used by NEWA and optionally also a user group for access restrictions.
 
@@ -107,7 +116,7 @@ project: MYPROJECT
 group: "Company users"
 ```
 
-### transitions
+#### transitions
 
 This is a mapping which tells NEWA which particular issue states (and resolutions) it should be using. This settings depends on a particular Jira project. It is also possible to specify resolution separated by a dot, e.g. `Closed.Obsolete`.
 
@@ -132,7 +141,7 @@ transitions:
 #  - Closed.Done
 ```
 
-### defaults
+#### defaults
 
 Defines the default settings for individual records in the `issues` list. This settings can be overriden by a value defined in a particular issue.
 
@@ -146,7 +155,7 @@ defaults:
 ```
 See `issues` section below for available options.
 
-### issues
+#### issues
 
 Each record represents a single Jira issue that will be processed by NEWA.
 The following options are available:
@@ -159,7 +168,7 @@ The following options are available:
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
 
-## Recipe config file
+### Recipe config file
 
 This configuration prescribes which automated jobs should be triggered in Testing Farm.
 A recipe file is associated with a Jira issue through the `job_recipe` attribute in the issue config file and this Jira issue gets later updated with test results once all Testing Farm requests are completed. Recipe files may also utilize Jinja2 templates in order to adjust configuration with event specific data.
@@ -198,11 +207,11 @@ PLANET=Earth, STATE=India, CITY=Delhi
 
 Individual dimension values may also contain additional keys like `context`, `reportportal` etc. Individual options are described below.
 
-### environment
+#### environment
 
 Defines environment varibles to use. See the example above.
 
-### context
+#### context
 
 Defines custom `tmt` context setting that will be passed to TestingFarm / `tmt`.
 
@@ -212,7 +221,7 @@ Example:
     swtpm: yes
 ```
 
-### tmt
+#### tmt
 
 Identifies test plans that should be executed. Possible parameters are:
  - `url`: URL of a repository with `tmt` plans.
@@ -220,7 +229,7 @@ Identifies test plans that should be executed. Possible parameters are:
  - `path`: Path to `tmt` root within a repository.
  - `plan`: Identifies `tmt` test plans to execute, a regexp used to filter plans by name.
 
-### testingfarm
+#### testingfarm
 
 May define additional options passed to the `testing-farm request ...` command.
 The only possible option is:
@@ -232,7 +241,7 @@ Example:
     cli_args: "--pipeline-type tmt-multihost"
 ```
 
-### reportportal
+#### reportportal
 
 Contains ReportPortal launch and suite related settings. Possible parameters are:
  - `launch_name`: RP launch name to use.
@@ -251,7 +260,7 @@ Example:
       trigger: build
 ```
 
-### when
+#### when
 A condition that restricts when an item should be used. See "In-config tests" section for examples.
 
 Example:
@@ -264,6 +273,44 @@ dimensions:
             COMPOSE_AGENT: "{{ COMPOSE.id }}"
             COMPOSE_AGENT2: RHEL-9.5.0-Nightly
         when: 'COMPOSE.id is not match("RHEL-9.5.0-Nightly")'
+```
+
+### In-config tests
+
+Both NEWA issue-config and recipe files may contain Jinja templates that enable user to parametrize files with details obtain from the event.
+
+A couple of examples:
+
+```yaml
+# Checking if event type equals to "errata", "compose", ...
+when: EVENT is erratum
+when: EVENT is not erratum
+
+when: JOB is erratum
+when: JOB is not erratum
+
+# Checking if errata number starts with (or contains or matches regexp) string "RHSA"
+when: EVENT.id is match("f.*")
+when: EVENT.id is match("b.*")
+
+when: JOB.event.id is match("f.*")
+when: JOB.event.id is match("b.*")
+
+# Checking if errata release starts with (or contains or matches regexp) string "rhel-x.y"
+when: JOB.erratum.release is match("RHEL-.*")
+when: JOB.erratum.release is match("(?i)rhel-.*")
+when: JOB.erratum.release is match("RHEL-9.7.0")
+
+# Maybe we could add custom tests, e.g.:
+when: JOB is RHEL
+when: JOB is RHEL_9
+when: JOB is not RHEL_9_5_0
+
+# Negations of all checks above
+when: JOB.erratum.release is not match("RHEL-.*")
+when: JOB.erratum.release is not match("(?i)rhel-.*")
+when: JOB.erratum.release is not match("RHEL-9.7.0")
+#
 ```
 
 ## Quick demo
@@ -280,11 +327,13 @@ Or
 $ REQUESTS_CA_BUNDLE=/etc/pki/tls/cert.pem newa event --erratum 124115 jira --issue-config demodata/jira-errata-config.yaml schedule execute report
 ```
 
-## Architecture
+## NEWA subcommands
 
 ### Subcommand `event`
 
-Gets event details either from a command line
+This subcommand is associated with a particular event (like an erratum) and it attempts to read details about it so that this data can be utilized in later parts of the workflow. While we are using erratum as an event example, other event types could be supported in the future (e.g. compose, build, GitLab MR etc.).
+
+`event` subcommands reads event details either from a command line.
 ```shell
 newa event --erratum 12345
 ```
@@ -315,8 +364,10 @@ event:
 
 ### Subcommand `jira`
 
-Processes multiple files having `event-` prefix. For each event/file reads
-Jira issue configuration file and for each item from the configuration it
+This subcommand is responsible for interaction with Jira. It reads details previously gathered by the `event` subcommand and identifies Jira issues that should be used for tracking of individual steps of the testing process. These steps are defined in a so-called NEWA issue-config file.
+
+Specifically, it processes multiple files having `event-` prefix. For each event/file it reads
+NEWA issue-config and for each item from the configuration it
 creates or updates a Jira issue and produces `jira-` file, populating it
 with `jira` and `recipe` keys.
 
@@ -349,7 +400,9 @@ recipe:
 
 ### Subcommand `schedule`
 
-Processes multiple files having `jira-` prefix. For each such file it
+This subcommand does apply only when a particular item from the Jira (issue) configuration file contains a recipe attribute which points to a specific recipe YAML file. Also, it generates all relevant combinations that will be later executed.
+
+Specifically, it processes multiple files having `jira-` prefix. For each such file it
 reads recipe details from `recipe.url` and according to that recipe
 it produces multiple `request-` files, populating it with `recipe` key.
 
@@ -407,7 +460,9 @@ $ newa --prev-state-dir cancel
 
 ### Subcommand `execute`
 
-Processes multiple files having `schedule-` prefix. For each such file it
+This subcommand does the actual execution. It triggers multiple Testing Farm requests in parallel (single request per one generated combination) and waits until these requests are finished and all individual test results are available in ReportPortal.
+
+Specifically, it processes multiple files having `schedule-` prefix. For each such file it
 reads request details from the inside and proceeds with the actual execution.
 When tests are finished it produces files having `execute-` prefix updated with
 details of the execution.
@@ -447,13 +502,13 @@ request:
 
 ### Subcommand `report`
 
-This subcommand currently takes care of the results reporting to Jira and
-interaction with ReportPortal. It processes multiple files having `execute-` prefix,
+This subcommand updates RP launch with recipe status and updates the respective Jira issue with a comment and a link to RP launch containing all test results.
+
+It processes multiple files having `execute-` prefix,
 reads RP launch details and searches for all the relevant launches, subsequently
 merging them into a single launch. Later, it updates the respective Jira issue
 with a note about test results availalability and a link to ReportPortal launch.
 This subcommand doesn't produce any files.
-
 
 ### Subcommand `list`
 
@@ -466,49 +521,15 @@ Example:
 $ newa list
 ```
 
-## In-config tests
+## Contribute
 
-Built on https://jinja.palletsprojects.com/en/3.1.x/templates/#builtin-tests, adds the following tests:
+Currently the code expects a stable Fedora release.
 
-* `erratum` - whether an event or job are processing an erratum
-* `match` - whether a string matches given regular exception
-
-`newa` should expose the following variables to expressions:
-
-* `JOB` - an instance of `Job` subclass, e.g. `ErratumJob`
-* `EVENT` - also `JOB.event`
-* `ERRATUM` - also `JOB.erratum` if `JOB is erratum`
-
-A couple of examples:
-
-```yaml
-# Checking if event type equals to "errata", "compose", ...
-when: EVENT is erratum
-when: EVENT is not erratum
-
-when: JOB is erratum
-when: JOB is not erratum
-
-# Checking if errata number starts with (or contains or matches regexp) string "RHSA"
-when: EVENT.id is match("f.*")
-when: EVENT.id is match("b.*")
-
-when: JOB.event.id is match("f.*")
-when: JOB.event.id is match("b.*")
-
-# Checking if errata release starts with (or contains or matches regexp) string "rhel-x.y"
-when: JOB.erratum.release is match("RHEL-.*")
-when: JOB.erratum.release is match("(?i)rhel-.*")
-when: JOB.erratum.release is match("RHEL-9.7.0")
-
-# Maybe we could add custom tests, e.g.:
-when: JOB is RHEL
-when: JOB is RHEL_9
-when: JOB is not RHEL_9_5_0
-
-# Negations of all checks above
-when: JOB.erratum.release is not match("RHEL-.*")
-when: JOB.erratum.release is not match("(?i)rhel-.*")
-when: JOB.erratum.release is not match("RHEL-9.7.0")
-#
+```shell
+$ make system/fedora
+$ hatch env create dev
+$ hatch -e dev shell
+$ newa
+Usage: newa [OPTIONS] COMMAND1 [ARGS]... [COMMAND2 [ARGS]...
+...
 ```
