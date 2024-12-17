@@ -928,8 +928,8 @@ def cmd_cancel(ctx: CLIContext) -> None:
 @main.command(name='execute')
 @click.option(
     '--workers',
-    default=8,
-    help='Limits the number of requests executed in parallel.',
+    default=0,
+    help='Limits the number of requests executed in parallel (default = 0, unlimited).',
     )
 @click.option(
     '--continue',
@@ -1062,7 +1062,7 @@ def cmd_execute(
         for child in ctx.state_dirpath.iterdir()
         if child.name.startswith('schedule-')]
 
-    worker_pool = multiprocessing.Pool(workers)
+    worker_pool = multiprocessing.Pool(workers if workers > 0 else len(schedule_list))
     for _ in worker_pool.starmap(worker, schedule_list):
         # small sleep to avoid race conditions inside tmt code
         time.sleep(0.1)
