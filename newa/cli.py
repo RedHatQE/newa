@@ -22,6 +22,7 @@ from . import (
     CLIContext,
     Compose,
     ErrataTool,
+    ErratumCommentTrigger,
     ErratumContentType,
     Event,
     EventType,
@@ -491,6 +492,13 @@ def cmd_jira(
     if assignee and unassigned:
         raise Exception('Options --assignee and --unassigned cannot be used together')
 
+    # initialize ET connection
+    if ctx.settings.et_enable_comments:
+        et_url = ctx.settings.et_url
+        if not et_url:
+            raise Exception('Errata Tool URL is not configured!')
+        et = ErrataTool(url=et_url)
+
     def _jira_fake_id_generator() -> Generator[str, int, None]:
         n = 1
         while True:
@@ -558,6 +566,7 @@ def cmd_jira(
             # put it back at the end of the queue.
             while issue_actions:
                 action = issue_actions.pop(0)
+
                 if not action.id:
                     raise Exception(f"Action {action} does not have 'id' assigned")
 
@@ -713,6 +722,7 @@ def cmd_jira(
                 # Processing new opened issues.
                 #
                 # 1. Either there is no new issue (it does not exist yet - we need to create it).
+                trigger_erratum_comment = False
                 if not new_issues:
                     parent = None
                     if action.parent_id:
@@ -734,6 +744,7 @@ def cmd_jira(
 
                     new_issues.append(new_issue)
                     ctx.logger.info(f"New issue {new_issue.id} created")
+                    trigger_erratum_comment = True
 
                 # Or there is exactly one new issue (already created or re-used old issue).
                 elif len(new_issues) == 1:
@@ -741,12 +752,23 @@ def cmd_jira(
                     processed_actions[action.id] = new_issue
 
                     # If the old issue was reused, re-fresh it.
-                    jira_handler.refresh_issue(action, new_issue)
+                    trigger_erratum_comment = jira_handler.refresh_issue(action, new_issue)
                     ctx.logger.info(f"Issue {new_issue} re-used")
 
                 # But if there are more than one new issues we encountered error.
                 else:
                     raise Exception(f"More than one new {action.id} found ({new_issues})!")
+
+                # update Errata Tool with a comment when required
+                if ctx.settings.et_enable_comments and \
+                        trigger_erratum_comment and \
+                        action.erratum_comment_triggers and \
+                        ErratumCommentTrigger.JIRA in action.erratum_comment_triggers:
+                    et.add_comment(
+                        new_issue.id,
+                        'New Errata Workflow Automation (NEWA) prepared '
+                        'a Jira tracker for this advisory.\n'
+                        f'{new_issue.id} - {rendered_summary}')
 
                 if action.job_recipe:
                     recipe_url = render_template(
@@ -754,6 +776,8 @@ def cmd_jira(
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
                         ENVIRONMENT=ctx.cli_environment)
+                    if action.erratum_comment_triggers:
+                        new_issue.erratum_comment_triggers = action.erratum_comment_triggers
                     jira_job = JiraJob(event=artifact_job.event,
                                        erratum=artifact_job.erratum,
                                        compose=artifact_job.compose,
@@ -972,6 +996,14 @@ def cmd_execute(
     rp = ReportPortal(url=rp_url,
                       token=ctx.settings.rp_token,
                       project=rp_project)
+
+    # initialize ET connection
+    if ctx.settings.et_enable_comments:
+        et_url = ctx.settings.et_url
+        if not et_url:
+            raise Exception('Errata Tool URL is not configured!')
+        et = ErrataTool(url=et_url)
+
     # store timestamp of this execution
     ctx.timestamp = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
     tf_token = ctx.settings.tf_token
@@ -1056,6 +1088,20 @@ def cmd_execute(
             except jira.JIRAError as e:
                 raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
 
+            # update Errata Tool with a comment when required
+            print(jira_schedule_job_mapping[jira_id][0])
+            if ctx.settings.et_enable_comments and \
+                    ErratumCommentTrigger.EXECUTE in job.jira.erratum_comment_triggers and \
+                    job.erratum:
+                summary = jira_connection.issue(jira_id).fields.summary
+                et.add_comment(
+                    job.erratum.id,
+                    'The New Errata Workflow Automation (NEWA) has initiated test execution '
+                    'tests for this advisory.\n'
+                    f'{jira_id} - {summary}\n'
+                    f'{launch_url}')
+
+    sys.exit(1)
     # get a list of files to be scheduled so that they can be distributed across workers
     schedule_list = [
         (ctx, ctx.state_dirpath / child.name)
