@@ -42,6 +42,8 @@ import ruamel.yaml
 import urllib3.response
 from requests_kerberos import HTTPKerberosAuth
 
+HTTP_STATUS_CODES_OK = [200, 201]
+
 if TYPE_CHECKING:
     from typing import ClassVar
 
@@ -76,6 +78,7 @@ def yaml_parser() -> ruamel.yaml.YAML:
 
     yaml.representer.add_representer(EventType, _represent_enum)
     yaml.representer.add_representer(ErratumContentType, _represent_enum)
+    yaml.representer.add_representer(ErratumCommentTrigger, _represent_enum)
     yaml.representer.add_representer(Arch, _represent_enum)
 
     return yaml
@@ -137,6 +140,7 @@ class Settings:
     """ Class storing newa settings """
 
     et_url: str = ''
+    et_enable_comments: bool = False
     rp_url: str = ''
     rp_token: str = ''
     rp_project: str = ''
@@ -166,11 +170,19 @@ class Settings:
             # then attempt to use the value from config file, use fallback value otherwise
             return env if env else cp.get(section, key, fallback=str(default))
 
+        def _str_to_bool(value: str) -> bool:
+            return value.strip().lower() in ['1', 'true']
+
         return Settings(
             et_url=_get(
                 cp,
                 'erratatool/url',
                 'NEWA_ET_URL'),
+            et_enable_comments=_str_to_bool(
+                _get(
+                    cp,
+                    'erratatool/enable_comments',
+                    'NEWA_ET_ENABLE_COMMENTS')),
             rp_url=_get(
                 cp,
                 'reportportal/url',
@@ -275,7 +287,7 @@ def get_request(
                 url,
                 auth=HTTPKerberosAuth(delegate=True),
                 ) if krb else requests.get(url)
-            if r.status_code == 200:
+            if r.status_code in HTTP_STATUS_CODES_OK:
                 response = getattr(r, response_content.value)
                 if callable(response):
                     return response()
@@ -287,6 +299,59 @@ def get_request(
         attempts -= 1
 
     raise Exception(f"GET request to {url} failed")
+
+
+@overload
+def post_request(
+        *,
+        url: str,
+        json: JSON,
+        krb: bool = False,
+        attempts: int = 5,
+        delay: int = 5,
+        response_content: Literal[ResponseContentType.RAW]) -> urllib3.response.HTTPResponse:
+    pass
+
+
+@overload
+def post_request(
+        *,
+        url: str,
+        json: JSON,
+        krb: bool = False,
+        attempts: int = 5,
+        delay: int = 5,
+        response_content: Literal[ResponseContentType.JSON]) -> JSON:
+    pass
+
+
+def post_request(
+        url: str,
+        json: JSON,
+        krb: bool = False,
+        attempts: int = 5,
+        delay: int = 5,
+        response_content: ResponseContentType = ResponseContentType.TEXT) -> Any:
+    """ Generic POST request, optionally using Kerberos authentication """
+    while attempts:
+        try:
+            r = requests.post(
+                url,
+                json=json,
+                auth=HTTPKerberosAuth(delegate=True),
+                ) if krb else requests.post(url, json=json)
+            if r.status_code in HTTP_STATUS_CODES_OK:
+                response = getattr(r, response_content.value)
+                if callable(response):
+                    return response()
+                return response
+        except requests.exceptions.RequestException:
+            # will give it another try
+            pass
+        time.sleep(delay)
+        attempts -= 1
+
+    raise Exception(f"POST request to {url} failed")
 
 
 def eval_test(
@@ -438,6 +503,16 @@ class ErrataTool:
     """ Interface to Errata Tool instance """
 
     url: str = field(validator=validators.matches_re("^https?://.+$"))
+
+    def add_comment(self, erratum_id: str, comment: str) -> JSON:
+        query_data: JSON = {"comment": comment}
+        return post_request(
+            url=urllib.parse.urljoin(
+                self.url,
+                f"/api/v1/erratum/{erratum_id}/add_comment"),
+            json=query_data,
+            krb=True,
+            response_content=ResponseContentType.JSON)
 
     def fetch_info(self, erratum_id: str) -> JSON:
         return get_request(
@@ -631,10 +706,13 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
 
 
 @define
-class Issue(Cloneable, Serializable):
+class Issue(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     """ Issue - a key in Jira (eg. NEWA-123) """
 
     id: str = field()
+    erratum_comment_triggers: list[ErratumCommentTrigger] = field(  # type: ignore[var-annotated]
+        factory=list, converter=lambda triggers: [
+            ErratumCommentTrigger(trigger) for trigger in triggers])
     # this is used to store comment visibility restriction
     # usually JiraHandler.group takes priority but this value
     # will be used when JiraHandler is not available
@@ -1131,6 +1209,12 @@ class OnRespinAction(Enum):
     CLOSE = 'close'
 
 
+class ErratumCommentTrigger(Enum):
+    JIRA = 'jira'
+    EXECUTE = 'execute'
+    REPORT = 'report'
+
+
 def _default_action_id_generator() -> Generator[str, int, None]:
     n = 1
     while True:
@@ -1146,6 +1230,9 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
     type: IssueType = field(converter=IssueType, default=IssueType.TASK)
     on_respin: OnRespinAction = field(  # type: ignore[var-annotated]
         converter=lambda value: OnRespinAction(value), default=OnRespinAction.CLOSE)
+    erratum_comment_triggers: list[ErratumCommentTrigger] = field(  # type: ignore[var-annotated]
+        factory=list, converter=lambda triggers: [
+            ErratumCommentTrigger(trigger) for trigger in triggers])
     auto_transition: Optional[bool] = False
     summary: Optional[str] = None
     description: Optional[str] = None
@@ -1532,21 +1619,25 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         except jira.JIRAError as e:
             raise Exception("Unable to create issue!") from e
 
-    def refresh_issue(self, action: IssueAction, issue: Issue) -> None:
-        """ Update NEWA identifier of issue """
+    def refresh_issue(self, action: IssueAction, issue: Issue) -> bool:
+        """ Update NEWA identifier of issue.
+            Returns True when the issue had been 'adopted' by NEWA."""
 
         issue_details = self.get_details(issue)
         description = issue_details.fields.description
         labels = issue_details.fields.labels
         new_description = ""
+        return_value = False
 
         # add NEWA label if missing
         if self.newa_label not in labels:
             issue_details.add_field_value('labels', self.newa_label)
+            return_value = True
 
         # Issue does not have any NEWA ID yet
         if isinstance(description, str) and self.newa_id() not in description:
             new_description = f"{self.newa_id(action)}\n{description}"
+            return_value = True
 
         # Issue has NEWA ID but not the current respin - update it.
         elif isinstance(description, str) and self.newa_id(action) not in description:
@@ -1560,6 +1651,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     issue, "NEWA refreshed issue ID.")
             except jira.JIRAError as e:
                 raise Exception(f"Unable to modify issue {issue}!") from e
+        return return_value
 
     def comment_issue(self, issue: Issue, comment: str) -> None:
         """ Add comment to issue """
@@ -1690,7 +1782,7 @@ class ReportPortal:
             url = f'{url}?{urllib.parse.urlencode(params)}'
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
         req = requests.get(url, headers=headers)
-        if req.status_code == 200:
+        if req.status_code in HTTP_STATUS_CODES_OK:
             return req.json()
         return None
 
@@ -1702,7 +1794,7 @@ class ReportPortal:
             self.url, f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
         req = requests.put(url, headers=headers, json=json)
-        if req.status_code == 200:
+        if req.status_code in HTTP_STATUS_CODES_OK:
             return req.json()
         return None
 
@@ -1715,7 +1807,7 @@ class ReportPortal:
             f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
         headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
         req = requests.post(url, headers=headers, json=json)
-        if req.status_code in [200, 201]:
+        if req.status_code in HTTP_STATUS_CODES_OK:
             return req.json()
         return None
 
