@@ -30,6 +30,7 @@ Below is an example of such a file.
 ```
 [erratatool]
 url = https://..
+enable_comments = 1
 [jira]
 url = https://...
 token = *JIRATOKEN*
@@ -45,6 +46,7 @@ recheck_delay = 120
 This settings can be overriden by environment variables that take precedence.
 ```
 NEWA_ET_URL
+NEWA_ET_ENABLE_COMMENTS
 NEWA_JIRA_URL
 NEWA_JIRA_TOKEN
 NEWA_JIRA_PROJECT
@@ -88,12 +90,25 @@ defaults:
 
 issues:
 
- - summary: "Errata Workflow Checklist {% if ERRATUM.respin_count > 0 %}(respin {{ ERRATUM.respin_count }}){% endif %}"
-   description: "Task tracking particular respin of errata."
+ - summary: "ER#{{ ERRATUM.id }} - {{ ERRATUM.summary }} (testing)"
+   description: "{{ ERRATUM.url }}\n{{ ERRATUM.components|join(' ') }}"
+   type: epic
+   id: errata_epic
+   on_respin: keep
+   erratum_comment_triggers:
+     - jira
+
+ - summary: "ER#{{ ERRATUM.id }} - Sanity and regression testing {{ ERRATUM.builds|join(' ') }}"
+   description: "Run all automated tests"
    type: task
-   id: errata_task
+   id: task_regression
    parent_id: errata_epic
    on_respin: close
+   auto_transition: True
+   job_recipe: https://path/to/my/NEWA/recipe/errata.yaml
+   erratum_comment_triggers:
+     - execute
+     - report
 ```
 
 Individual settings are described below.
@@ -166,6 +181,10 @@ The following options are available:
  - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
  - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are `close` (i.e. create a new issue) and `keep` (i.e. reuse existing issue).
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
+ - `erratum_comment_triggers` - For specified triggers, provides an update in an erratum through a comment. This functionality needs to be enabled also in the `newa.conf` file through `enable_comments = 1`. The following triggers are currently supported:
+   - `jira` - Adds a comment when a Jira issue is initially 'adopted' by NEWA (either created or taken over due to `jira --map-issue` parameter).
+   - `execute` - Adds a comment when automated tests are initiated by NEWA.
+   - `report` - Adds a comment when automated tests results are reported by NEWA.
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
 
 ### Recipe config file
