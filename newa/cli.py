@@ -60,10 +60,11 @@ logging.basicConfig(
 def get_state_dir(use_ppid: bool = False) -> Path:
     """ When not using ppid returns the first unused directory
         matching /var/tmp/newa/run-[0-9]+, starting with run-1
-        When using ppid searches for the latest state-dir directory
+        When using ppid searches for the most recent state-dir directory
         containing file $PPID.ppid
     """
     counter = 0
+    last_dir = None
     ppid_filename = f'{os.getppid()}.ppid'
     try:
         obj = os.scandir(STATEDIR_PARENT_DIR)
@@ -72,21 +73,24 @@ def get_state_dir(use_ppid: bool = False) -> Path:
             raise Exception(f'{STATEDIR_PARENT_DIR} does not exist') from e
         # return initial value run-1
         return STATEDIR_PARENT_DIR / f'run-{counter+1}'
-    # iterate through subdirectories and find the latest matching dir
-    for entry in obj:
-        r = re.match(STATEDIR_NAME_PATTERN, entry.name)
-        if entry.is_dir() and r:
-            c = int(r.group(1))
-            if use_ppid:
-                ppid_file = STATEDIR_PARENT_DIR / entry.name / ppid_filename
-                if ppid_file.exists() and c > counter:
+    dirs = sorted([d for d in obj if d.is_dir()],
+                  key=lambda d: os.path.getctime(d))
+    for statedir in dirs:
+        # when using ppid find the most recent (using getctime) matching dir
+        if use_ppid:
+            ppid_file = Path(statedir.path) / ppid_filename
+            if ppid_file.exists():
+                last_dir = statedir
+        # otherwise find the lowest unsused value for counter
+        else:
+            r = re.match(STATEDIR_NAME_PATTERN, statedir.name)
+            if r:
+                c = int(r.group(1))
+                if c > counter:
                     counter = c
-            elif c > counter:
-                counter = c
-    # for use_ppid use the largest counter value when found
     if use_ppid:
-        if counter:
-            return STATEDIR_PARENT_DIR / f'run-{counter}'
+        if last_dir:
+            return Path(last_dir.path)
         raise Exception(f'File {ppid_filename} not found under {STATEDIR_PARENT_DIR}')
     # otherwise return the first unused value
     return STATEDIR_PARENT_DIR / f'run-{counter+1}'
