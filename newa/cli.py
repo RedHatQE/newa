@@ -50,6 +50,7 @@ JIRA_NONE_ID = '_NO_ISSUE'
 STATEDIR_PARENT_DIR = Path('/var/tmp/newa')
 STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
 TF_RESULT_PASSED = 'passed'
+ARGS_WITH_NO_STATEDIR = ['list', '--help']
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -189,8 +190,8 @@ def main(click_context: click.Context,
         ctx.logger.setLevel(logging.DEBUG)
 
     # this is here just to suppress state-dir creation
-    # and further processing in case of 'list' subcommand
-    if 'list' in sys.argv:
+    # for certain cmdline arguments
+    if set(ARGS_WITH_NO_STATEDIR) & set(sys.argv):
         return
 
     ctx.logger.info(f'Using --state-dir={ctx.state_dirpath}')
