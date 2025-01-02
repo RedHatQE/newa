@@ -500,6 +500,14 @@ request:
   when: null
 ```
 
+#### Option --restart-request
+This option can be used to reschedule specific NEWA request. The request ID can be specified either by its value (e.g. `--restart-request REQ-1.2.1`) or as a regular expression (e.g. `--restart-request "/REQ-[13]\..*/"`). This option can be used multiple times.
+
+
+#### Option --restart-result
+This option can be used to reschedule NEWA request that have ended with a particular result - `passed, failed, error`. For example, `--restart-result error. This option can be used multiple times.
+
+
 ### Subcommand `report`
 
 This subcommand updates RP launch with recipe status and updates the respective Jira issue with a comment and a link to RP launch containing all test results.

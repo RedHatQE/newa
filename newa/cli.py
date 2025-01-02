@@ -943,11 +943,18 @@ def cmd_cancel(ctx: CLIContext) -> None:
     default=False,
     help='Continue with the previous execution, expects --state-dir usage.',
     )
+@click.option('--restart-request',
+              default=[],
+              multiple=True,
+              help=('Restart NEWA request with the given request ID. '
+                    'Can be specified multiple times. Implies --continue. '
+                    'Example: --restart-request REQ-1.2.1'),
+              )
 @click.option('--restart-result',
               default=[],
               multiple=True,
-              help=('Restart finished TF jobs having the specified result.'
-                    'Can be specified multiple times. Implies --continue.'
+              help=('Restart finished TF jobs having the specified result. '
+                    'Can be specified multiple times. Implies --continue. '
                     'Example: --restart-result error'),
               )
 @click.option(
@@ -962,10 +969,15 @@ def cmd_execute(
         workers: int,
         _continue: bool,
         no_wait: bool,
+        restart_request: list[str],
         restart_result: list[str]) -> None:
     ctx.enter_command('execute')
     ctx.continue_execution = _continue
     ctx.no_wait = no_wait
+
+    if restart_request:
+        ctx.restart_request = restart_request
+        ctx.continue_execution = True
 
     if restart_result:
         ctx.restart_result = restart_result
@@ -1084,6 +1096,13 @@ def cmd_execute(
             rp.finish_launch(launch_uuid)
 
 
+def test_patterns_match(s: str, patterns: list[str]) -> tuple[bool, str]:
+    for pattern in patterns:
+        if s.strip() == pattern.strip():
+            return (True, pattern)
+    return (False, '')
+
+
 def worker(ctx: CLIContext, schedule_file: Path) -> None:
 
     # modify log message so it contains name of the processed file
@@ -1106,11 +1125,14 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
             if execute_job.execution.result and execute_job.execution.result in ctx.restart_result:
                 log(f'Restarting request {execute_job.request.id}'
                     f' with result {execute_job.execution.result}')
+            elif ctx.restart_request:
+                (match, pattern) = test_patterns_match(execute_job.request.id, ctx.restart_request)
+                if match:
+                    log(f'Restarting request {execute_job.request.id} with ID matching {pattern}')
+                else:
+                    start_new_request = False
             else:
-                tf_request = TFRequest(api=execute_job.execution.request_api,
-                                       uuid=execute_job.execution.request_uuid)
                 start_new_request = False
-                skip_initial_sleep = True
 
     if start_new_request:
         log('initiating TF request')
@@ -1138,6 +1160,11 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
                                 command=command),
             )
         ctx.save_execute_job('execute-', execute_job)
+    else:
+        log(f'Re-using existing request {execute_job.request.id}')
+        tf_request = TFRequest(api=execute_job.execution.request_api,
+                               uuid=execute_job.execution.request_uuid)
+        skip_initial_sleep = True
 
     if ctx.no_wait:
         log(f'Not waiting for TF request {tf_request.uuid} to finish (--no-wait set).')

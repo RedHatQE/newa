@@ -1733,6 +1733,7 @@ class CLIContext:
     timestamp: str = ''
     continue_execution: bool = False
     no_wait: bool = False
+    restart_request: list[str] = field(factory=list)
     restart_result: list[str] = field(factory=list)
 
     def enter_command(self, command: str) -> None:
