@@ -251,7 +251,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
             entries = os.scandir(STATEDIR_PARENT_DIR)
         except FileNotFoundError as e:
             raise Exception(f'{STATEDIR_PARENT_DIR} does not exist') from e
-        sorted_entries = sorted(entries, key=lambda entry: int(entry.name.split('-')[1]))
+        sorted_entries = sorted(entries, key=lambda entry: os.path.getctime(Path(entry)))
         state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
 
     def _print(indent: int, s: str, end: str = '\n') -> None:
