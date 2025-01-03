@@ -938,12 +938,14 @@ def cmd_cancel(ctx: CLIContext) -> None:
     )
 @click.option(
     '--continue',
+    '-C',
     '_continue',
     is_flag=True,
     default=False,
     help='Continue with the previous execution, expects --state-dir usage.',
     )
 @click.option('--restart-request',
+              '-R',
               default=[],
               multiple=True,
               help=('Restart NEWA request with the given request ID. '
