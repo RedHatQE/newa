@@ -500,12 +500,43 @@ request:
   when: null
 ```
 
-#### Option --restart-request
-This option can be used to reschedule specific NEWA request. The request ID can be specified either by its value (e.g. `--restart-request REQ-1.2.1`) or as a regular expression (e.g. `--restart-request "/REQ-[13]\..*/"`). This option can be used multiple times.
+#### Option `--continue`, `-C`
 
+This option is useful e.g. when a user wants to continue with a previously terminated `newa execute` session. It is assumed that a user will use this option together with `--state-dir` option because `newa` is going to re-use former data.
 
-#### Option --restart-result
-This option can be used to reschedule NEWA request that have ended with a particular result - `passed, failed, error`. For example, `--restart-result error. This option can be used multiple times.
+Example:
+
+```
+$ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml schedule execute report
+Using --state-dir /var/tmp/newa/run-123
+...
+Ctrl+C  # during the execute step
+$ newa --state-dir /var/tmp/newa/run-123 execute --continue report
+```
+
+#### Option `--no-wait`
+
+This option instructs `newa` to not to wait for TF request finishing. It is expected that a user will eventually follow up on this `newa` session later.
+
+Example:
+
+```
+$ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml schedule execute --no-wait
+Using --state-dir /var/tmp/newa/run-123
+...
+$ newa --state-dir /var/tmp/newa/run-123 execute --continue report
+```
+
+#### Option `--restart-request`, `-R`
+This option can be used to reschedule specific NEWA request, specified by the request ID (e.g. `--restart-request REQ-1.2.1`). This option can be used multiple times. Implies `--continue`.
+
+Example:
+```
+newa --prev-state-dir execute -R REQ-1.2.1 -R REQ-2.2.2 report
+```
+
+#### Option `--restart-result`
+This option can be used to reschedule NEWA request that have ended with a particular result - `passed, failed, error`. For example, `--restart-result error`. This option can be used multiple times. Implies `--continue`.
 
 
 ### Subcommand `report`
