@@ -200,11 +200,13 @@ def main(click_context: click.Context,
 
     ctx.logger.info(f'Using --state-dir={ctx.state_dirpath}')
     if not ctx.state_dirpath.exists():
+        ctx.new_state_dir = True
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
         ctx.state_dirpath.mkdir(parents=True)
 
     # extract YAML files from the given archive to state-dir
     if extract_state_dir:
+        ctx.new_state_dir = False
         if re.match('^https?://', extract_state_dir):
             data = urllib.request.urlopen(extract_state_dir).read()
             tf = tarfile.open(fileobj=io.BytesIO(data), mode='r:*')
@@ -984,6 +986,11 @@ def cmd_execute(
     if restart_result:
         ctx.restart_result = restart_result
         ctx.continue_execution = True
+
+    if ctx.continue_execution and ctx.new_state_dir:
+        ctx.logger.error(
+            'NEWA state-dir was not specified! Use --state-dir or similar option.')
+        sys.exit(1)
 
     # initialize RP connection
     rp_project = ctx.settings.rp_project
