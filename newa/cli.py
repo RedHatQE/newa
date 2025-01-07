@@ -772,11 +772,14 @@ def cmd_jira(
                         action.erratum_comment_triggers and
                         ErratumCommentTrigger.JIRA in action.erratum_comment_triggers and
                         artifact_job.erratum):
+                    issue_url = urllib.parse.urljoin(
+                        ctx.settings.jira_url, f"/browse/{new_issue.id}")
                     et.add_comment(
                         artifact_job.erratum.id,
                         'New Errata Workflow Automation (NEWA) prepared '
                         'a Jira tracker for this advisory.\n'
-                        f'{new_issue.id} - {rendered_summary}')
+                        f'{new_issue.id} - {rendered_summary}\n'
+                        f'{issue_url}')
                     ctx.logger.info(
                         f"Erratum {artifact_job.erratum.id} was updated "
                         f"with a comment about {new_issue.id}")
@@ -1122,12 +1125,14 @@ def cmd_execute(
             if (ctx.settings.et_enable_comments and
                     ErratumCommentTrigger.EXECUTE in job.jira.erratum_comment_triggers and
                     job.erratum):
-                summary = jira_connection.issue(jira_id).fields.summary
+                issue_summary = jira_connection.issue(jira_id).fields.summary
+                issue_url = urllib.parse.urljoin(ctx.settings.jira_url, f"/browse/{jira_id}")
                 et.add_comment(
                     job.erratum.id,
                     'The New Errata Workflow Automation (NEWA) has initiated test execution '
                     'for this advisory.\n'
-                    f'{jira_id} - {summary}\n'
+                    f'{jira_id} - {issue_summary}\n'
+                    f'{issue_url}\n'
                     f'{launch_url}')
                 ctx.logger.info(
                     f"Erratum {job.erratum.id} was updated with a comment about {jira_id}")
@@ -1363,12 +1368,14 @@ def cmd_report(ctx: CLIContext) -> None:
                         ErratumCommentTrigger.REPORT in
                         execute_job.jira.erratum_comment_triggers and
                         execute_job.erratum):
-                    summary = jira_connection.issue(jira_id).fields.summary
+                    issue_summary = jira_connection.issue(jira_id).fields.summary
+                    issue_url = urllib.parse.urljoin(ctx.settings.jira_url, f"/browse/{jira_id}")
                     et.add_comment(
                         execute_job.erratum.id,
                         'The New Errata Workflow Automation (NEWA) has finished test execution '
                         'for this advisory.\n'
-                        f'{jira_id} - {summary}\n'
+                        f'{jira_id} - {issue_summary}\n'
+                        f'{issue_url}\n'
                         f'{launch_url}')
                     ctx.logger.info(
                         f"Erratum {execute_job.erratum.id} was updated "
