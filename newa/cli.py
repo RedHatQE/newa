@@ -196,7 +196,7 @@ def main(click_context: click.Context,
 
     # this is here just to suppress state-dir creation
     # for certain cmdline arguments
-    if set(ARGS_WITH_NO_STATEDIR) & set(sys.argv):
+    if (not extract_state_dir) and set(ARGS_WITH_NO_STATEDIR) & set(sys.argv):
         return
 
     ctx.logger.info(f'Using --state-dir={ctx.state_dirpath}')
