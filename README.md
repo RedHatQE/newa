@@ -346,7 +346,88 @@ Or
 $ REQUESTS_CA_BUNDLE=/etc/pki/tls/cert.pem newa event --erratum 124115 jira --issue-config demodata/jira-errata-config.yaml schedule execute report
 ```
 
-## NEWA subcommands
+## NEWA options and subcommands
+
+### NEWA options
+
+#### Option `--conf-file`
+
+Tells `newa` to use alternate config file location (default is `~/.newa.conf`).
+
+Example:
+```
+$ newa --conf-file ~/.newa.stage event --erratum=12345
+```
+
+#### Option `--debug`
+
+Enables debug level logging.
+
+#### Option `--help`
+
+Prints `newa` usage help to a console.
+
+Example:
+```
+$ newa --help
+$ newa event --help
+$ newa jira --help
+```
+
+### Option `--state-dir`, `-D`
+
+By default, `newa` will create a new state-dir with each invocation. This option tells `newa` which (existing) directory to use for storing and processing YAML metadata files. Typically, one would use this option to follow up on some former `newa` invocation, either for skipping or re-doing some phases.
+
+Example:
+```
+$ newa event --erratum 12345
+Using --state-dir=/var/tmp/newa/run-123
+...
+$ newa --state-dir /var/tmp/newa/run-123 jira --issue-config my-issue-config.yaml
+Using --state-dir=/var/tmp/newa/run-123
+...
+```
+
+#### Option `--prev-state-dir`
+
+Similar to `--state-dir`, however no directory is specified. Instead, `newa` will use the most recent (modified) directory used by `newa` process issued from the current shell (so the functionality won't collidate with `newa` processes from different terminals).
+
+Example:
+```
+$ newa event --erratum 12345
+Using --state-dir=/var/tmp/newa/run-123
+...
+$ newa --prev-state-dir jira --issue-config my-issue-config.yaml
+Using --state-dir=/var/tmp/newa/run-123
+...
+```
+
+#### Option `--extract-state-dir`
+
+Similar to `--state-dir`, however in this case the argument is URL of an archive containing NEWA YAML metadata files. For example, it could be used to follow up on a state-dir created and shared by an automation.
+
+Example:
+```
+$ newa --extract-state-dir https://path/to/some/newa-run-1234.tar.gz list
+```
+
+#### Option `--context, -c`
+
+Allows custom `tmt` context definition on a cmdline. Such a context can be used in issue-config YAML file through Jinja template through `CONTEXT.<name>`. Option can be used multiple times.
+
+Example:
+```
+$ newa -c foo=bar event --compose Fedora-40 ...
+```
+
+#### Option `--environment, -e`
+
+Allows custom `tmt` environment variable definition on a cmdline. Such a variable can be used in issue-config YAML file through Jinja template through `ENVIRONMENT.<name>`. Option can be used multiple times.
+
+Example:
+```
+$ newa --environment FOO=bar event --compose Fedora-40 ...
+```
 
 ### Subcommand `event`
 
