@@ -127,6 +127,7 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
 @click.group(chain=True)
 @click.option(
     '--state-dir',
+    '-D',
     default='',
     help='Specify state directory.',
     )
