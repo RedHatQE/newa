@@ -76,9 +76,9 @@ def get_state_dir(use_ppid: bool = False) -> Path:
         # return initial value run-1
         return STATEDIR_PARENT_DIR / f'run-{counter+1}'
     dirs = sorted([d for d in obj if d.is_dir()],
-                  key=lambda d: os.path.getctime(d))
+                  key=lambda d: os.path.getmtime(d))
     for statedir in dirs:
-        # when using ppid find the most recent (using getctime) matching dir
+        # when using ppid find the most recent (using getmtime) matching dir
         if use_ppid:
             ppid_file = Path(statedir.path) / ppid_filename
             if ppid_file.exists():
@@ -259,7 +259,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
             entries = os.scandir(STATEDIR_PARENT_DIR)
         except FileNotFoundError as e:
             raise Exception(f'{STATEDIR_PARENT_DIR} does not exist') from e
-        sorted_entries = sorted(entries, key=lambda entry: os.path.getctime(Path(entry)))
+        sorted_entries = sorted(entries, key=lambda entry: os.path.getmtime(Path(entry)))
         state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
 
     def _print(indent: int, s: str, end: str = '\n') -> None:
