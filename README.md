@@ -374,7 +374,7 @@ $ newa event --help
 $ newa jira --help
 ```
 
-### Option `--state-dir`, `-D`
+#### Option `--state-dir`, `-D`
 
 By default, `newa` will create a new state-dir with each invocation. This option tells `newa` which (existing) directory to use for storing and processing YAML metadata files. Typically, one would use this option to follow up on some former `newa` invocation, either for skipping or re-doing some phases.
 
@@ -460,6 +460,33 @@ erratum:
 event:
   id: '128049'
   type_: erratum
+```
+
+#### Option `--erratum`
+
+Directs NEWA to the erratum-type event it should use, in particular erratum ID. Option can be used multiple times but each event will be processed individually.
+
+Example:
+```
+$ newa event --erratum 12345
+```
+
+#### Option `--compose`
+
+Directs NEWA to the compose-type event it should use, in particular a compose provided by Testing Farm. Option can be used multiple times but each event will be processed individually.
+
+Example:
+```
+$ newa event --compose CentOS-Stream-10
+```
+
+#### Option `--compose-mapping`
+
+Instructs NEWA how to map erratum release to a TF compose. Use in case the default mapping doesn't work properly. Option can be specified multiple times.
+
+Example:
+```
+$ newa event --erratum 12345 --compose-mapping RHEL-9.4.0.Z.MAIN+EUS=RHEL-9.4.0-Nightly
 ```
 
 ### Subcommand `jira`
