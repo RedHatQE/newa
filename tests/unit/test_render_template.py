@@ -3,7 +3,7 @@ import pytest
 from newa import render_template
 
 
-@pytest.fixture()
+@pytest.fixture
 def simple_template():
     return "simple template which replaces {{ TESTVAR }}"
 
