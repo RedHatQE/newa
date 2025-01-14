@@ -74,7 +74,7 @@ def get_state_dir(use_ppid: bool = False) -> Path:
         if use_ppid:
             raise Exception(f'{STATEDIR_PARENT_DIR} does not exist') from e
         # return initial value run-1
-        return STATEDIR_PARENT_DIR / f'run-{counter+1}'
+        return STATEDIR_PARENT_DIR / f'run-{counter + 1}'
     dirs = sorted([d for d in obj if d.is_dir()],
                   key=lambda d: os.path.getmtime(d))
     for statedir in dirs:
@@ -88,14 +88,13 @@ def get_state_dir(use_ppid: bool = False) -> Path:
             r = re.match(STATEDIR_NAME_PATTERN, statedir.name)
             if r:
                 c = int(r.group(1))
-                if c > counter:
-                    counter = c
+                counter = max(c, counter)
     if use_ppid:
         if last_dir:
             return Path(last_dir.path)
         raise Exception(f'File {ppid_filename} not found under {STATEDIR_PARENT_DIR}')
     # otherwise return the first unused value
-    return STATEDIR_PARENT_DIR / f'run-{counter+1}'
+    return STATEDIR_PARENT_DIR / f'run-{counter + 1}'
 
 
 def initialize_jira_connection(ctx: CLIContext) -> Any:
@@ -209,15 +208,19 @@ def main(click_context: click.Context,
     # extract YAML files from the given archive to state-dir
     if extract_state_dir:
         ctx.new_state_dir = False
+        tar_open_kwargs: dict[str, Any] = {
+            'mode': 'r:*',
+            }
         if re.match('^https?://', extract_state_dir):
             data = urllib.request.urlopen(extract_state_dir).read()
-            tf = tarfile.open(fileobj=io.BytesIO(data), mode='r:*')
+            tar_open_kwargs['fileobj'] = io.BytesIO(data)
         else:
-            tf = tarfile.open(Path(extract_state_dir), mode='r:*')
-        for item in tf.getmembers():
-            if item.name.endswith('.yaml'):
-                item.name = os.path.basename(item.name)
-                tf.extract(item, path=ctx.state_dirpath, filter='data')
+            tar_open_kwargs['name'] = Path(extract_state_dir)
+        with tarfile.open(**tar_open_kwargs) as tf:
+            for item in tf.getmembers():
+                if item.name.endswith('.yaml'):
+                    item.name = os.path.basename(item.name)
+                    tf.extract(item, path=ctx.state_dirpath, filter='data')
 
     # create empty ppid file
     with open(os.path.join(ctx.state_dirpath, f'{os.getppid()}.ppid'), 'w'):
@@ -264,7 +267,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
         state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
 
     def _print(indent: int, s: str, end: str = '\n') -> None:
-        print(f'{" "*indent}{s}', end=end)
+        print(f'{" " * indent}{s}', end=end)
 
     for state_dir in state_dirs:
         print(f'{state_dir}:')
@@ -1062,10 +1065,10 @@ def cmd_execute(
     launch_list = []
     # now we process jobs for each jira_id
     jira_url = ctx.settings.jira_url
-    for jira_id in jira_schedule_job_mapping:
+    for jira_id, schedule_jobs in jira_schedule_job_mapping.items():
         # when --continue the launch was probably already created
         # check the 1st job for launch_uuid
-        job = jira_schedule_job_mapping[jira_id][0]
+        job = schedule_jobs[0]
         launch_uuid = job.request.reportportal.get('launch_uuid', None)
         if launch_uuid:
             ctx.logger.debug(
@@ -1074,11 +1077,11 @@ def cmd_execute(
             continue
         # otherwise we proceed with launch creation
         # get launch details from the first schedule job
-        launch_name = jira_schedule_job_mapping[jira_id][0].request.reportportal['launch_name']
-        launch_attrs = jira_schedule_job_mapping[jira_id][0].request.reportportal.get(
+        launch_name = schedule_jobs[0].request.reportportal['launch_name']
+        launch_attrs = schedule_jobs[0].request.reportportal.get(
             'launch_attributes', {})
         launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
-        launch_description = jira_schedule_job_mapping[jira_id][0].request.reportportal.get(
+        launch_description = schedule_jobs[0].request.reportportal.get(
             'launch_description', '')
         if launch_description:
             launch_description += '<br><br>'
@@ -1088,7 +1091,7 @@ def cmd_execute(
                 jira_url,
                 f"/browse/{jira_id}")
             launch_description += f'[{jira_id}]({issue_url}): '
-        launch_description += (f'{len(jira_schedule_job_mapping[jira_id])} '
+        launch_description += (f'{len(schedule_jobs)} '
                                'request(s) in total')
         # create the actual launch
         launch_uuid = rp.create_launch(launch_name,
@@ -1297,17 +1300,17 @@ def cmd_report(ctx: CLIContext) -> None:
             jira_execute_job_mapping[jira_id].append(execute_job)
 
     # now for each jira id finish the respective launch and report results
-    for jira_id in jira_execute_job_mapping:
+    for jira_id, execute_jobs in jira_execute_job_mapping.items():
         all_tests_passed = True
         # get RP launch details
-        launch_uuid = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
+        launch_uuid = execute_jobs[0].request.reportportal.get(
             'launch_uuid', None)
-        launch_url = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
+        launch_url = execute_jobs[0].request.reportportal.get(
             'launch_url', None)
         if launch_uuid:
             # prepare description with individual results
             results: dict[str, dict[str, str]] = {}
-            for job in jira_execute_job_mapping[jira_id]:
+            for job in execute_jobs:
                 results[job.request.id] = {
                     'id': job.request.id,
                     'state': job.execution.state,
@@ -1316,13 +1319,13 @@ def cmd_report(ctx: CLIContext) -> None:
                     'url': job.execution.artifacts_url}
                 if job.execution.result != TF_RESULT_PASSED:
                     all_tests_passed = False
-            launch_description = jira_execute_job_mapping[jira_id][0].request.reportportal.get(
+            launch_description = execute_jobs[0].request.reportportal.get(
                 'launch_description', '')
             if launch_description:
                 launch_description += '<br><br>'
             if not jira_id.startswith(JIRA_NONE_ID):
                 launch_description += f'{jira_id}: '
-            launch_description += f'{len(jira_execute_job_mapping[jira_id])} request(s) in total:'
+            launch_description += f'{len(execute_jobs)} request(s) in total:'
             jira_description = launch_description.replace('<br>', '\n')
             for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
                 # it would be nice to use hyperlinks in launch description however we

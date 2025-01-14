@@ -8,7 +8,7 @@ import newa
 from newa import Settings, cli
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_clicontext(tmp_path):
     """ Return a CLIContext object with mocked logger and temp dirpath"""
     return cli.CLIContext(
@@ -21,7 +21,7 @@ def mock_clicontext(tmp_path):
         cli_context={})
 
 
-@pytest.fixture()
+@pytest.fixture
 def _mock_errata_tool(monkeypatch):
     """ Patch methods and functions to avoid communication with ErrataTool """
 
