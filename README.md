@@ -525,6 +525,75 @@ recipe:
   url: https://path/to/recipe.yaml
 ```
 
+#### Option `--assignee`
+
+Instructs NEWA to assign a newly created Jira issues to a particular Jira user, instead of using the value derived from the issue-config file.
+
+Example:
+```
+$ newa ... jira --issue-config issue-config.yaml --assignee user@domain.com ...
+```
+
+#### Option `--unassigned`
+
+Instructs NEWA not to assign a newly created Jira issues to a particular Jira user derived from the issue-config file.
+
+Example:
+```
+$ newa ... jira --issue-config issue-config.yaml --unassigned ...
+```
+
+#### Option `--issue-config TEXT`
+
+Instructs newa which issue-config file to use. Could be either a local file or URL. See 'Jira issue configuration file' section above for details.
+
+#### Option `--map-issue`
+
+Instructs NEWA to use an existing Jira issue instead of creating it according to the issue-config file. This option maps `id` identifier from the issue-config file to a Jira issue ID. NEWA will update Jira issue description with its identifier so that the next time it able to find it and there is no need to provide the mapping again. This option has to be used together with the `--issue-config` file option. It could be used multiple times.
+
+Example:
+```
+$ head issue-config.yaml
+issues:
+
+ - summary: "ER#{{ ERRATUM.id }} - {{ ERRATUM.summary }} (testing)"
+   description: "{{ ERRATUM.url }}\n{{ ERRATUM.components|join(' ') }}"
+   type: epic
+   id: errata_epic
+   on_respin: keep
+   erratum_comment_triggers:
+     - jira
+...
+$ newa ... jira --issue-config issue-config.yaml --map-issue errata_epic=RHEL-12345 ...
+```
+
+#### Option `--recreate`
+
+By default, NEWA won't create a new Jira issue if a matching one but closed is found. With this option, NEWA will created a new Jira issue instead.
+
+Example:
+```
+$ newa ... jira --issue-config issue-config.yaml --recreate ...
+```
+
+#### Option `--issue`
+
+This option works only when used together with `--job-recipe` option. It instructs NEWA which Jira issue to update with test results.
+
+Example:
+```
+$ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml --issue RHEL-12345 schedule execute report
+```
+
+#### Option `--job-recipe`
+
+This option should not be used together with the `--issue-config` option. This option tells NEWA a location of the NEWA recipe YAML file (either a local path or URL) and completely bypasses issue-config file processing step. Instead, NEWA will use the provided recipe YAML for scheduling. Could be used together with `--issue` option.
+
+Example:
+```
+$ newa ... jira --job-recipe path/to/recipe.yaml --issue RHEL-12345 schedule execute report
+```
+
 ### Subcommand `schedule`
 
 This subcommand does apply only when a particular item from the Jira (issue) configuration file contains a recipe attribute which points to a specific recipe YAML file. Also, it generates all relevant combinations that will be later executed.
