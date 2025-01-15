@@ -645,6 +645,15 @@ request:
   tmt_path: ''
 ```
 
+#### Option `--arch`
+
+By default, tests are scheduled for all relevant architectures. This option can be used to limit scheduling to a particular architecture. This option can be used multiple times.
+
+Example:
+```
+$ newa event --compose CentOS-Stream-9 job-recipe path/to/recipe.yaml schedule --arch x86_64 --arch aarch64 execute report
+```
+
 ### Subcommand `cancel`
 
 Cancels TF reqests found in `execute-` files within the given state-dir.
