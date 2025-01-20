@@ -291,9 +291,12 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                 schedule_jobs = list(ctx.load_schedule_jobs(schedule_file_prefix))
                 # print RP launch URL, should be common for all execute jobs
                 if schedule_jobs and schedule_jobs[0].request.reportportal:
-                    launch_url = schedule_jobs[0].request.reportportal.get('launch_url', None)
-                    if launch_url:
-                        _print(6, f'RP launch: {launch_url}')
+                    launch_name = schedule_jobs[0].request.reportportal.get('launch_name', None)
+                    if launch_name:
+                        _print(6, f'ReportPortal launch: {launch_name}')
+                        launch_url = schedule_jobs[0].request.reportportal.get('launch_url', None)
+                        if launch_url:
+                            _print(6, launch_url)
                 for schedule_job in schedule_jobs:
                     _print(6, f'{schedule_job.request.id}', end='')
                     execute_file_prefix = (f'execute-{event_job.event.id}-'
