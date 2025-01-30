@@ -187,6 +187,10 @@ The following options are available:
    - `report` - Adds a comment when automated tests results are reported by NEWA.
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
 
+### `NEWA_COMMENT_FOOTER` environment variable
+
+This environment variable can be used to extend a comment that NEWA adds to a Jira issue. Users can use it e.g. to append a link to a Jenkins job.
+
 ### Recipe config file
 
 This configuration prescribes which automated jobs should be triggered in Testing Farm.

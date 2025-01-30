@@ -1152,11 +1152,16 @@ def cmd_execute(
         # update Jira issue with a note about the RP launch
         if not jira_id.startswith(JIRA_NONE_ID):
             jira_connection = initialize_jira_connection(ctx)
+            comment = ("NEWA has scheduled automated test recipe for this issue, test "
+                       f"results will be uploaded to ReportPortal launch\n{launch_url}")
+            # check if we have a comment footer defined in envvar
+            footer = os.environ['NEWA_COMMENT_FOOTER'].strip()
+            if footer:
+                comment += f'\n{footer}'
             try:
                 jira_connection.add_comment(
                     jira_id,
-                    ("NEWA has scheduled automated test recipe for this issue, test "
-                     f"results will be uploaded to ReportPortal launch\n{launch_url}"),
+                    comment,
                     visibility={
                         'type': 'group',
                         'value': job.jira.group}
@@ -1381,10 +1386,15 @@ def cmd_report(ctx: CLIContext) -> None:
             # do not report to Jira if JIRA_NONE_ID was used
             if not jira_id.startswith(JIRA_NONE_ID):
                 try:
+                    comment = (f"NEWA has imported test results to RP launch "
+                               f"{launch_url}\n\n{jira_description}")
+                    # check if we have a comment footer defined in envvar
+                    footer = os.environ['NEWA_COMMENT_FOOTER'].strip()
+                    if footer:
+                        comment += f'\n{footer}'
                     jira_connection.add_comment(
                         jira_id,
-                        (f"NEWA has imported test results to RP launch "
-                         f"{launch_url}\n\n{jira_description}"),
+                        comment,
                         visibility={
                             'type': 'group',
                             'value': execute_job.jira.group}
