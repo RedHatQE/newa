@@ -1155,7 +1155,7 @@ def cmd_execute(
             comment = ("NEWA has scheduled automated test recipe for this issue, test "
                        f"results will be uploaded to ReportPortal launch\n{launch_url}")
             # check if we have a comment footer defined in envvar
-            footer = os.environ['NEWA_COMMENT_FOOTER'].strip()
+            footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
             if footer:
                 comment += f'\n{footer}'
             try:
