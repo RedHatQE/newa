@@ -1389,7 +1389,7 @@ def cmd_report(ctx: CLIContext) -> None:
                     comment = (f"NEWA has imported test results to RP launch "
                                f"{launch_url}\n\n{jira_description}")
                     # check if we have a comment footer defined in envvar
-                    footer = os.environ['NEWA_COMMENT_FOOTER'].strip()
+                    footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
                     if footer:
                         comment += f'\n{footer}'
                     jira_connection.add_comment(
