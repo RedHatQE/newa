@@ -1056,6 +1056,10 @@ class TFRequest(Cloneable, Serializable):
             url=self.api,
             response_content=ResponseContentType.JSON)
 
+    def is_finished(self) -> bool:
+        return bool(self.details and self.details.get('state', None) in [
+            'complete', 'error', 'canceled'])
+
 
 @define
 class Execution(Cloneable, Serializable):

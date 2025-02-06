@@ -1297,7 +1297,7 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
             envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
                              for e in tf_request.details['environments_requested']])
             log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
-            finished = state in ['complete', 'error', 'canceled']
+            finished = tf_request.is_finished()
         else:
             log(f'Could not read details of TF request {tf_request.uuid}')
 
@@ -1344,10 +1344,32 @@ def cmd_report(ctx: CLIContext) -> None:
             jira_execute_job_mapping[jira_id] = [execute_job]
         else:
             jira_execute_job_mapping[jira_id].append(execute_job)
+        # if execute_job is not yes finished, do one status check
+        if not execute_job.execution.result:
+            tf_request = TFRequest(api=execute_job.execution.request_api,
+                                   uuid=execute_job.execution.request_uuid)
+            tf_request.fetch_details()
+            if not tf_request.details:
+                raise Exception(f"Failed to read details of TF request {tf_request.uuid}")
+            state = tf_request.details['state']
+            envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
+                             for e in tf_request.details['environments_requested']])
+            ctx.logger.info(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
+            if tf_request.details['result']:
+                execute_job.execution.result = tf_request.details['result']['overall']
+                ctx.logger.info(f'finished with result: {execute_job.execution.result}')
+            elif tf_request.is_finished():
+                execute_job.execution.result = 'error'
+            if tf_request.details['state']:
+                execute_job.execution.state = tf_request.details['state']
+            if tf_request.details['run']['artifacts']:
+                execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
+            ctx.save_execute_job('execute-', execute_job)
 
     # now for each jira id finish the respective launch and report results
     for jira_id, execute_jobs in jira_execute_job_mapping.items():
         all_tests_passed = True
+        all_tests_finished = True
         # get RP launch details
         launch_uuid = execute_jobs[0].request.reportportal.get(
             'launch_uuid', None)
@@ -1365,6 +1387,8 @@ def cmd_report(ctx: CLIContext) -> None:
                     'url': job.execution.artifacts_url}
                 if job.execution.result != TF_RESULT_PASSED:
                     all_tests_passed = False
+                if job.execution.state not in ['complete', 'error', 'canceled']:
+                    all_tests_finished = False
             launch_description = execute_jobs[0].request.reportportal.get(
                 'launch_description', '')
             if launch_description:
@@ -1410,7 +1434,7 @@ def cmd_report(ctx: CLIContext) -> None:
                                      jira_id)
                     ctx.logger.info(
                         f'Issue {jira_id} state changed to {execute_job.jira.transition_passed}')
-                elif execute_job.jira.transition_processed:
+                elif execute_job.jira.transition_processed and all_tests_finished:
                     issue_transition(jira_connection,
                                      execute_job.jira.transition_processed,
                                      jira_id)
