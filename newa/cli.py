@@ -133,6 +133,7 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     )
 @click.option(
     '--prev-state-dir',
+    '-P',
     is_flag=True,
     default=False,
     help='Use the latest state-dir used previously within this shell session',
@@ -162,6 +163,7 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     )
 @click.option(
     '--extract-state-dir',
+    '-E',
     default='',
     help='Extract YAML files from the specified archive to state-dir.',
     )
