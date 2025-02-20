@@ -105,7 +105,7 @@ def render_template(
         **variables: Any,
         ) -> str:
     """
-    Render a template.
+    Render a template recursively.
 
     :param template: template to render.
     :param environment: Jinja2 environment to use.
@@ -113,9 +113,13 @@ def render_template(
     """
 
     environment = environment or default_template_environment()
-
+    old = template
     try:
-        return environment.from_string(template).render(**variables).strip()
+        while True:
+            new = environment.from_string(old).render(**variables).strip()
+            if old == new:
+                return new
+            old = new
 
     except jinja2.exceptions.TemplateSyntaxError as exc:
         raise Exception(
