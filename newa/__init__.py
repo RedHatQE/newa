@@ -975,6 +975,8 @@ class Request(Cloneable, Serializable):
             command += [
                 '--tmt-environment',
                 f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES="{rp_test_param_filter}"'"""]
+        # newa request ID
+        command += ['-c', f"""'newa_req="{self.id}"'"""]
         # process context
         if self.context:
             for k, v in self.context.items():
