@@ -745,6 +745,8 @@ def cmd_jira(
                     if action.parent_id:
                         parent = processed_actions.get(action.parent_id, None)
 
+                    # wait a bit to avoid too frequest Jira API requests
+                    time.sleep(1.5)
                     new_issue = jira_handler.create_issue(
                         action,
                         rendered_summary,
