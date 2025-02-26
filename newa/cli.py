@@ -42,6 +42,7 @@ from . import (
     ScheduleJob,
     Settings,
     TFRequest,
+    check_tf_cli_version,
     eval_test,
     get_url_basename,
     render_template,
@@ -1064,6 +1065,9 @@ def cmd_execute(
         ctx.logger.error(
             'NEWA state-dir was not specified! Use --state-dir or similar option.')
         sys.exit(1)
+
+    # check if we have sufficient TF CLI version
+    check_tf_cli_version(ctx)
 
     # initialize RP connection
     rp_project = ctx.settings.rp_project

@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 import urllib
 from functools import reduce
@@ -1065,6 +1066,35 @@ class TFRequest(Cloneable, Serializable):
     def is_finished(self) -> bool:
         return bool(self.details and self.details.get('state', None) in [
             'complete', 'error', 'canceled'])
+
+
+def check_tf_cli_version(ctx: CLIContext) -> None:
+    env = copy.deepcopy(os.environ)
+    # disable colors and escape control sequences
+    env['NO_COLOR'] = "1"
+    env['NO_TTY'] = "1"
+    command: list[str] = ['testing-farm', 'version']
+    try:
+        process = subprocess.run(
+            ' '.join(command),
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            shell=True)
+        output = process.stdout
+    except subprocess.CalledProcessError as e:
+        raise Exception("Cannot get testing-farm CLI version") from e
+    version = output.strip()
+    try:
+        a, b, c = map(int, version.split('.', 2))
+    except Exception as e:
+        raise Exception(f"Cannot get testing-farm CLI version, got '{version}'.") from e
+    # versions 0.0.20 and lower are too old
+    if a == 0 and b == 0 and c <= 20:
+        ctx.logger.error(f"testing-farm CLI version '{version}' is too old, please update.")
+        sys.exit(1)
 
 
 @define
