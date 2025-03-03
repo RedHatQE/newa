@@ -113,6 +113,40 @@ issues:
 
 Individual settings are described below.
 
+#### environment
+
+Defines environment varibles that will be set when sheduling a recipe.
+This definition takes priority over environment definition in a recipe so better
+avoid defining identical variable in both places.
+Environment definition is not inherited by child Jira issues.
+
+Example:
+```
+ - summary: "regression testing"
+   descriptin: "task descryption"
+   type: task
+   environment:
+     MYVAR: myvalue
+   ...
+```
+
+#### context
+
+Defines custom `tmt` context setting that will be set when scheduling a recipe.
+This definition takes priority over context definition in a recipe so better
+avoid defining identical context dimension in both places.
+Context definition is not inherited by child Jira issues.
+
+Example:
+```
+ - summary: "regression testing"
+   descriptin: "task descryption"
+   type: task
+   context:
+     swtpm: yes
+   ...
+```
+
 #### include
 
 Allows user to import snippet of a file from a different URL location or a file.
@@ -120,6 +154,29 @@ If the same section exists in both files, definitions from the included file
 has lower priority and the whole section is replaced completely.
 The only exceptions are are `issues` and `defaults` which are merged.
 To unset a value defined in an included file one can set the value to `null`.
+
+
+#### iterate
+
+Enables a user to do multiple copies of the respective action that differ only using a single parameter.
+This parameter will be automatically added to `environment` variable definition used for a recipe.
+Only one variable can be used in the definition.
+
+Example:
+In this example two subtasks will be created, one using `FOO=bar` and another using `FOO=baz`.
+```
+ - summary: "regression testing - FOO={{ ENVIRONMENT.FOO }}"
+   description: "Run automated tests for FOO={{ ENVIRONMENT.FOO }}"
+   type: subtask
+   parent_id: errata_task
+   on_respin: close
+   auto_transition: True
+   job_recipe: https://raw.githubusercontent.com/RedHatQE/newa/ks_recipe_job/component-recipe.yaml.sample
+   iterate:
+     FOO:
+       - bar
+       - baz
+```
 
 #### project and group
 
