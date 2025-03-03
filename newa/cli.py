@@ -1,3 +1,4 @@
+import copy
 import datetime
 import io
 import logging
@@ -591,12 +592,44 @@ def cmd_jira(
 
                 ctx.logger.info(f"Processing {action.id}")
 
+                # check if there are iteration is defined
+                if action.iterate:
+                    # for each value prepare a separate action
+                    for i, iter_vars in enumerate(action.iterate):
+                        ctx.logger.debug(f"Processing iteration: {iter_vars}")
+                        new_action = copy.deepcopy(action)
+                        new_action.iterate = None
+                        if not new_action.environment:
+                            new_action.environment = copy.deepcopy(iter_vars)
+                        else:
+                            new_action.environment = copy.deepcopy(
+                                {**new_action.environment, **iter_vars})
+                        new_action.id = f"{new_action.id}.iter{i + 1}"
+                        ctx.logger.debug(f"Created issue config action: {new_action}")
+                        issue_actions.insert(i, new_action)
+                    ctx.logger.info(f"Created {i} iterations of action {action.id}")
+                    # now all iterations for a given action, let's process them one by one
+                    continue
+
+                # update action.environment and action.context for jinja template rendering
+                if action.context:
+                    action.context = copy.deepcopy(
+                        {**ctx.cli_context, **action.context})
+                else:
+                    action.context = copy.deepcopy(ctx.cli_context)
+                if action.environment:
+                    action.environment = copy.deepcopy(
+                        {**ctx.cli_environment, **action.environment})
+                else:
+                    action.environment = copy.deepcopy(ctx.cli_environment)
+
                 if action.when and not eval_test(action.when,
                                                  JOB=artifact_job,
                                                  EVENT=artifact_job.event,
                                                  ERRATUM=artifact_job.erratum,
                                                  COMPOSE=artifact_job.compose,
-                                                 ENVIRONMENT=ctx.cli_environment):
+                                                 CONTEXT=action.context,
+                                                 ENVIRONMENT=action.environment):
                     ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
                     continue
 
@@ -609,12 +642,14 @@ def cmd_jira(
                     action.summary,
                     ERRATUM=artifact_job.erratum,
                     COMPOSE=artifact_job.compose,
-                    ENVIRONMENT=ctx.cli_environment)
+                    CONTEXT=action.context,
+                    ENVIRONMENT=action.environment)
                 rendered_description = render_template(
                     action.description,
                     ERRATUM=artifact_job.erratum,
                     COMPOSE=artifact_job.compose,
-                    ENVIRONMENT=ctx.cli_environment)
+                    CONTEXT=action.context,
+                    ENVIRONMENT=action.environment)
                 if assignee:
                     rendered_assignee = assignee
                 elif unassigned:
@@ -624,7 +659,8 @@ def cmd_jira(
                         action.assignee,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
-                        ENVIRONMENT=ctx.cli_environment)
+                        CONTEXT=action.context,
+                        ENVIRONMENT=action.environment)
                 else:
                     rendered_assignee = None
                 if action.newa_id:
@@ -632,7 +668,8 @@ def cmd_jira(
                         action.newa_id,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
-                        ENVIRONMENT=ctx.cli_environment)
+                        CONTEXT=action.context,
+                        ENVIRONMENT=action.environment)
 
                 # Detect that action has parent available (if applicable), if we went trough the
                 # actions already and parent was not found, we abort.
@@ -803,14 +840,19 @@ def cmd_jira(
                         action.job_recipe,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
-                        ENVIRONMENT=ctx.cli_environment)
+                        CONTEXT=action.context,
+                        ENVIRONMENT=action.environment)
                     if action.erratum_comment_triggers:
                         new_issue.erratum_comment_triggers = action.erratum_comment_triggers
-                    jira_job = JiraJob(event=artifact_job.event,
-                                       erratum=artifact_job.erratum,
-                                       compose=artifact_job.compose,
-                                       jira=new_issue,
-                                       recipe=Recipe(url=recipe_url))
+                    jira_job = JiraJob(
+                        event=artifact_job.event,
+                        erratum=artifact_job.erratum,
+                        compose=artifact_job.compose,
+                        jira=new_issue,
+                        recipe=Recipe(
+                            url=recipe_url,
+                            context=action.context,
+                            environment=action.environment))
                     ctx.save_jira_job('jira-', jira_job)
 
                 # Processing old issues - we only expect old issues that are to be closed (if any).
@@ -843,7 +885,10 @@ def cmd_jira(
                                erratum=artifact_job.erratum,
                                compose=artifact_job.compose,
                                jira=new_issue,
-                               recipe=Recipe(url=job_recipe))
+                               recipe=Recipe(
+                                   url=job_recipe,
+                                   context=ctx.cli_context,
+                                   environment=ctx.cli_environment))
             ctx.save_jira_job('jira-', jira_job)
 
 
@@ -880,9 +925,21 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
         else:
             architectures = jira_job.erratum.archs if (
                 jira_job.erratum and jira_job.erratum.archs) else Arch.architectures()
+
+        # prepare initial config copying it from jira_job,recipe but overriding with cli input
+        if jira_job.recipe.context:
+            initial_context = copy.deepcopy(
+                {**ctx.cli_context, **jira_job.recipe.context})
+        else:
+            initial_context = copy.deepcopy(ctx.cli_context)
+        if jira_job.recipe.environment:
+            initial_environment = copy.deepcopy(
+                {**ctx.cli_environment, **jira_job.recipe.environment})
+        else:
+            initial_environment = copy.deepcopy(ctx.cli_environment)
         initial_config = RawRecipeConfigDimension(compose=compose,
-                                                  environment=ctx.cli_environment,
-                                                  context=ctx.cli_context)
+                                                  environment=initial_environment,
+                                                  context=initial_context)
         ctx.logger.debug(f'Initial config: {initial_config})')
         if fixtures:
             for fixture in fixtures:
