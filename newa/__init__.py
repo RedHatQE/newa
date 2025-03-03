@@ -737,6 +737,8 @@ class Recipe(Cloneable, Serializable):
     """ A job recipe """
 
     url: str
+    context: Optional[RecipeContext]
+    environment: Optional[RecipeEnvironment]
 
 
 # A tmt context for a recipe, dimension -> value mapping.
@@ -1287,6 +1289,9 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
     when: Optional[str] = None
     newa_id: Optional[str] = None
     fields: Optional[dict[str, str | float | list[str]]] = None
+    iterate: Optional[dict[str, list[str]]] = None
+    context: Optional[RecipeContext] = None
+    environment: Optional[RecipeEnvironment] = None
 
     # function to handle issue-config file defaults
 
