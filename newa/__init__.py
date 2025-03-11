@@ -150,6 +150,7 @@ class Settings:
     rp_token: str = ''
     rp_project: str = ''
     rp_test_param_filter: str = ''
+    rp_launch_descr_chars_limit: str = ''
     jira_url: str = ''
     jira_token: str = ''
     jira_project: str = ''
@@ -204,6 +205,10 @@ class Settings:
                 cp,
                 'reportportal/test_param_filter',
                 'NEWA_REPORTPORTAL_TEST_PARAM_FILTER'),
+            rp_launch_descr_chars_limit=_get(
+                cp,
+                'reportportal/launch_descr_chars_limit',
+                'NEWA_REPORTPORTAL_LAUNCH_DESCR_CHARS_LIMIT'),
             jira_project=_get(
                 cp,
                 'jira/project',

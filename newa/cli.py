@@ -54,6 +54,7 @@ STATEDIR_PARENT_DIR = Path('/var/tmp/newa')
 STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
 TF_RESULT_PASSED = 'passed'
 ARGS_WITH_NO_STATEDIR = ['list', '--help']
+RP_LAUNCH_DESCR_CHARS_LIMIT = 1024
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -1205,6 +1206,18 @@ def cmd_execute(
     for _ in worker_pool.starmap(worker, schedule_list):
         # small sleep to avoid race conditions inside tmt code
         time.sleep(0.1)
+
+    rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit or RP_LAUNCH_DESCR_CHARS_LIMIT
+    rp_launch_descr_updated = launch_description + "\n"
+    rp_launch_descr_dots = True
+    for execute_job in ctx.load_execute_jobs('execute-'):
+        req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
+        if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
+            rp_launch_descr_updated += req_link
+        elif rp_launch_descr_dots:
+            rp_launch_descr_updated += "\n..."
+            rp_launch_descr_dots = False
+    rp.update_launch(launch_uuid, description=rp_launch_descr_updated)
 
     ctx.logger.info('Finished execution')
 
