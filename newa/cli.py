@@ -1374,11 +1374,13 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
             state = tf_request.details['state']
             # if we don't know artifacts_url yet, try to get it now
             if not execute_job.execution.artifacts_url:
-                url = tf_request.details.get('run', {}).get('artifacts', None)
-                if url:
+                try:
+                    url = tf_request.details['run']['artifacts']
                     # store execute_job updated with artifacts_url
                     execute_job.execution.artifacts_url = url
                     ctx.save_execute_job('execute-', execute_job)
+                except (KeyError, TypeError):
+                    pass
             envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
                              for e in tf_request.details['environments_requested']])
             log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
