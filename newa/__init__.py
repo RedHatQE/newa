@@ -1093,14 +1093,15 @@ def check_tf_cli_version(ctx: CLIContext) -> None:
         output = process.stdout
     except subprocess.CalledProcessError as e:
         raise Exception("Cannot get testing-farm CLI version") from e
-    version = output.strip()
-    try:
-        a, b, c = map(int, version.split('.', 2))
-    except Exception as e:
-        raise Exception(f"Cannot get testing-farm CLI version, got '{version}'.") from e
+    output = output.strip()
+    m = re.search(r'([0-9]+)\.([0-9]+)\.([0-9]+)', output)
+    if m:
+        a, b, c = map(int, m.groups())
+    else:
+        raise Exception(f"Cannot get testing-farm CLI version, got '{output}'.")
     # versions 0.0.20 and lower are too old
     if a == 0 and b == 0 and c <= 20:
-        ctx.logger.error(f"testing-farm CLI version '{version}' is too old, please update.")
+        ctx.logger.error(f"testing-farm CLI version {a}.{b}.{c} is too old, please update.")
         sys.exit(1)
 
 
