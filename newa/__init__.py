@@ -1337,7 +1337,8 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
     issues: list[IssueAction] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda issues: [
             IssueAction(**issue) for issue in issues])
-    group: Optional[str] = None
+    group: Optional[str] = field(default=None)
+    board: Optional[Union[str, int]] = field(default=None)
 
     @classmethod
     def from_yaml_with_include(cls: type[IssueConfig], location: str) -> IssueConfig:
@@ -1441,6 +1442,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
     # see https://JIRASERVER/rest/api/2/field
     field_map: ClassVar[dict[str, JiraField]] = {}
 
+    board: Optional[Union[str, int]] = field(default=None)
     # Actual Jira connection.
     connection: jira.JIRA = field(init=False)
 
@@ -1449,7 +1451,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
     # NEWA label
     newa_label: ClassVar[str] = "NEWA"
-    group: Optional[str] = None
+
+    # active and future sprint ids, will be obtained from Jira later
+    sprint_cache: ClassVar[dict[str, list[int]]] = {'active': [], 'future': []}
+
+    group: Optional[str] = field(default=None)
 
     @connection.default  # pyright: ignore [reportAttributeAccessIssue]
     def connection_factory(self) -> jira.JIRA:
@@ -1467,6 +1473,26 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     items=f['schema']['items']
                     if ('schema' in f and 'items' in f['schema'])
                     else None)
+            # read the current and next sprint for the board
+            if self.board:
+                # if board is identified by name, find its id
+                if isinstance(self.board, str):
+                    boards = conn.boards(name=self.board)
+                    if len(boards) == 1:
+                        board_id = boards[0].id
+                    else:
+                        raise Exception(f"Could not find Jira board with name '{self.board}'")
+                else:
+                    board_id = self.board
+                active_sprints = conn.sprints(board_id, state='active')
+                if active_sprints:
+                    self.sprint_cache['active'] = [
+                        s.id for s in active_sprints if s.originBoardId == board_id]
+                future_sprints = conn.sprints(board_id, state='future')
+                if future_sprints:
+                    self.sprint_cache['future'] = [
+                        s.id for s in future_sprints if s.originBoardId == board_id]
+
         except jira.JIRAError as e:
             raise Exception('Could not authenticate to Jira. Wrong token?') from e
         return conn
@@ -1647,8 +1673,24 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     field_values = list(map(str, value))
                 else:
                     raise Exception(f'Unsupported Jira field conversion for {type(value)}')
+                # there is extra handling for Sprint as it should be an integer, maybe
+                # wrong custom field definition
+                if field == 'Sprint':
+                    if not value:
+                        continue
+                    if value == 'active':
+                        sprint_id = self.sprint_cache['active'][0]
+                    elif value == 'future':
+                        sprint_id = self.sprint_cache['future'][0]
+                    elif isinstance(value, (int, str)):
+                        sprint_id = int(value)
+                    else:
+                        raise Exception(
+                            f"Invalid 'Sprint' value '{value}', "
+                            "should be 'active', 'future' or sprintID")
+                    fdata[field_id] = sprint_id
                 # now we need to distinguish different types of fields and values
-                if field_type == 'string':
+                elif field_type == 'string':
                     fdata[field_id] = field_values[0]
                 elif field_type == 'number':
                     fdata[field_id] = float(field_values[0])

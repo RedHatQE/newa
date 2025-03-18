@@ -563,11 +563,13 @@ def cmd_jira(
                 jira_token,
                 config.project,
                 config.transitions,
+                board=config.board,
                 group=getattr(
                     config,
                     'group',
                     None))
             ctx.logger.info("Initialized Jira handler")
+            time.sleep(1.5)
 
             # All issue action from the configuration.
             issue_actions = config.issues[:]

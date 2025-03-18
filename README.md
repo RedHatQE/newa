@@ -72,6 +72,8 @@ include: global_settings.yaml
 
 project: MYPROJECT
 
+board: 'My team board'
+
 transitions:
   closed:
     - Closed
@@ -109,9 +111,20 @@ issues:
    erratum_comment_triggers:
      - execute
      - report
+   fields:
+     Sprint: active
 ```
 
 Individual settings are described below.
+
+#### board and fields.Sprint
+
+`board` is either a name (string) or a numeric ID (integer) of Jira Board that will be used to
+determine the currently active and future sprints.
+`Sprint` value has to be defined under `fields` settings for a particular issue item.
+The possible values are 'active', 'future' or a numeric ID of a given Sprint.
+
+See the example above.
 
 #### environment
 
