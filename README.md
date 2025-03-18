@@ -649,6 +649,15 @@ Example:
 $ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml --issue RHEL-12345 schedule execute report
 ```
 
+#### Option `--issue-prev`
+
+This option works only when used together with `--job-recipe` option. It instructs NEWA to use previous Jira issue to update with test results. It autodetects this Jira ID. This option cannot be used together with `--issue`.
+
+Example:
+```
+$ newa ... jira --job-recipe path/to/recipe.yaml --issue-prev schedule execute report
+```
+
 #### Option `--job-recipe`
 
 This option should not be used together with the `--issue-config` option. This option tells NEWA a location of the NEWA recipe YAML file (either a local path or URL) and completely bypasses issue-config file processing step. Instead, NEWA will use the provided recipe YAML for scheduling. Could be used together with `--issue` option.

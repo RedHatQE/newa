@@ -101,6 +101,24 @@ def get_state_dir(use_ppid: bool = False) -> Path:
     return STATEDIR_PARENT_DIR / f'run-{counter + 1}'
 
 
+def get_previous_jiraid():
+    """ It looks for previous Jira ID to use it in the current NEWA run
+    """
+    dirs = os.listdir(STATEDIR_PARENT_DIR)
+    dirs = reversed(sorted(dirs, key=len))
+
+    for statedir in dirs:
+        path = os.path.join(STATEDIR_PARENT_DIR, statedir)
+        for jira_file in [file for file in os.listdir(path) if file.startswith('jira-')]:
+            path_jira = os.path.join(path, jira_file)
+            jira_value = JiraJob.from_yaml_file(Path(path_jira)).jira
+            if re.search(".*NO_ISSUE.*", str(jira_value)):
+                continue
+            return str(jira_value)
+
+    raise Exception('Previous Jira ID not found')
+
+
 def initialize_jira_connection(ctx: CLIContext) -> Any:
     jira_url = ctx.settings.jira_url
     if not jira_url:
@@ -475,6 +493,12 @@ def cmd_event(
     help='Specifies Jira issue ID to be used.',
     )
 @click.option(
+    '--issue-prev',
+    is_flag=True,
+    default=False,
+    help='Use previous Jira issue ID to be used.',
+    )
+@click.option(
     '--job-recipe',
     help='Specifies job recipe file or URL to be used.',
     )
@@ -496,6 +520,7 @@ def cmd_jira(
         map_issue: list[str],
         recreate: bool,
         issue: str,
+        issue_prev: bool,
         job_recipe: str,
         assignee: str,
         unassigned: bool) -> None:
@@ -508,6 +533,9 @@ def cmd_jira(
     jira_token = ctx.settings.jira_token
     if not jira_token:
         raise Exception('Jira token is not configured!')
+
+    if issue and issue_prev:
+        raise Exception('Options --issue and --issue-prev cannot be used together')
 
     if assignee and unassigned:
         raise Exception('Options --assignee and --unassigned cannot be used together')
@@ -870,6 +898,11 @@ def cmd_jira(
         else:
             if not job_recipe:
                 raise Exception("Option --job-recipe is mandatory when --issue-config is not set")
+
+            if issue_prev:
+                issue = get_previous_jiraid()
+                ctx.logger.info(f"Using previous issue {issue}")
+
             if issue:
                 # verify that specified Jira issue truly exists
                 jira_connection = initialize_jira_connection(ctx)
@@ -877,7 +910,7 @@ def cmd_jira(
                 ctx.logger.info(f"Using issue {issue}")
                 new_issue = Issue(issue)
             else:
-                # when --issue is not specified, we would use an empty string as ID
+                # when --issue or --issue-prev is not specified, we would use an empty string as ID
                 # so we will skip Jira reporting steps in later stages
                 new_issue = Issue(next(jira_none_id))
 
