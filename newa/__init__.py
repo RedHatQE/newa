@@ -1648,7 +1648,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 else:
                     raise Exception(f'Unsupported Jira field conversion for {type(value)}')
                 # now we need to distinguish different types of fields and values
-                if field_type == 'string':
+                if field == 'Sprint':
+                    # special handling, field_type reports 'array' but API requires int
+                    fdata[field_id] = int(field_values[0])
+                elif field_type == 'string':
                     fdata[field_id] = field_values[0]
                 elif field_type == 'number':
                     fdata[field_id] = float(field_values[0])

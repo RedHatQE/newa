@@ -87,6 +87,7 @@ defaults:
 #  fields:
 #    "Pool Team": "my_great_team"
 #    "Story Points": 0
+#    "Sprint": 12345 # ID of the sprint
 
 issues:
 
