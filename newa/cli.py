@@ -616,12 +616,12 @@ def cmd_jira(
                 # update action.environment and action.context for jinja template rendering
                 if action.context:
                     action.context = copy.deepcopy(
-                        {**ctx.cli_context, **action.context})
+                        {**action.context, **ctx.cli_context})
                 else:
                     action.context = copy.deepcopy(ctx.cli_context)
                 if action.environment:
                     action.environment = copy.deepcopy(
-                        {**ctx.cli_environment, **action.environment})
+                        {**action.environment, **ctx.cli_environment})
                 else:
                     action.environment = copy.deepcopy(ctx.cli_environment)
 
@@ -672,6 +672,16 @@ def cmd_jira(
                         COMPOSE=artifact_job.compose,
                         CONTEXT=action.context,
                         ENVIRONMENT=action.environment)
+                rendered_fields = copy.deepcopy(action.fields)
+                if rendered_fields:
+                    for key, value in rendered_fields.items():
+                        if isinstance(value, str):
+                            rendered_fields[key] = render_template(
+                                value,
+                                ERRATUM=artifact_job.erratum,
+                                COMPOSE=artifact_job.compose,
+                                CONTEXT=action.context,
+                                ENVIRONMENT=action.environment)
 
                 # Detect that action has parent available (if applicable), if we went trough the
                 # actions already and parent was not found, we abort.
@@ -797,7 +807,7 @@ def cmd_jira(
                         group=config.group,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed,
-                        fields=action.fields)
+                        fields=rendered_fields)
 
                     processed_actions[action.id] = new_issue
                     created_action_ids.append(action.id)
