@@ -1660,7 +1660,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             else:
                 fields['Labels'] = [IssueHandler.newa_label]
             # populate fdata with configuration provided by the user
-            fdata: dict[str, str | float | list[Any]] = {}
+            fdata: dict[str, str | float | list[Any] | dict[str, Any]] = {}
             for field in fields:
                 field_id = IssueHandler.field_map[field].id_
                 field_type = IssueHandler.field_map[field].type_
@@ -1701,6 +1701,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                         fdata[field_id] = [{"value": v} for v in field_values]
                     else:
                         raise Exception(f'Unsupported Jira field item {field_items}')
+                elif field_type == 'priority':
+                    fdata[field_id] = {"name": field_values[0]}
                 else:
                     raise Exception(f'Unsupported Jira field type {field_type}')
 
