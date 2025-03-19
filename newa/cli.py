@@ -1481,7 +1481,11 @@ def cmd_report(ctx: CLIContext) -> None:
             if launch_description:
                 launch_description += '<br><br>'
             if not jira_id.startswith(JIRA_NONE_ID):
-                launch_description += f'{jira_id}: '
+                jira_url = ctx.settings.jira_url
+                issue_url = urllib.parse.urljoin(
+                    jira_url,
+                    f"/browse/{jira_id}")
+                launch_description += f'[{jira_id}]({issue_url}): '
             launch_description += f'{len(execute_jobs)} request(s) in total:'
             jira_description = launch_description.replace('<br>', '\n')
             for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
