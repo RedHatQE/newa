@@ -14,7 +14,8 @@ transitions:
 
 defaults:
    assignee: '{{ ERRATUM.people_assigned_to }}'
-#  fields:
+   fields:
+     Status: BACKLOG
 #    "Pool Team": "my_great_team"
 #    "Story Points": 0
 
