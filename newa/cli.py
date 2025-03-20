@@ -1276,17 +1276,19 @@ def cmd_execute(
         # small sleep to avoid race conditions inside tmt code
         time.sleep(0.1)
 
-    rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit or RP_LAUNCH_DESCR_CHARS_LIMIT
-    rp_launch_descr_updated = launch_description + "\n"
-    rp_launch_descr_dots = True
-    for execute_job in ctx.load_execute_jobs('execute-'):
-        req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
-        if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
-            rp_launch_descr_updated += req_link
-        elif rp_launch_descr_dots:
-            rp_launch_descr_updated += "\n..."
-            rp_launch_descr_dots = False
-    rp.update_launch(launch_uuid, description=rp_launch_descr_updated)
+    # for ctx.no_wait update launch description at least with TF requests API URLs
+    if ctx.no_wait:
+        rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit or RP_LAUNCH_DESCR_CHARS_LIMIT
+        rp_launch_descr_updated = launch_description + "\n"
+        rp_launch_descr_dots = True
+        for execute_job in ctx.load_execute_jobs('execute-'):
+            req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
+            if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
+                rp_launch_descr_updated += req_link
+            elif rp_launch_descr_dots:
+                rp_launch_descr_updated += "\n..."
+                rp_launch_descr_dots = False
+        rp.update_launch(launch_uuid, description=rp_launch_descr_updated)
 
     ctx.logger.info('Finished execution')
 
@@ -1497,9 +1499,13 @@ def cmd_report(ctx: CLIContext) -> None:
                 issue_url = urllib.parse.urljoin(
                     jira_url,
                     f"/browse/{jira_id}")
-                launch_description += f'[{jira_id}]({issue_url}): '
+                launch_description += f'{jira_id}: '
             launch_description += f'{len(execute_jobs)} request(s) in total:'
             jira_description = launch_description.replace('<br>', '\n')
+            # add hyperlink to Jira issue only for the RP launch
+            if not jira_id.startswith(JIRA_NONE_ID):
+                launch_description = launch_description.replace(
+                    f'{jira_id}:', f'[{jira_id}]({issue_url}):')
             for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
                 # it would be nice to use hyperlinks in launch description however we
                 # would hit description length limit. Therefore using plain text
