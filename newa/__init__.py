@@ -1661,6 +1661,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 fields['Labels'] = [IssueHandler.newa_label]
             # populate fdata with configuration provided by the user
             fdata: dict[str, str | float | list[Any] | dict[str, Any]] = {}
+            transition_name: Optional[str] = None
             for field in fields:
                 field_id = IssueHandler.field_map[field].id_
                 field_type = IssueHandler.field_map[field].type_
@@ -1703,10 +1704,14 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                         raise Exception(f'Unsupported Jira field item {field_items}')
                 elif field_type == 'priority':
                     fdata[field_id] = {"name": field_values[0]}
+                elif field_type == 'status':
+                    transition_name = field_values[0]
                 else:
                     raise Exception(f'Unsupported Jira field type {field_type}')
 
             jira_issue.update(fields=fdata)
+            if transition_name:
+                self.connection.transition_issue(jira_issue.key, transition=transition_name)
             return Issue(jira_issue.key,
                          group=self.group,
                          summary=summary,
