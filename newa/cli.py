@@ -27,6 +27,7 @@ from . import (
     ErratumContentType,
     Event,
     EventType,
+    ExecuteHow,
     ExecuteJob,
     Execution,
     Issue,
@@ -1060,20 +1061,21 @@ def cmd_cancel(ctx: CLIContext) -> None:
     os.environ["TESTING_FARM_API_TOKEN"] = tf_token
 
     for execute_job in ctx.load_execute_jobs('execute-'):
-        # if not execute_job.execution.result:
-        tf_request = TFRequest(
-            api=execute_job.execution.request_api,
-            uuid=execute_job.execution.request_uuid)
-        tf_request.cancel(ctx)
-        tf_request.fetch_details()
-        if tf_request.details:
-            execute_job.execution.state = tf_request.details['state']
-            if 'cancel' in execute_job.execution.state:
-                execute_job.execution.state = 'canceled'
-                execute_job.execution.result = 'error'
-            if tf_request.details['result']:
-                execute_job.execution.result = tf_request.details['result']['overall']
-            ctx.save_execute_job('execute-', execute_job)
+        if execute_job.request.how == ExecuteHow.TESTING_FARM:
+            # if not execute_job.execution.result:
+            tf_request = TFRequest(
+                api=execute_job.execution.request_api,
+                uuid=execute_job.execution.request_uuid)
+            tf_request.cancel(ctx)
+            tf_request.fetch_details()
+            if tf_request.details:
+                execute_job.execution.state = tf_request.details['state']
+                if 'cancel' in execute_job.execution.state:
+                    execute_job.execution.state = 'canceled'
+                    execute_job.execution.result = 'error'
+                if tf_request.details['result']:
+                    execute_job.execution.result = tf_request.details['result']['overall']
+                ctx.save_execute_job('execute-', execute_job)
 
 
 @main.command(name='execute')
@@ -1311,13 +1313,21 @@ def test_patterns_match(s: str, patterns: list[str]) -> tuple[bool, str]:
 
 def worker(ctx: CLIContext, schedule_file: Path) -> None:
 
+    # read request details
+    schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
+    if schedule_job.request.how == ExecuteHow.TMT:
+        tmt_worker(ctx, schedule_file, schedule_job)
+    else:
+        tf_worker(ctx, schedule_file, schedule_job)
+
+
+def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -> None:
+
     # modify log message so it contains name of the processed file
     # so that we can distinguish individual workers
     log = partial(lambda msg: ctx.logger.info("%s: %s", schedule_file.name, msg))
 
-    log('processing request...')
-    # read request details
-    schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
+    log('processing TF request...')
 
     start_new_request = True
     skip_initial_sleep = False
@@ -1415,6 +1425,37 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     ctx.save_execute_job('execute-', execute_job)
 
 
+def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -> None:
+
+    # modify log message so it contains name of the processed file
+    # so that we can distinguish individual workers
+    log = partial(lambda msg: ctx.logger.info("%s: %s", schedule_file.name, msg))
+    log('processing tmt request...')
+
+    # generate tmt command so we can log it
+    command_args, environment = schedule_job.request.generate_tmt_exec_command(ctx)
+    command = ''
+    for e, v in environment.items():
+        command += f'{e}="{v}" '
+    command += ' '.join(command_args)
+    # hide tokens
+    command = command.replace(ctx.settings.rp_token, '***')
+    # export Execution to YAML so that we can report it even later
+    # we won't report 'return_code' since it is not known yet
+    # This is something to be implemented later
+    execute_job = ExecuteJob(
+        event=schedule_job.event,
+        erratum=schedule_job.erratum,
+        compose=schedule_job.compose,
+        jira=schedule_job.jira,
+        recipe=schedule_job.recipe,
+        request=schedule_job.request,
+        execution=Execution(batch_id=schedule_job.request.get_hash(ctx.timestamp),
+                            command=command),
+        )
+    ctx.save_execute_job('execute-', execute_job)
+
+
 @main.command(name='report')
 @click.pass_obj
 def cmd_report(ctx: CLIContext) -> None:
@@ -1446,7 +1487,8 @@ def cmd_report(ctx: CLIContext) -> None:
         else:
             jira_execute_job_mapping[jira_id].append(execute_job)
         # if execute_job is not yes finished, do one status check
-        if not execute_job.execution.result:
+        if (not execute_job.execution.result) and \
+                execute_job.request.how == ExecuteHow.TESTING_FARM:
             tf_request = TFRequest(api=execute_job.execution.request_api,
                                    uuid=execute_job.execution.request_uuid)
             tf_request.fetch_details()
