@@ -317,6 +317,12 @@ Example:
     swtpm: yes
 ```
 
+#### how
+
+Optional attribute. Defines if requests should be run through Testing Farm or `tmt`. The default value is `testingfarm`.
+Request execution through `tmt` is not implemented, just an empty launch is created.
+However, a user can see the respective `tmt` command in `execute-` YAML files in a state-dir.
+
 #### tmt
 
 Identifies test plans that should be executed. Possible parameters are:
@@ -324,6 +330,7 @@ Identifies test plans that should be executed. Possible parameters are:
  - `ref`: Git repo `ref` within a repository.
  - `path`: Path to `tmt` root within a repository.
  - `plan`: Identifies `tmt` test plans to execute, a regexp used to filter plans by name.
+ - `cli_args`: Sets `tmt run` arguments when `how: tmt` is used. When configured by a user, `newa` will automatically append only the `discover` subcommand, utilizing the above options. It is up to a user to pass all the subsequent `tmt` subcommands `provision prepare execute report finish` with required parameters! When `cli_args` is not set, `newa` will add all these subcommands automatically.
 
 #### testingfarm
 
