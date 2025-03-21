@@ -317,6 +317,12 @@ Example:
     swtpm: yes
 ```
 
+#### how
+
+Optional attribute. Defines if requests should be run through Testing Farm or `tmt`. The default value is `testingfarm`.
+Request execution through `tmt` is not implemented, just an empty launch is created.
+However, a user can see the respective `tmt` command in `execute-` YAML files in a state-dir.
+
 #### tmt
 
 Identifies test plans that should be executed. Possible parameters are:
