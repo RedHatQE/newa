@@ -81,6 +81,7 @@ def yaml_parser() -> ruamel.yaml.YAML:
     yaml.representer.add_representer(ErratumContentType, _represent_enum)
     yaml.representer.add_representer(ErratumCommentTrigger, _represent_enum)
     yaml.representer.add_representer(Arch, _represent_enum)
+    yaml.representer.add_representer(ExecuteHow, _represent_enum)
 
     return yaml
 
@@ -458,6 +459,13 @@ class Arch(Enum):
         return list(set(_all).intersection(set(preset)))
 
 
+class ExecuteHow(Enum):
+    """ Available system architectures """
+
+    TESTING_FARM = 'testingfarm'
+    TMT = 'tmt'
+
+
 @define
 class Cloneable:
     """ A class whose instances can be cloned """
@@ -477,7 +485,9 @@ class Serializable:
     def to_yaml(self) -> str:
         output = io.StringIO()
 
-        yaml_parser().dump(asdict(self, recurse=True), output)
+        parser = yaml_parser()
+        parser.width = 4096
+        parser.dump(asdict(self, recurse=True), output)
 
         return output.getvalue()
 
@@ -758,6 +768,7 @@ class RawRecipeTmtConfigDimension(TypedDict, total=False):
     ref: Optional[str]
     path: Optional[str]
     plan: Optional[str]
+    cli_args: Optional[str]
 
 
 _RecipeTmtConfigDimensionKey = Literal['url', 'ref', 'path', 'plan']
@@ -910,6 +921,7 @@ class Request(Cloneable, Serializable):
     reportportal: Optional[RawRecipeReportPortalConfigDimension] = None
     # TODO: 'when' not really needed, adding it to silent the linter
     when: Optional[str] = None
+    how: Optional[ExecuteHow] = field(converter=ExecuteHow, default=ExecuteHow.TESTING_FARM)
 
     def fetch_details(self) -> None:
         raise NotImplementedError
@@ -1028,6 +1040,78 @@ class Request(Cloneable, Serializable):
         api = r.group(1).strip()
         request_uuid = api.split('/')[-1]
         return TFRequest(api=api, uuid=request_uuid)
+
+    def generate_tmt_exec_command(self, ctx: CLIContext) -> tuple[list[str], dict[str, str]]:
+        # process envvars
+        # reportportal settings will be passed through envvars
+        rp_token = ctx.settings.rp_token
+        rp_url = ctx.settings.rp_url
+        rp_project = ctx.settings.rp_project
+        rp_test_param_filter = ctx.settings.rp_test_param_filter
+        if self.reportportal:
+            rp_launch = self.reportportal.get("launch_uuid", None)
+        if not rp_token:
+            raise Exception('ERROR: ReportPortal token is not set')
+        if not rp_url:
+            raise Exception('ERROR: ReportPortal URL is not set')
+        if not rp_project:
+            raise Exception('ERROR: ReportPortal project is not set')
+        if (not self.reportportal) or (not self.reportportal['launch_name']):
+            raise Exception('ERROR: ReportPortal launch name is not specified')
+        environment: dict[str, str] = {
+            'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN': f"{rp_token}",
+            'TMT_PLUGIN_REPORT_REPORTPORTAL_URL': f"{rp_url}",
+            'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT': f"{rp_project}",
+            'TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH': f"{rp_launch}",
+            'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH': f"{self.reportportal['launch_name']}",
+            'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN': '1',
+            }
+        if self.reportportal and self.reportportal.get("suite_description", None):
+            # we are intentionally using suite_description, not launch description
+            # as due to SUITE_PER_PLAN enabled the launch description will end up
+            # in suite description as well once
+            # https://github.com/teemtee/tmt/issues/2990 is implemented
+            desc = self.reportportal.get("suite_description")
+            environment['TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION'] = f"{desc}"
+        if rp_test_param_filter:
+            environment['TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES'] = \
+                f"{rp_test_param_filter}"
+        # beginning of the tmt command
+        command: list[str] = ['tmt']
+        # newa request ID
+        command += ['-c', f'newa_req="{self.id}"']
+        command += ['-c', f'newa_batch="{self.get_hash(ctx.timestamp)}"']
+        # process context
+        if self.context:
+            for k, v in self.context.items():
+                command += ['-c', f'{k}="{v}"']
+        # tmt run --all
+        command += ['run']
+        # process environment
+        if self.environment:
+            for k, v in self.environment.items():
+                command += ['-e', f'{k}="{v}"']
+        # process tmt related settings
+        if not self.tmt:
+            raise Exception('ERROR: tmt settings is not specified for the request')
+        if not self.tmt.get("url", None):
+            raise Exception('ERROR: tmt "url" is not specified for the request')
+        command += ['discover', '--how', 'fmf']
+        if self.tmt['url']:
+            command += ['--url', f"""'{self.tmt["url"]}'"""]
+        if self.tmt.get("ref", None):
+            command += ['--ref', f"""'{self.tmt["ref"]}'"""]
+        if self.tmt.get("path", None):
+            command += ['--path', f"""'{self.tmt["path"]}'"""]
+        if self.tmt.get("plan", None):
+            command += ['plan', '--name', f"""'{self.tmt["plan"]}'"""]
+        # add tmt cmd args
+        if self.tmt.get("cli_args", None):
+            command += [f'{self.tmt["cli_args"]}']
+        else:
+            command += ['provision', 'prepare', 'execute', 'report', 'finish']
+        # process reportportal configuration
+        return command, environment
 
 
 @define
