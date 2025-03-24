@@ -258,7 +258,7 @@ The following options are available:
    - `execute` - Adds a comment when automated tests are initiated by NEWA.
    - `report` - Adds a comment when automated tests results are reported by NEWA.
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
- - `fields`: A dictionary identifying additional Jira issue fields that should be set for the issue. Currently, fields Sprint, Status and other fields having type "number", "string", "list/select" should be supported.
+ - `fields`: A dictionary identifying additional Jira issue fields that should be set for the issue. Currently, fields Reporter, Sprint, Status and other fields having type "number", "string", "list/select" should be supported.
 
 ### `NEWA_COMMENT_FOOTER` environment variable
 

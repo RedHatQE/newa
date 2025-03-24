@@ -1650,6 +1650,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         else:
             raise Exception(f"Unknown issue type {action.type}!")
 
+        # handle fields['Reporter'] already during ticket creation
+        if fields and 'Reporter' in fields and isinstance(fields['Reporter'], str):
+            data |= {"reporter": {"name": self.get_user_name(fields['Reporter'])}}
+
         try:
             jira_issue = self.connection.create_issue(data)
             if fields is None:
@@ -1663,6 +1667,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             fdata: dict[str, str | float | list[Any] | dict[str, Any]] = {}
             transition_name: Optional[str] = None
             for field in fields:
+
+                # skip Reporter field as that one was processed previously
+                if field == 'Reporter':
+                    continue
+
                 field_id = IssueHandler.field_map[field].id_
                 field_type = IssueHandler.field_map[field].type_
                 field_items = IssueHandler.field_map[field].items
