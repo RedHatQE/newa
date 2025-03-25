@@ -506,6 +506,12 @@ def cmd_event(
     help='Specifies Jira issue ID to be used.',
     )
 @click.option(
+    '--prev-issue',
+    is_flag=True,
+    default=False,
+    help='Use the (only) issue from the previous NEWA state-dir.',
+    )
+@click.option(
     '--job-recipe',
     help='Specifies job recipe file or URL to be used.',
     )
@@ -527,6 +533,7 @@ def cmd_jira(
         map_issue: list[str],
         recreate: bool,
         issue: str,
+        prev_issue: bool,
         job_recipe: str,
         assignee: str,
         unassigned: bool) -> None:
@@ -913,6 +920,27 @@ def cmd_jira(
         else:
             if not job_recipe:
                 raise Exception("Option --job-recipe is mandatory when --issue-config is not set")
+
+            if prev_issue:
+                # inspect artifacts from the previous statedir
+                if not ctx.new_state_dir:
+                    raise Exception(
+                        "Do not use 'newa -P' or 'newa -D' together with 'jira --prev-issue'")
+                if not ctx.prev_state_dirpath:
+                    raise Exception('Could not identify the previous state-dir')
+                ctx_prev = copy.deepcopy(ctx)
+                ctx_prev.state_dirpath = ctx.prev_state_dirpath
+                # now load all jira- files from prev_state_dirpath
+                jira_jobs = ctx_prev.load_jira_jobs('jira-')
+                jira_keys = [
+                    job.jira.id for job in jira_jobs if not job.jira.id.startswith(JIRA_NONE_ID)]
+                if len(jira_keys) == 1:
+                    issue = jira_keys[0]
+                else:
+                    raise Exception(
+                        f'Expecting a single Jira issue key in {ctx_prev.state_dirpath}, '
+                        f'found {len(jira_keys)}')
+
             if issue:
                 # verify that specified Jira issue truly exists
                 jira_connection = initialize_jira_connection(ctx)
