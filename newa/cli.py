@@ -181,6 +181,13 @@ def main(click_context: click.Context,
          contexts: list[str],
          extract_state_dir: str) -> None:
 
+    # try to identify prev_state_dirpath just in case we need it
+    # we won't fail on errors
+    try:
+        prev_state_dirpath = prev_state_dirpath = get_state_dir(use_ppid=True)
+    except BaseException:
+        prev_state_dirpath = None
+
     # handle state_dir settings
     if prev_state_dir and state_dir:
         raise Exception('Use either --state-dir or --prev-state-dir')
@@ -195,6 +202,7 @@ def main(click_context: click.Context,
         state_dirpath=Path(os.path.expandvars(state_dir)),
         cli_environment={},
         cli_context={},
+        prev_state_dirpath=prev_state_dirpath,
         )
     click_context.obj = ctx
 
@@ -211,6 +219,7 @@ def main(click_context: click.Context,
         ctx.new_state_dir = True
         ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
         ctx.state_dirpath.mkdir(parents=True)
+    ctx.logger.debug(f'prev_state_dirpath={ctx.prev_state_dirpath}')
 
     # extract YAML files from the given archive to state-dir
     if extract_state_dir:
@@ -385,13 +394,35 @@ def apply_release_mapping(string: str,
           'Can be specified multiple times, the 1st match is used'
           ),
     )
+@click.option(
+    '--prev-event',
+    is_flag=True,
+    default=False,
+    help='Copy events from the previous NEWA state-dir',
+    )
 @click.pass_obj
 def cmd_event(
         ctx: CLIContext,
         errata_ids: list[str],
         compose_ids: list[str],
-        compose_mapping: list[str]) -> None:
+        compose_mapping: list[str],
+        prev_event: bool) -> None:
     ctx.enter_command('event')
+
+    # copy events from the previous statedir
+    if prev_event:
+        if not ctx.new_state_dir:
+            raise Exception("Do not use 'newa -P' or 'newa -D' together with 'event --prev-event'")
+        if not ctx.prev_state_dirpath:
+            raise Exception('Could not identify the previous state-dir')
+        ctx_prev = copy.deepcopy(ctx)
+        ctx_prev.state_dirpath = ctx.prev_state_dirpath
+        # now load all event- files and store them in the current state-dir
+        artifact_jobs = list(ctx_prev.load_artifact_jobs('event-'))
+        if not artifact_jobs:
+            raise Exception(f'No event- YAML files found in {ctx_prev.state_dirpath}')
+        for artifact_job in artifact_jobs:
+            ctx.save_artifact_job('event-', artifact_job)
 
     # Errata IDs were not given, try to load them from init- files.
     if not errata_ids and not compose_ids:
@@ -402,7 +433,7 @@ def cmd_event(
             if event.type_ is EventType.COMPOSE:
                 compose_ids.append(event.id)
 
-    if not errata_ids and not compose_ids:
+    if not errata_ids and not compose_ids and not prev_event:
         raise Exception('Missing event IDs!')
 
     # process errata IDs

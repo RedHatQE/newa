@@ -2023,6 +2023,7 @@ class CLIContext:
     restart_request: list[str] = field(factory=list)
     restart_result: list[str] = field(factory=list)
     new_state_dir: bool = False
+    prev_state_dirpath: Optional[Path] = None
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(

@@ -573,6 +573,16 @@ Example:
 $ newa event --erratum 12345 --compose-mapping RHEL-9.4.0.Z.MAIN+EUS=RHEL-9.4.0-Nightly
 ```
 
+#### Option `--prev-event`
+
+Copies `event-` files from a previously used NEWA state-dir into a new (current) state-dir. See `--prev-state-dir` option above to see details how the "previous" state-dir is identified.
+
+Example:
+```
+$ newa event --erratum 12345
+$ newa event --prev-event jira ...
+```
+
 ### Subcommand `jira`
 
 This subcommand is responsible for interaction with Jira. It reads details previously gathered by the `event` subcommand and identifies Jira issues that should be used for tracking of individual steps of the testing process. These steps are defined in a so-called NEWA issue-config file.
