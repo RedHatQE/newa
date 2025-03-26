@@ -513,6 +513,10 @@ Example:
 $ newa --environment FOO=bar event --compose Fedora-40 ...
 ```
 
+#### Option `--force`
+
+Enables YAML files rewrite when they already exist in state-dir.
+
 ### Subcommand `event`
 
 This subcommand is associated with a particular event (like an erratum) and it attempts to read details about it so that this data can be utilized in later parts of the workflow. While we are using erratum as an event example, other event types could be supported in the future (e.g. compose, build, GitLab MR etc.).

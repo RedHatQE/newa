@@ -171,6 +171,12 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     default='',
     help='Extract YAML files from the specified archive to state-dir.',
     )
+@click.option(
+    '--force',
+    is_flag=True,
+    default=False,
+    help='Force rewrite of existing YAML files.',
+    )
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
@@ -179,7 +185,8 @@ def main(click_context: click.Context,
          debug: bool,
          envvars: list[str],
          contexts: list[str],
-         extract_state_dir: str) -> None:
+         extract_state_dir: str,
+         force: bool) -> None:
 
     # try to identify prev_state_dirpath just in case we need it
     # we won't fail on errors
@@ -203,6 +210,7 @@ def main(click_context: click.Context,
         cli_environment={},
         cli_context={},
         prev_state_dirpath=prev_state_dirpath,
+        force=force,
         )
     click_context.obj = ctx
 
@@ -371,6 +379,10 @@ def apply_release_mapping(string: str,
     return new_string
 
 
+def test_file_presence(statedir: Path, prefix: str) -> bool:
+    return any(child.name.startswith(prefix) for child in statedir.iterdir())
+
+
 @main.command(name='event')
 @click.option(
     '-e', '--erratum', 'errata_ids',
@@ -408,6 +420,12 @@ def cmd_event(
         compose_mapping: list[str],
         prev_event: bool) -> None:
     ctx.enter_command('event')
+
+    if test_file_presence(ctx.state_dirpath, 'event-') and not ctx.force:
+        ctx.logger.error(
+            f'"event-" files already exist in state-dir {ctx.state_dirpath}, '
+            'use --force to override')
+        sys.exit(1)
 
     # copy events from the previous statedir
     if prev_event:
@@ -539,6 +557,12 @@ def cmd_jira(
         assignee: str,
         unassigned: bool) -> None:
     ctx.enter_command('jira')
+
+    if test_file_presence(ctx.state_dirpath, 'jira-') and not ctx.force:
+        ctx.logger.error(
+            f'"jira-" files already exist in state-dir {ctx.state_dirpath}, '
+            'use --force to override')
+        sys.exit(1)
 
     jira_url = ctx.settings.jira_url
     if not jira_url:
@@ -984,6 +1008,12 @@ def cmd_jira(
 def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
     ctx.enter_command('schedule')
 
+    if test_file_presence(ctx.state_dirpath, 'schedule-') and not ctx.force:
+        ctx.logger.error(
+            f'"schedule-" files already exist in state-dir {ctx.state_dirpath}, '
+            'use --force to override')
+        sys.exit(1)
+
     for jira_job in ctx.load_jira_jobs('jira-'):
         # prepare parameters based on the recipe from recipe.url
         # generate all relevant test request using the recipe data
@@ -1195,6 +1225,14 @@ def cmd_execute(
     if ctx.continue_execution and ctx.new_state_dir:
         ctx.logger.error(
             'NEWA state-dir was not specified! Use --state-dir or similar option.')
+        sys.exit(1)
+
+    if test_file_presence(ctx.state_dirpath, 'execute-') and \
+            not ctx.continue_execution and \
+            not ctx.force:
+        ctx.logger.error(
+            f'"execute-" files already exist in state-dir {ctx.state_dirpath}, '
+            'use --force to override')
         sys.exit(1)
 
     # check if we have sufficient TF CLI version
