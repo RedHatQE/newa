@@ -884,6 +884,9 @@ def cmd_jira(
                     new_issue = new_issues[0]
                     processed_actions[action.id] = new_issue
 
+                    # wait a bit to avoid too frequest Jira API requests
+                    time.sleep(1.5)
+
                     # If the old issue was reused, re-fresh it.
                     trigger_erratum_comment = jira_handler.refresh_issue(action, new_issue)
                     ctx.logger.info(f"Issue {new_issue} re-used")
