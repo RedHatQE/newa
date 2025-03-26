@@ -1200,6 +1200,9 @@ def cmd_execute(
                 ctx.logger.debug(f'Not storing context {k} as launch attribute due to a collision')
             else:
                 launch_attrs[k] = v
+        # when testing erratum, add special context erratum=XXXX
+        if schedule_jobs[0].erratum and 'erratum' not in launch_attrs:
+            launch_attrs['erratum'] = str(schedule_jobs[0].erratum.id)
         launch_description = schedule_jobs[0].request.reportportal.get(
             'launch_description', '')
         if launch_description:
