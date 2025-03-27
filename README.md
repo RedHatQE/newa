@@ -849,7 +849,7 @@ newa --prev-state-dir execute -R REQ-1.2.1 -R REQ-2.2.2 report
 ```
 
 #### Option `--restart-result`
-This option can be used to reschedule NEWA request that have ended with a particular result - `passed, failed, error`. For example, `--restart-result error`. This option can be used multiple times. Implies `--continue`.
+This option can be used to reschedule NEWA request that have ended with a particular result - `passed, failed, error`. For example, `--restart-result error`. Result can be either `passed`, `failed` or `error` where 'error' means that test execution hasn't been finished correctly. This option can be used multiple times. Implies `--continue`.
 
 
 ### Subcommand `report`
