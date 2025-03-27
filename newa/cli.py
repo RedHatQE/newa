@@ -1284,6 +1284,7 @@ def cmd_execute(
         # check the 1st job for launch_uuid
         job = schedule_jobs[0]
         launch_uuid = job.request.reportportal.get('launch_uuid', None)
+        launch_description = job.request.reportportal.get('launch_description', '')
         if launch_uuid:
             ctx.logger.debug(
                 f'Skipping RP launch creation for {jira_id} as {launch_uuid} already exists.')
