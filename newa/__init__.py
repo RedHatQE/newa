@@ -860,9 +860,7 @@ class RecipeConfig(Cloneable, Serializable):
                 # we need to do a deep copy so we won't corrupt the original data
                 dest[key] = copy.deepcopy(src[key])  # type: ignore[literal-required]
             elif isinstance(dest[key], dict) and isinstance(src[key], dict):  # type: ignore[literal-required]
-                # for dictionaries, existing keys (from CLI or fixtures) takes priority
-                dest[key] = dict(list(src[key].items()) +  # type: ignore[literal-required]
-                                 list(dest[key].items()))  # type: ignore[literal-required]
+                dest[key].update(src[key])  # type: ignore[literal-required]
             elif isinstance(dest[key], list) and isinstance(src[key], list):  # type: ignore[literal-required]
                 dest[key].extend(src[key])  # type: ignore[literal-required]
             elif isinstance(dest[key], str) and isinstance(src[key], str):  # type: ignore[literal-required]
@@ -872,10 +870,14 @@ class RecipeConfig(Cloneable, Serializable):
 
         def merge_combination_data(
                 combination: tuple[RawRecipeConfigDimension, ...]) -> RawRecipeConfigDimension:
-            merged = copy.deepcopy(initial_config)
+            merged: RawRecipeConfigDimension = {}
+            # first merge combinations from the recipe
             for record in combination:
                 for key in record:
                     _merge_key(merged, record, key)
+            # and now merge with initial_config, initial_config taking priority
+            for key in initial_config:
+                _merge_key(merged, initial_config, key)
             return merged
 
         # now for each combination merge data from individual dimensions
