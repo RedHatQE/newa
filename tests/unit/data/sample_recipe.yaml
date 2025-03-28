@@ -9,7 +9,8 @@ fixtures:
     context:
         tier: 1
     environment:
-        DESCRIPTION: "This is a test recipe"
+        DESCRIPTION: "fixtures description"
+    compose: Fedora-fix
 dimensions:
     arch:
        - context:
@@ -25,3 +26,5 @@ dimensions:
              fips: no
          environment:
              FIPS: "FIPS NOT ENABLED"
+             DESCRIPTION: "dimensions description"
+         compose: Fedora-dim

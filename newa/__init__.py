@@ -827,8 +827,12 @@ class RecipeConfig(Cloneable, Serializable):
     dimensions: RawRecipeConfigDimensions = field(
         factory=cast(Callable[[], RawRecipeConfigDimensions], dict))
 
-    def build_requests(self, initial_config: RawRecipeConfigDimension,
+    def build_requests(self,
+                       initial_config: RawRecipeConfigDimension,
+                       cli_config: RawRecipeConfigDimension,
                        jinja_vars: Optional[dict[str, Any]] = None) -> Iterator[Request]:
+        # cli_config has a priority while initial_config can be modified by a recipe
+
         # this is here to generate unique recipe IDs
         recipe_id_gen = itertools.count(start=1)
 
@@ -838,9 +842,10 @@ class RecipeConfig(Cloneable, Serializable):
             options.append(self.dimensions[dimension])
         # generate combinations
         combinations = list(itertools.product(*options))
-        # extend each combination with fixtures
+        # extend each combination with initial_config, fixtures and cli_config
         for i in range(len(combinations)):
-            combinations[i] = (self.fixtures,) + (combinations[i])
+            combinations[i] = (initial_config, ) + (self.fixtures,) + \
+                combinations[i] + (cli_config, )
 
         # Note: moved into its own function to avoid being indented too much;
         # mypy needs to be silenced because we use `key` variable instead of
@@ -871,13 +876,9 @@ class RecipeConfig(Cloneable, Serializable):
         def merge_combination_data(
                 combination: tuple[RawRecipeConfigDimension, ...]) -> RawRecipeConfigDimension:
             merged: RawRecipeConfigDimension = {}
-            # first merge combinations from the recipe
             for record in combination:
                 for key in record:
                     _merge_key(merged, record, key)
-            # and now merge with initial_config, initial_config taking priority
-            for key in initial_config:
-                _merge_key(merged, initial_config, key)
             return merged
 
         # now for each combination merge data from individual dimensions

@@ -128,9 +128,7 @@ See the example above.
 
 #### environment
 
-Defines environment varibles that will be set when sheduling a recipe.
-This definition takes priority over environment definition in a recipe so better
-avoid defining identical variable in both places.
+Defines environment variables that will be set when sheduling a recipe. Variable value may be overriden by the recipe.
 Environment definition is not inherited by child Jira issues.
 
 Example:
@@ -145,9 +143,7 @@ Example:
 
 #### context
 
-Defines custom `tmt` context setting that will be set when scheduling a recipe.
-This definition takes priority over context definition in a recipe so better
-avoid defining identical context dimension in both places.
+Defines custom `tmt` context setting that will be set when scheduling a recipe. Context value may be overriden by the recipe.
 Context definition is not inherited by child Jira issues.
 
 Example:
@@ -273,7 +269,9 @@ Recipe configuration file enables users to describe a complex test matrix. This 
 
 A recipe file configuration is split into two sections. The first section is named `fixtures` and contains configuration that is relevant to all test jobs triggered by the recipe file.
 
-The second section is named` dimensions` and it outlines how the test matrix looks like. Each dimension is identified by its name and defines a list of possible values, each value representing  a configuration snippet that would be used for the respective test job. `newa` does a Cartesian product of defined dimensions, building all possible combinations.
+The second section is named` dimensions` and it outlines how the test matrix looks like. Each dimension is identified by its name and defines a list of possible values, each value representing  a configuration snippet that would be used for the respective test job. `newa` does a Cartesian product of defined dimensions, building all possible combinations. Those will be saved for further execution.
+
+When mergine attributes from `fixtures` and `dimensions`, value from a particular `dimension` may override a value from `fixtures`. This is on purpose so that `fixtures` may provide sane defaults that could be possibly overriden (yes, bad naming). A recipe can also override `context` or `environment` value obtained from the `jira-` YAML file (e.g. specified in issue-config file). However, a recipe can't override a value that has been defined on a command line directly using `newa --context ...`, `newa --environment ...` or `newa schedule --fixture ...` options.
 
 Example:
 Using the recipe file
@@ -498,6 +496,7 @@ $ newa --extract-state-dir https://path/to/some/newa-run-1234.tar.gz list
 #### Option `--context, -c`
 
 Allows custom `tmt` context definition on a cmdline. Such a context can be used in issue-config YAML file through Jinja template through `CONTEXT.<name>`. Option can be used multiple times.
+Such a CLI definition has the highest priority and the value won't be overriden in NEWA issue-config or recipe file.
 
 Example:
 ```
@@ -507,6 +506,7 @@ $ newa -c foo=bar event --compose Fedora-40 ...
 #### Option `--environment, -e`
 
 Allows custom `tmt` environment variable definition on a cmdline. Such a variable can be used in issue-config YAML file through Jinja template through `ENVIRONMENT.<name>`. Option can be used multiple times.
+Such a CLI definition has the highest priority and the value won't be overriden in NEWA issue-config or recipe file.
 
 Example:
 ```
