@@ -1031,21 +1031,15 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
             architectures = jira_job.erratum.archs if (
                 jira_job.erratum and jira_job.erratum.archs) else Arch.architectures()
 
-        # prepare initial config copying it from jira_job,recipe but overriding with cli input
-        if jira_job.recipe.context:
-            initial_context = copy.deepcopy(
-                {**ctx.cli_context, **jira_job.recipe.context})
-        else:
-            initial_context = copy.deepcopy(ctx.cli_context)
-        if jira_job.recipe.environment:
-            initial_environment = copy.deepcopy(
-                {**ctx.cli_environment, **jira_job.recipe.environment})
-        else:
-            initial_environment = copy.deepcopy(ctx.cli_environment)
-        initial_config = RawRecipeConfigDimension(compose=compose,
-                                                  environment=initial_environment,
-                                                  context=initial_context)
+        # prepare cli_config and initial config copying it from jira_job
+        initial_config = RawRecipeConfigDimension(
+            compose=compose,
+            environment=jira_job.recipe.environment or {},
+            context=jira_job.recipe.context or {})
         ctx.logger.debug(f'Initial config: {initial_config})')
+        cli_config = RawRecipeConfigDimension(environment=ctx.cli_environment,
+                                              context=ctx.cli_context)
+        ctx.logger.debug(f'CLI config: {cli_config})')
         if fixtures:
             for fixture in fixtures:
                 r = re.fullmatch(r'([^\s=]+)=([^=]*)', fixture)
@@ -1053,7 +1047,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
                     raise Exception(
                         f"Fixture {fixture} does not having expected format 'name=value'")
                 fixture_name, fixture_value = r.groups()
-                fixture_config = initial_config
+                fixture_config = cli_config
                 # descent through keys to the lowest level
                 while '.' in fixture_name:
                     prefix, suffix = fixture_name.split('.', 1)
@@ -1064,7 +1058,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
                 # It enables us to define list and dicts but there might be drawbacks as well
                 value = yaml_parser().load(fixture_value)
                 fixture_config[fixture_name] = value  # type: ignore[literal-required]
-            ctx.logger.debug(f'Initial config modified through --fixture: {initial_config})')
+            ctx.logger.debug(f'CLI config modified through --fixture: {cli_config})')
 
         # when testing erratum, add special context erratum=XXXX
         if jira_job.erratum:
@@ -1094,7 +1088,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
             'ERRATUM': jira_job.erratum,
             }
 
-        requests = list(config.build_requests(initial_config, jinja_vars))
+        requests = list(config.build_requests(initial_config, cli_config, jinja_vars))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
         # create ScheduleJob object for each request
