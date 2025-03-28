@@ -1092,7 +1092,11 @@ class Request(Cloneable, Serializable):
         # process environment
         if self.environment:
             for k, v in self.environment.items():
-                command += ['-e', f'{k}="{v}"']
+                # TMT_ variables will be passed to tmt itself
+                if k.startswith('TMT_'):
+                    environment[k] = v
+                else:
+                    command += ['-e', f'{k}="{v}"']
         # process tmt related settings
         if not self.tmt:
             raise Exception('ERROR: tmt settings is not specified for the request')
