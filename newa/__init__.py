@@ -1102,20 +1102,13 @@ class Request(Cloneable, Serializable):
             raise Exception('ERROR: tmt settings is not specified for the request')
         if not self.tmt.get("url", None):
             raise Exception('ERROR: tmt "url" is not specified for the request')
-        command += ['discover', '--how', 'fmf']
-        if self.tmt['url']:
-            command += ['--url', f"""'{self.tmt["url"]}'"""]
-        if self.tmt.get("ref", None):
-            command += ['--ref', f"""'{self.tmt["ref"]}'"""]
-        if self.tmt.get("path", None):
-            command += ['--path', f"""'{self.tmt["path"]}'"""]
         if self.tmt.get("plan", None):
             command += ['plan', '--name', f"""'{self.tmt["plan"]}'"""]
         # add tmt cmd args
         if self.tmt.get("cli_args", None):
             command += [f'{self.tmt["cli_args"]}']
         else:
-            command += ['provision', 'prepare', 'execute', 'report', 'finish']
+            command += ['discover', 'provision', 'prepare', 'execute', 'report', 'finish']
         # process reportportal configuration
         return command, environment
 
