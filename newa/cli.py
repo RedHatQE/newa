@@ -41,6 +41,7 @@ from . import (
     Recipe,
     RecipeConfig,
     ReportPortal,
+    RoGTool,
     ScheduleJob,
     Settings,
     TFRequest,
@@ -303,6 +304,8 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
             if event_job.erratum:
                 _print(2, f'event {event_job.id} - {event_job.erratum.summary}')
                 _print(2, event_job.erratum.url)
+            elif event_job.rog:
+                _print(2, f'event {event_job.id} - {event_job.rog.title}')
             else:
                 _print(2, f'event {event_job.id}')
             jira_file_prefix = f'jira-{event_job.event.id}-{event_job.short_id}'
@@ -357,7 +360,10 @@ def apply_release_mapping(string: str,
         mapping = [
             r'\.GA$=',
             r'\.Z\.?(MAIN)?(\+)?(AUS|EUS|E4S|TUS)?$=',
+            r'^rhel-=RHEL-',
             r'RHEL-10\.0\.BETA=RHEL-10-Beta',
+            r'-candidate$=',
+            r'-draft$=',
             r'$=-Nightly',
             ]
     new_string = string
@@ -381,6 +387,20 @@ def apply_release_mapping(string: str,
     return new_string
 
 
+def derive_compose(release: str,
+                   mapping: Optional[list[str]] = None,
+                   logger: Optional[logging.Logger] = None) -> str:
+    """ Derive RHEL compose from the provided errata release or brew/koji build target """
+    # when compose_mapping is provided, apply it with regexp disabled
+    if mapping:
+        compose = apply_release_mapping(
+            release, mapping, regexp=False, logger=logger)
+    # otherwise use the built-in default mapping
+    else:
+        compose = apply_release_mapping(release, logger=logger)
+    return compose
+
+
 def test_file_presence(statedir: Path, prefix: str) -> bool:
     return any(child.name.startswith(prefix) for child in statedir.iterdir())
 
@@ -397,6 +417,12 @@ def test_file_presence(statedir: Path, prefix: str) -> bool:
     default=[],
     multiple=True,
     help='Specifies compose-type event for a given compose.',
+    )
+@click.option(
+    '--rog-mr', 'rog_urls',
+    default=[],
+    multiple=True,
+    help='Specifies RoG merge-request URL.',
     )
 @click.option(
     '--compose-mapping', 'compose_mapping',
@@ -419,6 +445,7 @@ def cmd_event(
         ctx: CLIContext,
         errata_ids: list[str],
         compose_ids: list[str],
+        rog_urls: list[str],
         compose_mapping: list[str],
         prev_event: bool) -> None:
     ctx.enter_command('event')
@@ -445,15 +472,17 @@ def cmd_event(
             ctx.save_artifact_job('event-', artifact_job)
 
     # Errata IDs were not given, try to load them from init- files.
-    if not errata_ids and not compose_ids:
+    if not errata_ids and not compose_ids and not rog_urls:
         events = [e.event for e in ctx.load_initial_errata('init-')]
         for event in events:
             if event.type_ is EventType.ERRATUM:
                 errata_ids.append(event.id)
             if event.type_ is EventType.COMPOSE:
                 compose_ids.append(event.id)
+            if event.type_ is EventType.ROG:
+                rog_urls.append(event.id)
 
-    if not errata_ids and not compose_ids and not prev_event:
+    if not errata_ids and not compose_ids and not rog_urls and not prev_event:
         raise Exception('Missing event IDs!')
 
     # process errata IDs
@@ -468,13 +497,7 @@ def cmd_event(
             errata = ErrataTool(url=et_url).get_errata(event)
             for erratum in errata:
                 release = erratum.release.strip()
-                # when compose_mapping is provided, apply it with regexp disabled
-                if compose_mapping:
-                    compose = apply_release_mapping(
-                        release, compose_mapping, regexp=False, logger=ctx.logger)
-                # otherwise use the built-in default mapping
-                else:
-                    compose = apply_release_mapping(release, logger=ctx.logger)
+                compose = derive_compose(release, compose_mapping, ctx.logger)
                 # skip compose if it has been transformed to an empty compose
                 if not compose:
                     ctx.logger.info(
@@ -485,7 +508,7 @@ def cmd_event(
 
                 if erratum.content_type in (ErratumContentType.RPM, ErratumContentType.MODULE):
                     artifact_job = ArtifactJob(event=event, erratum=erratum,
-                                               compose=Compose(id=compose))
+                                               compose=Compose(id=compose), rog=None)
                     ctx.save_artifact_job('event-', artifact_job)
                 # for docker content type we create ArtifactJob per build
                 if erratum.content_type == ErratumContentType.DOCKER:
@@ -494,14 +517,31 @@ def cmd_event(
                         erratum_clone.builds = [build]
                         erratum_clone.components = [NVRParser(build).name]
                         artifact_job = ArtifactJob(event=event, erratum=erratum_clone,
-                                                   compose=Compose(id=compose))
+                                                   compose=Compose(id=compose), rog=None)
                         ctx.save_artifact_job('event-', artifact_job)
 
     # process compose IDs
     for compose_id in compose_ids:
         event = Event(type_=EventType.COMPOSE, id=compose_id)
-        artifact_job = ArtifactJob(event=event, erratum=None, compose=Compose(id=compose_id))
+        artifact_job = ArtifactJob(
+            event=event, erratum=None, compose=Compose(
+                id=compose_id), rog=None)
         ctx.save_artifact_job('event-', artifact_job)
+
+    # process RoG URLs
+    if rog_urls:
+        if not ctx.settings.rog_token:
+            raise Exception('RoG token is not configured!')
+        rog_tool = RoGTool(ctx.settings.rog_token)
+        for url in rog_urls:
+            mr = rog_tool.get_mr(url)
+            compose_id = derive_compose(mr.build_target, compose_mapping, ctx.logger)
+            event = Event(type_=EventType.ROG, id=url)
+            # TODO: identify compose id, obtain MR details
+            artifact_job = ArtifactJob(event=event, erratum=None,
+                                       compose=Compose(id=compose_id),
+                                       rog=mr)
+            ctx.save_artifact_job('event-', artifact_job)
 
 
 @main.command(name='jira')
@@ -709,12 +749,14 @@ def cmd_jira(
                     action.summary,
                     ERRATUM=artifact_job.erratum,
                     COMPOSE=artifact_job.compose,
+                    ROG=artifact_job.rog,
                     CONTEXT=action.context,
                     ENVIRONMENT=action.environment)
                 rendered_description = render_template(
                     action.description,
                     ERRATUM=artifact_job.erratum,
                     COMPOSE=artifact_job.compose,
+                    ROG=artifact_job.rog,
                     CONTEXT=action.context,
                     ENVIRONMENT=action.environment)
                 if assignee:
@@ -726,6 +768,7 @@ def cmd_jira(
                         action.assignee,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
+                        ROG=artifact_job.rog,
                         CONTEXT=action.context,
                         ENVIRONMENT=action.environment)
                 else:
@@ -735,6 +778,7 @@ def cmd_jira(
                         action.newa_id,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
+                        ROG=artifact_job.rog,
                         CONTEXT=action.context,
                         ENVIRONMENT=action.environment)
                 rendered_fields = copy.deepcopy(action.fields)
@@ -745,6 +789,7 @@ def cmd_jira(
                                 value,
                                 ERRATUM=artifact_job.erratum,
                                 COMPOSE=artifact_job.compose,
+                                ROG=artifact_job.rog,
                                 CONTEXT=action.context,
                                 ENVIRONMENT=action.environment)
 
@@ -920,6 +965,7 @@ def cmd_jira(
                         action.job_recipe,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
+                        ROG=artifact_job.rog,
                         CONTEXT=action.context,
                         ENVIRONMENT=action.environment)
                     if action.erratum_comment_triggers:
@@ -928,6 +974,7 @@ def cmd_jira(
                         event=artifact_job.event,
                         erratum=artifact_job.erratum,
                         compose=artifact_job.compose,
+                        rog=artifact_job.rog,
                         jira=new_issue,
                         recipe=Recipe(
                             url=recipe_url,
@@ -985,6 +1032,7 @@ def cmd_jira(
             jira_job = JiraJob(event=artifact_job.event,
                                erratum=artifact_job.erratum,
                                compose=artifact_job.compose,
+                               rog=artifact_job.rog,
                                jira=new_issue,
                                recipe=Recipe(
                                    url=job_recipe,
@@ -1099,6 +1147,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
             jinja_vars = {
                 'ERRATUM': jira_job.erratum,
                 'COMPOSE': jira_job.compose,
+                'ROG': jira_job.rog,
                 'CONTEXT': request.context,
                 'ENVIRONMENT': request.environment}
             # before yaml export render all fields as Jinja templates
@@ -1131,6 +1180,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
                 event=jira_job.event,
                 erratum=jira_job.erratum,
                 compose=jira_job.compose,
+                rog=jira_job.rog,
                 jira=jira_job.jira,
                 recipe=jira_job.recipe,
                 request=request)
@@ -1467,6 +1517,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
             event=schedule_job.event,
             erratum=schedule_job.erratum,
             compose=schedule_job.compose,
+            rog=schedule_job.rog,
             jira=schedule_job.jira,
             recipe=schedule_job.recipe,
             request=schedule_job.request,
@@ -1547,6 +1598,7 @@ def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) 
         event=schedule_job.event,
         erratum=schedule_job.erratum,
         compose=schedule_job.compose,
+        rog=schedule_job.rog,
         jira=schedule_job.jira,
         recipe=schedule_job.recipe,
         request=schedule_job.request,

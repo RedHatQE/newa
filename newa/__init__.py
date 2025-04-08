@@ -13,6 +13,8 @@ import time
 import urllib
 from functools import reduce
 
+import gitlab
+
 try:
     from attrs import asdict, define, evolve, field, frozen, validators
 except ModuleNotFoundError:
@@ -161,6 +163,7 @@ class Settings:  # type: ignore[no-untyped-def]
     jira_project: str = ''
     tf_token: str = ''
     tf_recheck_delay: str = ''
+    rog_token: str = ''
 
     def get(self, key: str, default: str = '') -> str:
         return str(getattr(self, key, default))
@@ -239,6 +242,10 @@ class Settings:  # type: ignore[no-untyped-def]
                 'testingfarm/recheck_delay',
                 'NEWA_TF_RECHECK_DELAY',
                 "60"),
+            rog_token=_get(
+                cp,
+                'rog/token',
+                'NEWA_ROG_TOKEN'),
             )
 
 
@@ -436,6 +443,7 @@ class EventType(Enum):
 
     ERRATUM = 'erratum'
     COMPOSE = 'compose'
+    ROG = 'rog'
 
 
 class Arch(Enum):
@@ -524,6 +532,14 @@ class Event(Serializable):
 
     type_: EventType = field(converter=EventType)
     id: EventId
+
+    @property
+    def short_id(self) -> str:
+        if self.id.startswith('https://gitlab.com'):
+            parts = self.id.strip('/').split('/')
+            # format: {COMPONENT}_MR_{NUMBER}
+            return f"{parts[-4]}_MR_{parts[-1]}"
+        return self.id
 
 
 @frozen
@@ -731,6 +747,29 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     people_package_owner: Optional[str] = None
     people_qe_group: Optional[str] = None
     people_devel_group: Optional[str] = None
+
+
+@define
+class RoG(Cloneable, Serializable):  # type: ignore[no-untyped-def]
+    """
+    A RoG merge-request
+
+    Represents a merge-request associated with a particular Brew taskID
+    """
+
+    id: EventId = field()
+    content_type: Optional[ErratumContentType] = field(  # type: ignore[var-annotated]
+        converter=lambda value: ErratumContentType(value) if value else None)
+    # respin_count: int = field(repr=False)
+    title: str = field(repr=False)
+    build_task_id: str = field()
+    build_target: str = field()
+    archs: list[Arch] = field(factory=list,  # type: ignore[var-annotated]
+                              converter=lambda arch_list: [
+                                  (a if isinstance(a, Arch) else Arch(a))
+                                  for a in arch_list])
+    builds: list[str] = field(factory=list)
+    components: list[str] = field(factory=list)
 
 
 @define
@@ -1260,7 +1299,7 @@ class NSVCParser:
         return f'{self.name}:{self.stream}:{self.version}:{self.context}'
 
 
-@define
+@define(kw_only=True)
 class ArtifactJob(EventJob):
     """ A single *erratum* job """
 
@@ -1270,6 +1309,11 @@ class ArtifactJob(EventJob):
 
     compose: Optional[Compose] = field(  # type: ignore[var-annotated]
         converter=lambda x: None if x is None else x if isinstance(x, Compose) else Compose(**x),
+        )
+
+    rog: Optional[RoG] = field(  # type: ignore[var-annotated]
+        converter=lambda x: None if x is None else x if isinstance(x, RoG) else RoG(**x),
+        default=None,
         )
 
     @property
@@ -1282,16 +1326,16 @@ class ArtifactJob(EventJob):
             if self.erratum.content_type == ErratumContentType.DOCKER:
                 # docker type ArtifactJob is identified by the container name
                 return NVRParser(self.erratum.builds[0]).name
-        if self.compose:
+        elif self.compose:
             return self.compose.id
         return ""
 
     @property
     def id(self) -> str:
-        return f'E: {self.event.id} @ {self.short_id}'
+        return f'E: {self.event.short_id} @ {self.short_id}'
 
 
-@define
+@define(kw_only=True)
 class JiraJob(ArtifactJob):
     """ A single *jira* job """
 
@@ -1305,10 +1349,10 @@ class JiraJob(ArtifactJob):
 
     @property
     def id(self) -> str:
-        return f'J: {self.event.id} @ {self.short_id} - {self.jira.id}'
+        return f'J: {self.event.short_id} @ {self.short_id} - {self.jira.id}'
 
 
-@define
+@define(kw_only=True)
 class ScheduleJob(JiraJob):
     """ A single *request* to be scheduled for execution """
 
@@ -1318,10 +1362,10 @@ class ScheduleJob(JiraJob):
 
     @property
     def id(self) -> str:
-        return f'S: {self.event.id} @ {self.short_id} - {self.jira.id} / {self.request.id}'
+        return f'S: {self.event.short_id} @ {self.short_id} - {self.jira.id} / {self.request.id}'
 
 
-@define
+@define(kw_only=True)
 class ExecuteJob(ScheduleJob):
     """ A single *request* to be scheduled for execution """
 
@@ -1331,7 +1375,7 @@ class ExecuteJob(ScheduleJob):
 
     @property
     def id(self) -> str:
-        return f'X: {self.event.id} @ {self.short_id} - {self.jira.id} / {self.request.id}'
+        return f'X: {self.event.short_id} @ {self.short_id} - {self.jira.id} / {self.request.id}'
 
 
 #
@@ -2015,6 +2059,88 @@ class ReportPortal:
         return None
 
 
+@frozen
+class RoGTool:
+    """ Interface to RoG instance """
+
+    token: str
+
+    def get_mr(self, url: str) -> RoG:
+        server_url = 'https://gitlab.com'
+        if not url.startswith(server_url):
+            raise Exception(f'Merge-request URL "{url}" does not start with "{server_url}"')
+        r = re.match(f'^{server_url}/(.*)/-/merge_requests/([0-9]+)', url)
+        if not r:
+            raise Exception(f'Failed parsing project from MR "{url}", incorrect URL?')
+        project = r.group(1)
+        number = r.group(2)
+        gl = gitlab.Gitlab(server_url, private_token=self.token)
+        # get project object
+        gp = gl.projects.get(project)
+        # git merge request object
+        gm = gp.mergerequests.get(number)
+        title = gm.title
+        # get pipeline and sort them according to their id
+        pipelines = gm.pipelines.list()
+        pipelines.sort(key=lambda x: x.id)
+        # for unmerged mr choose the latest pipeline, otherwise the previous one
+        if len(pipelines) >= 2 and gm.state == 'merged':
+            pipeline = pipelines[-2]
+        elif len(pipelines) >= 1 and gm.state != 'merged':
+            pipeline = pipelines[-1]
+        else:
+            raise Exception(f'Failed to identify proper pipeline from MR "{url}".')
+        # find the build_rpm job
+        gpi = gp.pipelines.get(pipeline.id)
+        job = None
+        for j in gpi.jobs.list():
+            if j.name == 'build_rpm':
+                job = j
+                break
+        if not job:
+            raise Exception(f'Failed to find pipeline job "build_rpm" in pipeline "{gpi.web_url}"')
+        # get job log
+        log = gp.jobs.get(job.id).trace().decode("utf-8")
+        r = re.search(r'Created task: ([0-9]+)', log)
+        # parse task id
+        if not r:
+            raise Exception(f'Failed to parse build Task ID from "build_rpm" job "{job.web_url}"')
+        task_id = r.group(1)
+        # parse build target
+        r = re.search(r'using target (rhel.*?),', log)
+        if not r:
+            raise Exception(f'Failed to parse build target from "build_rpm" job "{job.web_url}"')
+        target = r.group(1)
+        # parse architectures
+        build_reqs = re.findall(
+            r'buildArch \((.*?.src.rpm), (.*?)\): open.*-> closed', log)
+        if not build_reqs:
+            raise Exception(
+                r'Failed to parse SRPM and build tasks from "build_rpm" job "{job.web_url}"')
+        archs = []
+        for r in build_reqs:
+            if r:
+                archs.append(Arch(r[1]))
+                srpm = r[0]
+        if not archs:
+            raise Exception(
+                r'Failed to parse SRPM and build tasks from "build_rpm" job "{job.web_url}"')
+        # parse NVR and component from SRPM
+        build = srpm.replace('.src.rpm', '')
+        nvr = NVRParser(build)
+        builds = [build]
+        components = [nvr.name]
+        return RoG(
+            id=url,
+            content_type=ErratumContentType.RPM,
+            title=title,
+            build_task_id=task_id,
+            build_target=target,
+            archs=Arch.architectures(archs),
+            builds=builds,
+            components=components)
+
+
 @define
 class CLIContext:
     """ State information about one Newa pipeline invocation """
@@ -2042,7 +2168,7 @@ class CLIContext:
     def load_initial_erratum(self, filepath: Path) -> InitialErratum:
         erratum = InitialErratum.from_yaml_file(filepath)
 
-        self.logger.info(f'Discovered initial erratum {erratum.event.id} in {filepath}')
+        self.logger.info(f'Discovered initial erratum {erratum.event.short_id} in {filepath}')
 
         return erratum
 
@@ -2111,7 +2237,7 @@ class CLIContext:
 
     def save_artifact_job(self, filename_prefix: str, job: ArtifactJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.short_id}.yaml'
+            f'{filename_prefix}{job.event.short_id}-{job.short_id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Artifact job {job.id} written to {filepath}')
@@ -2122,21 +2248,21 @@ class CLIContext:
 
     def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}.yaml'
+            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Jira job {job.id} written to {filepath}')
 
     def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
+            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Schedule job {job.id} written to {filepath}')
 
     def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
         filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
+            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Execute job {job.id} written to {filepath}')
