@@ -354,7 +354,7 @@ def apply_release_mapping(string: str,
     if not mapping:
         mapping = [
             r'\.GA$=',
-            r'\.Z\.(MAIN)?(\+)?(AUS|EUS|E4S|TUS)?$=',
+            r'\.Z\.?(MAIN)?(\+)?(AUS|EUS|E4S|TUS)?$=',
             r'RHEL-10\.0\.BETA=RHEL-10-Beta',
             r'$=-Nightly',
             ]
