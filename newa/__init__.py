@@ -45,6 +45,8 @@ from requests_kerberos import HTTPKerberosAuth
 
 HTTP_STATUS_CODES_OK = [200, 201]
 
+STATEDIR_TOPDIR = Path('/var/tmp/newa')
+
 if TYPE_CHECKING:
     from typing import ClassVar
 
@@ -142,9 +144,11 @@ gen_global_request_counter = global_request_counter()
 
 
 @define
-class Settings:
+class Settings:  # type: ignore[no-untyped-def]
     """ Class storing newa settings """
 
+    newa_statedir_topdir: Path = field(  # type: ignore[var-annotated]
+        factory=Path, converter=lambda p: Path(p) if p else STATEDIR_TOPDIR)
     et_url: str = ''
     et_enable_comments: bool = False
     rp_url: str = ''
@@ -181,6 +185,10 @@ class Settings:
             return value.strip().lower() in ['1', 'true']
 
         return Settings(
+            newa_statedir_topdir=_get(
+                cp,
+                'newa/statedir_topdir',
+                'NEWA_STATEDIR_TOPDIR'),
             et_url=_get(
                 cp,
                 'erratatool/url',

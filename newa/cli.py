@@ -52,7 +52,6 @@ from . import (
     )
 
 JIRA_NONE_ID = '_NO_ISSUE'
-STATEDIR_PARENT_DIR = Path('/var/tmp/newa')
 STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
 TF_RESULT_PASSED = 'passed'
 ARGS_WITH_NO_STATEDIR = ['list', '--help']
@@ -64,7 +63,7 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-def get_state_dir(use_ppid: bool = False) -> Path:
+def get_state_dir(topdir: Path, use_ppid: bool = False) -> Path:
     """ When not using ppid returns the first unused directory
         matching /var/tmp/newa/run-[0-9]+, starting with run-1
         When using ppid searches for the most recent state-dir directory
@@ -74,12 +73,12 @@ def get_state_dir(use_ppid: bool = False) -> Path:
     last_dir = None
     ppid_filename = f'{os.getppid()}.ppid'
     try:
-        obj = os.scandir(STATEDIR_PARENT_DIR)
+        obj = os.scandir(topdir)
     except FileNotFoundError as e:
         if use_ppid:
-            raise Exception(f'{STATEDIR_PARENT_DIR} does not exist') from e
+            raise Exception(f'{topdir} does not exist') from e
         # return initial value run-1
-        return STATEDIR_PARENT_DIR / f'run-{counter + 1}'
+        return topdir / f'run-{counter + 1}'
     dirs = sorted([d for d in obj if d.is_dir()],
                   key=lambda d: os.path.getmtime(d))
     for statedir in dirs:
@@ -97,9 +96,9 @@ def get_state_dir(use_ppid: bool = False) -> Path:
     if use_ppid:
         if last_dir:
             return Path(last_dir.path)
-        raise Exception(f'File {ppid_filename} not found under {STATEDIR_PARENT_DIR}')
+        raise Exception(f'File {ppid_filename} not found under {topdir}')
     # otherwise return the first unused value
-    return STATEDIR_PARENT_DIR / f'run-{counter + 1}'
+    return topdir / f'run-{counter + 1}'
 
 
 def initialize_jira_connection(ctx: CLIContext) -> Any:
@@ -188,10 +187,13 @@ def main(click_context: click.Context,
          extract_state_dir: str,
          force: bool) -> None:
 
+    # load settings
+    settings = Settings.load(Path(os.path.expandvars(conf_file)))
     # try to identify prev_state_dirpath just in case we need it
     # we won't fail on errors
     try:
-        prev_state_dirpath = prev_state_dirpath = get_state_dir(use_ppid=True)
+        prev_state_dirpath = prev_state_dirpath = get_state_dir(
+            settings.newa_statedir_topdir, use_ppid=True)
     except BaseException:
         prev_state_dirpath = None
 
@@ -199,12 +201,12 @@ def main(click_context: click.Context,
     if prev_state_dir and state_dir:
         raise Exception('Use either --state-dir or --prev-state-dir')
     if prev_state_dir:
-        state_dir = str(get_state_dir(use_ppid=True))
+        state_dir = str(get_state_dir(settings.newa_statedir_topdir, use_ppid=True))
     elif not state_dir:
-        state_dir = str(get_state_dir())
+        state_dir = str(get_state_dir(settings.newa_statedir_topdir))
 
     ctx = CLIContext(
-        settings=Settings.load(Path(os.path.expandvars(conf_file))),
+        settings=settings,
         logger=logging.getLogger(),
         state_dirpath=Path(os.path.expandvars(state_dir)),
         cli_environment={},
@@ -284,9 +286,9 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
     # otherwise choose last N dirs
     else:
         try:
-            entries = os.scandir(STATEDIR_PARENT_DIR)
+            entries = os.scandir(ctx.settings.newa_statedir_topdir)
         except FileNotFoundError as e:
-            raise Exception(f'{STATEDIR_PARENT_DIR} does not exist') from e
+            raise Exception(f'{ctx.settings.newa_statedir_topdir} does not exist') from e
         sorted_entries = sorted(entries, key=lambda entry: os.path.getmtime(Path(entry)))
         state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
 

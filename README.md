@@ -28,6 +28,8 @@ By default, NEWA settings is loaded from file `$HOME/.newa`.
 
 Below is an example of such a file.
 ```
+[newa]
+statedir_topdir=/var/tmp/newa
 [erratatool]
 url = https://..
 enable_comments = 1
@@ -45,6 +47,7 @@ recheck_delay = 120
 
 This settings can be overriden by environment variables that take precedence.
 ```
+NEWA_STATEDIR_TOPDIR
 NEWA_ET_URL
 NEWA_ET_ENABLE_COMMENTS
 NEWA_JIRA_URL
