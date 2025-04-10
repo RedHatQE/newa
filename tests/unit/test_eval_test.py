@@ -10,7 +10,7 @@ erratum = Erratum(id='12345',
                   url='https://foo/bar/12345',
                   builds=['component-1.0'])
 compose = Compose(id='RHEL-9.4.0-Nightly')
-erratum_job = ArtifactJob(event=event, erratum=erratum, compose=compose)
+erratum_job = ArtifactJob(event=event, erratum=erratum, compose=compose, rog=None)
 
 variables = {
     'COMPOSE': compose,

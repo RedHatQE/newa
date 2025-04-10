@@ -41,6 +41,8 @@ project = my_personal
 [testingfarm]
 token = *TESTING_FARM_API_TOKEN*
 recheck_delay = 120
+[rog]
+token = *GITLAB_COM_TOKEN*
 ```
 
 This settings can be overriden by environment variables that take precedence.
@@ -55,6 +57,7 @@ NEWA_REPORTPORTAL_TOKEN
 NEWA_REPORTPORTAL_PROJECT
 TESTING_FARM_API_TOKEN
 NEWA_TF_RECHECK_DELAY
+NEWA_ROG_TOKEN
 ```
 
 ### Jira issue configuration file
@@ -585,6 +588,15 @@ Example:
 ```
 $ newa event --erratum 12345
 $ newa event --prev-event jira ...
+```
+
+#### Option `--rog-mr`
+
+Directs NEWA to the RHELonGitLab-type event it should use, in particular a merge-request URL. Option can be used multiple times but each event will be processed individually.
+
+Example:
+```
+$ newa event --rog-mr https://gitlab.com/redhat/centos-stream/rpms/bash/-/merge_requests/1
 ```
 
 ### Subcommand `jira`
