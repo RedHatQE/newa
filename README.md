@@ -255,7 +255,7 @@ The following options are available:
  - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
  - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are `close` (i.e. create a new issue) and `keep` (i.e. reuse existing issue).
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
- - `erratum_comment_triggers` - For specified triggers, provides an update in an erratum through a comment. This functionality needs to be enabled also in the `newa.conf` file through `enable_comments = 1`. The following triggers are currently supported:
+ - `erratum_comment_triggers` - For specified triggers, provides an update in an erratum through a comment. This functionality needs to be enabled also in the `newa` configuration file through `enable_comments = 1`. The following triggers are currently supported:
    - `jira` - Adds a comment when a Jira issue is initially 'adopted' by NEWA (either created or taken over due to `jira --map-issue` parameter).
    - `execute` - Adds a comment when automated tests are initiated by NEWA.
    - `report` - Adds a comment when automated tests results are reported by NEWA.
@@ -440,7 +440,7 @@ $ REQUESTS_CA_BUNDLE=/etc/pki/tls/cert.pem newa event --erratum 124115 jira --is
 
 #### Option `--conf-file`
 
-Tells `newa` to use alternate config file location (default is `~/.newa.conf`).
+Tells `newa` to use alternate config file location (default is `~/.newa`).
 
 Example:
 ```
