@@ -49,7 +49,6 @@ HTTP_STATUS_CODES_OK = [200, 201]
 
 # common sleep times to avoid too frequest Jira API requests
 SHORT_SLEEP = 0.6
-LONG_SLEEP = 1.5
 
 STATEDIR_TOPDIR = Path('/var/tmp/newa')
 
@@ -67,6 +66,10 @@ if TYPE_CHECKING:
 T = TypeVar('T')
 SerializableT = TypeVar('SerializableT', bound='Serializable')
 SettingsT = TypeVar('SettingsT', bound='Settings')
+
+
+def short_sleep() -> None:
+    time.sleep(SHORT_SLEEP)
 
 
 def yaml_parser() -> ruamel.yaml.YAML:
@@ -1603,7 +1606,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         # try connection first
         try:
             conn.myself()
-            time.sleep(SHORT_SLEEP)
+            short_sleep()
             # read field map from Jira and store its simplified version
             fields = conn.fields()
             for f in fields:
@@ -1623,7 +1626,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                         board_id = boards[0].id
                     else:
                         raise Exception(f"Could not find Jira board with name '{self.board}'")
-                    time.sleep(SHORT_SLEEP)
+                    short_sleep()
                 else:
                     board_id = self.board
                 # fetch both states at once
@@ -1632,7 +1635,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     s.id for s in sprints if s.originBoardId == board_id and s.state == 'active']
                 self.sprint_cache['future'] = [
                     s.id for s in sprints if s.originBoardId == board_id and s.state == 'future']
-                time.sleep(SHORT_SLEEP)
+                short_sleep()
 
         except jira.JIRAError as e:
             raise Exception('Could not authenticate to Jira. Wrong token?') from e
