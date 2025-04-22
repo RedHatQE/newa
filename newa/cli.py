@@ -49,6 +49,7 @@ from . import (
     eval_test,
     get_url_basename,
     render_template,
+    short_sleep,
     yaml_parser,
     )
 
@@ -674,7 +675,7 @@ def cmd_jira(
                     'group',
                     None))
             ctx.logger.info("Initialized Jira handler")
-            time.sleep(1.5)
+            short_sleep()
 
             # All issue action from the configuration.
             issue_actions = config.issues[:]
@@ -907,7 +908,7 @@ def cmd_jira(
                         parent = processed_actions.get(action.parent_id, None)
 
                     # wait a bit to avoid too frequest Jira API requests
-                    time.sleep(1.5)
+                    short_sleep()
                     new_issue = jira_handler.create_issue(
                         action,
                         rendered_summary,
@@ -932,7 +933,7 @@ def cmd_jira(
                     processed_actions[action.id] = new_issue
 
                     # wait a bit to avoid too frequest Jira API requests
-                    time.sleep(1.5)
+                    short_sleep()
 
                     # If the old issue was reused, re-fresh it.
                     trigger_erratum_comment = jira_handler.refresh_issue(action, new_issue)
