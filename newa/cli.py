@@ -1269,6 +1269,12 @@ def cmd_execute(
         ctx.continue_execution = True
 
     if restart_result:
+        for result in restart_result:
+            if result not in ['error', 'failed', 'passed']:
+                ctx.logger.error(
+                    'Invalid `--restart-result` value. Supported values are `error`, `failed`'
+                    ' and `passed`')
+                sys.exit(1)
         ctx.restart_result = restart_result
         ctx.continue_execution = True
 
