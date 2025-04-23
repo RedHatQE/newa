@@ -1620,8 +1620,8 @@ def cmd_report(ctx: CLIContext) -> None:
     rp = ReportPortal(url=rp_url,
                       token=ctx.settings.rp_token,
                       project=rp_project)
-    # initialize Jira connection
-    jira_connection = initialize_jira_connection(ctx)
+    # we will initialize Jira connection later if needed
+    jira_connection = None
     # initialize ET connection
     if ctx.settings.et_enable_comments:
         et_url = ctx.settings.et_url
@@ -1713,6 +1713,9 @@ def cmd_report(ctx: CLIContext) -> None:
             rp.update_launch(launch_uuid, description=launch_description)
             # do not report to Jira if JIRA_NONE_ID was used
             if not jira_id.startswith(JIRA_NONE_ID):
+                # initialize jira connection if not done already
+                if not jira_connection:
+                    jira_connection = initialize_jira_connection(ctx)
                 try:
                     comment = (f"NEWA has imported test results to RP launch "
                                f"{launch_url}\n\n{jira_description}")
