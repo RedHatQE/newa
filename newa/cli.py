@@ -1217,6 +1217,40 @@ def cmd_cancel(ctx: CLIContext) -> None:
                 ctx.save_execute_job('execute-', execute_job)
 
 
+def restart_result_checks(ctx: CLIContext, restart_result: list[str]) -> None:
+    if restart_result:
+        for result in restart_result:
+            if result not in ['error', 'failed', 'passed']:
+                ctx.logger.error(
+                    'Invalid `--restart-result` value. Supported values are `error`, `failed`'
+                    ' and `passed`')
+                sys.exit(1)
+        ctx.restart_result = restart_result
+        ctx.continue_execution = True
+
+        execute_files_list = [
+            (ctx.state_dirpath / child.name)
+            for child in ctx.state_dirpath.iterdir()
+            if child.name.startswith('execute-')]
+        is_result_only_none = True
+        is_result_matched = False
+        for execute_path in execute_files_list:
+            execute_job = ExecuteJob.from_yaml_file(execute_path)
+            job_result = execute_job.execution.result
+            if job_result:
+                is_result_only_none = False
+            if job_result in restart_result:
+                is_result_matched = True
+        if is_result_only_none:
+            ctx.logger.error(
+                'The test result of jobs is only `None`. Make sure you reported results.')
+            sys.exit(1)
+        if not is_result_matched:
+            ctx.logger.error(
+                'No matched results for `--restart-result`')
+            sys.exit(1)
+
+
 @main.command(name='execute')
 @click.option(
     '--workers',
@@ -1268,15 +1302,7 @@ def cmd_execute(
         ctx.restart_request = restart_request
         ctx.continue_execution = True
 
-    if restart_result:
-        for result in restart_result:
-            if result not in ['error', 'failed', 'passed']:
-                ctx.logger.error(
-                    'Invalid `--restart-result` value. Supported values are `error`, `failed`'
-                    ' and `passed`')
-                sys.exit(1)
-        ctx.restart_result = restart_result
-        ctx.continue_execution = True
+    restart_result_checks(ctx, restart_result)
 
     if ctx.continue_execution and ctx.new_state_dir:
         ctx.logger.error(
