@@ -93,6 +93,7 @@ def yaml_parser() -> ruamel.yaml.YAML:
     yaml.representer.add_representer(ErratumCommentTrigger, _represent_enum)
     yaml.representer.add_representer(Arch, _represent_enum)
     yaml.representer.add_representer(ExecuteHow, _represent_enum)
+    yaml.representer.add_representer(RequestResult, _represent_enum)
 
     return yaml
 
@@ -254,6 +255,20 @@ class Settings:  # type: ignore[no-untyped-def]
                 'rog/token',
                 'NEWA_ROG_TOKEN'),
             )
+
+
+class RequestResult(Enum):
+    PASSED = 'passed'
+    FAILED = 'failed'
+    ERROR = 'error'
+    NONE = 'None'
+
+    @classmethod
+    def values(cls: type[RequestResult]) -> list[str]:
+        return [str(v) for v in RequestResult.__members__.values()]
+
+    def __str__(self) -> str:
+        return self.value
 
 
 class ResponseContentType(Enum):
@@ -1244,12 +1259,14 @@ def check_tf_cli_version(ctx: CLIContext) -> None:
 
 
 @define
-class Execution(Cloneable, Serializable):
+class Execution(Cloneable, Serializable):  # type: ignore [no-untyped-def]
     """ A test job execution """
 
     batch_id: str
     state: Optional[str] = None
-    result: Optional[str] = None
+    result: Optional[RequestResult] = field(  # type: ignore[var-annotated]
+        converter=lambda x: RequestResult.NONE if not x else x if isinstance(
+            x, RequestResult) else RequestResult(x), default=RequestResult.NONE)
     request_uuid: Optional[str] = None
     request_api: Optional[str] = None
     artifacts_url: Optional[str] = None
@@ -2150,7 +2167,7 @@ class RoGTool:
 
 
 @define
-class CLIContext:
+class CLIContext:  # type: ignore[no-untyped-def]
     """ State information about one Newa pipeline invocation """
 
     logger: logging.Logger
@@ -2163,7 +2180,11 @@ class CLIContext:
     continue_execution: bool = False
     no_wait: bool = False
     restart_request: list[str] = field(factory=list)
-    restart_result: list[str] = field(factory=list)
+    restart_result: list[RequestResult] = field(factory=list,  # type: ignore[var-annotated]
+                                                converter=lambda results: [
+                                                    (r if isinstance(r, RequestResult)
+                                                     else RequestResult(r))
+                                                    for r in results])
     new_state_dir: bool = False
     prev_state_dirpath: Optional[Path] = None
     force: bool = False

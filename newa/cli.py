@@ -41,6 +41,7 @@ from . import (
     Recipe,
     RecipeConfig,
     ReportPortal,
+    RequestResult,
     RoGTool,
     ScheduleJob,
     Settings,
@@ -55,7 +56,6 @@ from . import (
 
 JIRA_NONE_ID = '_NO_ISSUE'
 STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
-TF_RESULT_PASSED = 'passed'
 ARGS_WITH_NO_STATEDIR = ['list', '--help']
 RP_LAUNCH_DESCR_CHARS_LIMIT = 1024
 
@@ -341,7 +341,8 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                                 if (not state) and getattr(
                                         execute_job.execution, "request_uuid", None):
                                     state = 'executed, not reported'
-                                result = getattr(execute_job.execution, "result", "unknown")
+                                result = getattr(
+                                    execute_job.execution, "result", RequestResult.NONE)
                                 url = getattr(
                                     execute_job.execution, "artifacts_url", "not available")
                                 print(f' - state: {state}, result: {result}, artifacts: {url}')
@@ -1201,7 +1202,6 @@ def cmd_cancel(ctx: CLIContext) -> None:
 
     for execute_job in ctx.load_execute_jobs('execute-'):
         if execute_job.request.how == ExecuteHow.TESTING_FARM:
-            # if not execute_job.execution.result:
             tf_request = TFRequest(
                 api=execute_job.execution.request_api,
                 uuid=execute_job.execution.request_uuid)
@@ -1211,10 +1211,41 @@ def cmd_cancel(ctx: CLIContext) -> None:
                 execute_job.execution.state = tf_request.details['state']
                 if 'cancel' in execute_job.execution.state:
                     execute_job.execution.state = 'canceled'
-                    execute_job.execution.result = 'error'
+                    execute_job.execution.result = RequestResult.ERROR
                 if tf_request.details['result']:
-                    execute_job.execution.result = tf_request.details['result']['overall']
+                    execute_job.execution.result = RequestResult(
+                        tf_request.details['result']['overall'])
                 ctx.save_execute_job('execute-', execute_job)
+
+
+def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[RequestResult]:
+    sanitized = []
+    for result in results:
+        try:
+            sanitized.append(RequestResult(result))
+        except ValueError:
+            ctx.logger.error(
+                'Invalid `--restart-result` value. Possible values are: '
+                f'{", ".join(RequestResult.values())}')
+            sys.exit(1)
+
+    # read current test results
+    execute_files_list = [
+        (ctx.state_dirpath / child.name)
+        for child in ctx.state_dirpath.iterdir()
+        if child.name.startswith('execute-')]
+    execute_jobs = [ExecuteJob.from_yaml_file(path) for path in execute_files_list]
+    current_results = [job.execution.result if job.execution.result else RequestResult.NONE
+                       for job in execute_jobs]
+    # do not print warning about missing results if these are results we want reschedule
+    if (RequestResult.NONE in current_results) and (RequestResult.NONE not in sanitized):
+        ctx.logger.warn('WARN: Some requests do not have a known result yet.')
+    # error out if no test results matches required ones
+    if not set(current_results).intersection(sanitized):
+        ctx.logger.error(
+            f"""ERROR: There are no requests with result: {" or ".join(results)}.""")
+        sys.exit(1)
+    return sanitized
 
 
 @main.command(name='execute')
@@ -1269,13 +1300,7 @@ def cmd_execute(
         ctx.continue_execution = True
 
     if restart_result:
-        for result in restart_result:
-            if result not in ['error', 'failed', 'passed']:
-                ctx.logger.error(
-                    'Invalid `--restart-result` value. Supported values are `error`, `failed`'
-                    ' and `passed`')
-                sys.exit(1)
-        ctx.restart_result = restart_result
+        ctx.restart_result = sanitize_restart_result(ctx, restart_result)
         ctx.continue_execution = True
 
     if ctx.continue_execution and ctx.new_state_dir:
@@ -1495,7 +1520,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
         execute_job_file = Path(os.path.join(parent, name.replace('schedule-', 'execute-', 1)))
         if execute_job_file.exists():
             execute_job = ExecuteJob.from_yaml_file(execute_job_file)
-            if execute_job.execution.result and execute_job.execution.result in ctx.restart_result:
+            if execute_job.execution.result in ctx.restart_result:
                 log(f'Restarting request {execute_job.request.id}'
                     f' with result {execute_job.execution.result}')
             elif ctx.restart_request:
@@ -1579,7 +1604,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
     # now write execution details once more
     execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
     execute_job.execution.state = state
-    execute_job.execution.result = result
+    execute_job.execution.result = RequestResult(result)
     ctx.save_execute_job('execute-', execute_job)
 
 
@@ -1646,7 +1671,7 @@ def cmd_report(ctx: CLIContext) -> None:
         else:
             jira_execute_job_mapping[jira_id].append(execute_job)
         # if execute_job is not yes finished, do one status check
-        if (not execute_job.execution.result) and \
+        if (execute_job.execution.result == RequestResult.NONE) and \
                 execute_job.request.how == ExecuteHow.TESTING_FARM:
             tf_request = TFRequest(api=execute_job.execution.request_api,
                                    uuid=execute_job.execution.request_uuid)
@@ -1658,10 +1683,11 @@ def cmd_report(ctx: CLIContext) -> None:
                              for e in tf_request.details['environments_requested']])
             ctx.logger.info(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
             if tf_request.details['result']:
-                execute_job.execution.result = tf_request.details['result']['overall']
+                execute_job.execution.result = RequestResult(
+                    tf_request.details['result']['overall'])
                 ctx.logger.info(f'finished with result: {execute_job.execution.result}')
             elif tf_request.is_finished():
-                execute_job.execution.result = 'error'
+                execute_job.execution.result = RequestResult.ERROR
             if tf_request.details['state']:
                 execute_job.execution.state = tf_request.details['state']
             if tf_request.details['run']['artifacts']:
@@ -1684,10 +1710,10 @@ def cmd_report(ctx: CLIContext) -> None:
                 results[job.request.id] = {
                     'id': job.request.id,
                     'state': job.execution.state,
-                    'result': job.execution.result,
+                    'result': str(job.execution.result),
                     'uuid': job.execution.request_uuid,
                     'url': job.execution.artifacts_url}
-                if job.execution.result != TF_RESULT_PASSED:
+                if job.execution.result != RequestResult.PASSED:
                     all_tests_passed = False
                 if job.execution.state not in ['complete', 'error', 'canceled']:
                     all_tests_finished = False
