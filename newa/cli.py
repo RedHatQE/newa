@@ -56,7 +56,6 @@ from . import (
 
 JIRA_NONE_ID = '_NO_ISSUE'
 STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
-ARGS_WITH_NO_STATEDIR = ['list', '--help']
 RP_LAUNCH_DESCR_CHARS_LIMIT = 1024
 
 logging.basicConfig(
@@ -101,6 +100,16 @@ def get_state_dir(topdir: Path, use_ppid: bool = False) -> Path:
         raise Exception(f'File {ppid_filename} not found under {topdir}')
     # otherwise return the first unused value
     return topdir / f'run-{counter + 1}'
+
+
+def initialize_state_dir(ctx: CLIContext) -> None:
+    if not ctx.state_dirpath.exists():
+        ctx.new_state_dir = True
+        ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
+        ctx.state_dirpath.mkdir(parents=True)
+    # create empty ppid file
+    with open(os.path.join(ctx.state_dirpath, f'{os.getppid()}.ppid'), 'w'):
+        pass
 
 
 def initialize_jira_connection(ctx: CLIContext) -> Any:
@@ -218,19 +227,14 @@ def main(click_context: click.Context,
         )
     click_context.obj = ctx
 
+    # In case of '--help' we are going to end here
+    if '--help' in sys.argv:
+        return
+
     if debug:
         ctx.logger.setLevel(logging.DEBUG)
 
-    # this is here just to suppress state-dir creation
-    # for certain cmdline arguments
-    if (not extract_state_dir) and set(ARGS_WITH_NO_STATEDIR) & set(sys.argv):
-        return
-
     ctx.logger.info(f'Using --state-dir={ctx.state_dirpath}')
-    if not ctx.state_dirpath.exists():
-        ctx.new_state_dir = True
-        ctx.logger.debug(f'State directory {ctx.state_dirpath} does not exist, creating...')
-        ctx.state_dirpath.mkdir(parents=True)
     ctx.logger.debug(f'prev_state_dirpath={ctx.prev_state_dirpath}')
 
     # extract YAML files from the given archive to state-dir
@@ -249,10 +253,7 @@ def main(click_context: click.Context,
                 if item.name.endswith('.yaml'):
                     item.name = os.path.basename(item.name)
                     tf.extract(item, path=ctx.state_dirpath, filter='data')
-
-    # create empty ppid file
-    with open(os.path.join(ctx.state_dirpath, f'{os.getppid()}.ppid'), 'w'):
-        pass
+        initialize_state_dir(ctx)
 
     def _split(s: str) -> tuple[str, str]:
         """ split key='some value' into a tuple (key, value) """
@@ -278,8 +279,9 @@ def main(click_context: click.Context,
 @click.pass_obj
 def cmd_list(ctx: CLIContext, last: int) -> None:
     ctx.enter_command('list')
-    # save current logger level
+    # save current logger level and statedir
     saved_logger_level = ctx.logger.level
+    saved_state_dir = ctx.state_dirpath
     # when not in DEBUG, decrese log verbosity so it won't be too noisy
     # when loading individual YAML files
     if ctx.logger.level != logging.DEBUG:
@@ -351,8 +353,9 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                     else:
                         print(' - not executed')
         print()
-    # restore logger level
+    # restore logger level and statedir
     ctx.logger.setLevel(saved_logger_level)
+    ctx.state_dirpath = saved_state_dir
 
 
 def apply_release_mapping(string: str,
@@ -453,6 +456,9 @@ def cmd_event(
         compose_mapping: list[str],
         prev_event: bool) -> None:
     ctx.enter_command('event')
+
+    # ensure state dir is present and initialized
+    initialize_state_dir(ctx)
 
     if test_file_presence(ctx.state_dirpath, 'event-') and not ctx.force:
         ctx.logger.error(
@@ -603,6 +609,9 @@ def cmd_jira(
         assignee: str,
         unassigned: bool) -> None:
     ctx.enter_command('jira')
+
+    # ensure state dir is present and initialized
+    initialize_state_dir(ctx)
 
     if test_file_presence(ctx.state_dirpath, 'jira-') and not ctx.force:
         ctx.logger.error(
@@ -1065,6 +1074,9 @@ def cmd_jira(
 def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
     ctx.enter_command('schedule')
 
+    # ensure state dir is present and initialized
+    initialize_state_dir(ctx)
+
     if test_file_presence(ctx.state_dirpath, 'schedule-') and not ctx.force:
         ctx.logger.error(
             f'"schedule-" files already exist in state-dir {ctx.state_dirpath}, '
@@ -1195,6 +1207,15 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
 @click.pass_obj
 def cmd_cancel(ctx: CLIContext) -> None:
     ctx.enter_command('cancel')
+
+    # error out if state dir was not provided
+    if not ctx.state_dirpath.exists():
+        ctx.logger.error('ERROR: Cannot find NEWA state-dir! Use --state-dir or similar option.')
+        sys.exit(1)
+
+    # ensure existing state dir is initialized (store ppid)
+    initialize_state_dir(ctx)
+
     # make TESTING_FARM_API_TOKEN available to workers as envvar if it has been
     # defined only though the settings file
     tf_token = ctx.settings.tf_token
@@ -1294,6 +1315,10 @@ def cmd_execute(
         restart_request: list[str],
         restart_result: list[str]) -> None:
     ctx.enter_command('execute')
+
+    # ensure state dir is present and initialized
+    initialize_state_dir(ctx)
+
     ctx.continue_execution = _continue
     ctx.no_wait = no_wait
 
@@ -1646,6 +1671,9 @@ def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) 
 @click.pass_obj
 def cmd_report(ctx: CLIContext) -> None:
     ctx.enter_command('report')
+
+    # ensure state dir is present and initialized
+    initialize_state_dir(ctx)
 
     # initialize RP connection
     rp_project = ctx.settings.rp_project
