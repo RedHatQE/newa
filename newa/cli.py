@@ -278,6 +278,8 @@ def main(click_context: click.Context,
 @click.pass_obj
 def cmd_list(ctx: CLIContext, last: int) -> None:
     ctx.enter_command('list')
+    # save current logger level
+    saved_logger_level = ctx.logger.level
     # when not in DEBUG, decrese log verbosity so it won't be too noisy
     # when loading individual YAML files
     if ctx.logger.level != logging.DEBUG:
@@ -349,8 +351,8 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                     else:
                         print(' - not executed')
         print()
-    # no other command will be processed
-    sys.exit(0)
+    # restore logger level
+    ctx.logger.setLevel(saved_logger_level)
 
 
 def apply_release_mapping(string: str,
