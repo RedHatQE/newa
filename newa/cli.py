@@ -1294,7 +1294,6 @@ def cmd_execute(
     ctx.enter_command('execute')
     ctx.continue_execution = _continue
     ctx.no_wait = no_wait
-
     if restart_request:
         ctx.restart_request = restart_request
         ctx.continue_execution = True
@@ -1461,7 +1460,8 @@ def cmd_execute(
         time.sleep(0.1)
 
     # for ctx.no_wait update launch description at least with TF requests API URLs
-    if ctx.no_wait:
+    # also, update description when we are not going to run 'report' subcommand
+    if ctx.no_wait or 'report' not in sys.argv:
         rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit or RP_LAUNCH_DESCR_CHARS_LIMIT
         rp_launch_descr_updated = launch_description + "\n"
         rp_launch_descr_dots = True
