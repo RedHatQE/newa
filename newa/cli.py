@@ -316,6 +316,8 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                 _print(4, f'issue {jira_job.jira.id} {jira_summary}')
                 if jira_job.jira.url:
                     _print(4, jira_job.jira.url)
+                if jira_job.recipe.url:
+                    _print(6, f'recipe: {jira_job.recipe.url}')
                 schedule_file_prefix = (f'schedule-{event_job.event.id}-'
                                         f'{event_job.short_id}-{jira_job.jira.id}')
                 schedule_jobs = list(ctx.load_schedule_jobs(schedule_file_prefix))
