@@ -1513,6 +1513,7 @@ def cmd_execute(
         for launch_uuid in launch_list:
             ctx.logger.info(f'Finishing launch {launch_uuid}')
             rp.finish_launch(launch_uuid)
+            rp.check_for_empty_launch(launch_uuid, logger=ctx.logger)
 
 
 def test_patterns_match(s: str, patterns: list[str]) -> tuple[bool, str]:
@@ -1736,6 +1737,7 @@ def cmd_report(ctx: CLIContext) -> None:
         launch_url = execute_jobs[0].request.reportportal.get(
             'launch_url', None)
         if launch_uuid:
+            rp.check_for_empty_launch(launch_uuid, logger=ctx.logger)
             # prepare description with individual results
             results: dict[str, dict[str, str]] = {}
             for job in execute_jobs:

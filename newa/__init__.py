@@ -2043,6 +2043,15 @@ class ReportPortal:
         return urllib.parse.urljoin(
             self.url, f"/ui/#{Q(self.project)}/launches/all/{Q(launch_uuid)}")
 
+    def check_for_empty_launch(self, launch_uuid: str,
+                               logger: Optional[logging.Logger] = None) -> bool:
+        launch_info = self.get_launch_info(launch_uuid)
+        empty = bool(not launch_info.get('statistics', {}).get('executions', {}))
+        if logger and empty:
+            logger.warn(f'WARN: Launch {launch_uuid} seems to be empty. '
+                        '`tmt` reportportal plugin may not be enabled or configured properly.')
+        return empty
+
     def get_request(self,
                     path: str,
                     params: Optional[dict[str, str]] = None,
