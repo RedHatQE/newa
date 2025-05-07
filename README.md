@@ -389,34 +389,25 @@ Both NEWA issue-config and recipe files may contain Jinja templates that enable 
 A couple of examples:
 
 ```yaml
-# Checking if event type equals to "errata", "compose", ...
+# Checking if event type equals to "errata", "compose", "RoG"
 when: EVENT is erratum
+when: EVENT is compose
+when: EVENT is RoG
 when: EVENT is not erratum
-
-when: JOB is erratum
-when: JOB is not erratum
 
 # Checking if errata number starts with (or contains or matches regexp) string "RHSA"
 when: EVENT.id is match("f.*")
 when: EVENT.id is match("b.*")
 
-when: JOB.event.id is match("f.*")
-when: JOB.event.id is match("b.*")
-
 # Checking if errata release starts with (or contains or matches regexp) string "rhel-x.y"
-when: JOB.erratum.release is match("RHEL-.*")
-when: JOB.erratum.release is match("(?i)rhel-.*")
-when: JOB.erratum.release is match("RHEL-9.7.0")
-
-# Maybe we could add custom tests, e.g.:
-when: JOB is RHEL
-when: JOB is RHEL_9
-when: JOB is not RHEL_9_5_0
+when: ERRATUM.release is match("RHEL-.*")
+when: ERRATUM.release is match("(?i)rhel-.*")
+when: ERRATUM.release is match("RHEL-9.7.0")
 
 # Negations of all checks above
-when: JOB.erratum.release is not match("RHEL-.*")
-when: JOB.erratum.release is not match("(?i)rhel-.*")
-when: JOB.erratum.release is not match("RHEL-9.7.0")
+when: ERRATUM.release is not match("RHEL-.*")
+when: ERRATUM.erratum.release is not match("(?i)rhel-.*")
+when: ERRATUM.release is not match("RHEL-9.7.0")
 #
 ```
 
