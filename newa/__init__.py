@@ -436,11 +436,21 @@ def eval_test(
 
         raise Exception(f"Unsupported type in 'erratum' test: {type(obj)}")
 
+    def _test_rog(obj: Union[Event, ArtifactJob]) -> bool:
+        if isinstance(obj, Event):
+            return obj.type_ is EventType.ROG
+
+        if isinstance(obj, ArtifactJob):
+            return obj.event.type_ is EventType.ROG
+
+        raise Exception(f"Unsupported type in 'rog-mr' test: {type(obj)}")
+
     def _test_match(s: str, pattern: str) -> bool:
         return re.match(pattern, s) is not None
 
     environment.tests['compose'] = _test_compose
     environment.tests['erratum'] = _test_erratum
+    environment.tests['RoG'] = _test_rog
     environment.tests['match'] = _test_match
 
     try:

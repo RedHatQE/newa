@@ -30,6 +30,9 @@ def test_expressions():
     assert test('EVENT is compose', False)
     assert test('EVENT is not compose', True)
 
+    assert test('EVENT is RoG', False)
+    assert test('EVENT is not RoG', True)
+
     assert test('JOB is erratum', True)
     assert test('JOB is not erratum', False)
 
