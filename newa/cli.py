@@ -762,6 +762,7 @@ def cmd_jira(
 
                 rendered_summary = render_template(
                     action.summary,
+                    EVENT=artifact_job.event,
                     ERRATUM=artifact_job.erratum,
                     COMPOSE=artifact_job.compose,
                     ROG=artifact_job.rog,
@@ -769,6 +770,7 @@ def cmd_jira(
                     ENVIRONMENT=action.environment)
                 rendered_description = render_template(
                     action.description,
+                    EVENT=artifact_job.event,
                     ERRATUM=artifact_job.erratum,
                     COMPOSE=artifact_job.compose,
                     ROG=artifact_job.rog,
@@ -781,6 +783,7 @@ def cmd_jira(
                 elif action.assignee:
                     rendered_assignee = render_template(
                         action.assignee,
+                        EVENT=artifact_job.event,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
                         ROG=artifact_job.rog,
@@ -791,6 +794,7 @@ def cmd_jira(
                 if action.newa_id:
                     action.newa_id = render_template(
                         action.newa_id,
+                        EVENT=artifact_job.event,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
                         ROG=artifact_job.rog,
@@ -802,6 +806,7 @@ def cmd_jira(
                         if isinstance(value, str):
                             rendered_fields[key] = render_template(
                                 value,
+                                EVENT=artifact_job.event,
                                 ERRATUM=artifact_job.erratum,
                                 COMPOSE=artifact_job.compose,
                                 ROG=artifact_job.rog,
@@ -978,6 +983,7 @@ def cmd_jira(
                 if action.job_recipe:
                     recipe_url = render_template(
                         action.job_recipe,
+                        EVENT=artifact_job.event,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
                         ROG=artifact_job.rog,
@@ -1153,6 +1159,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
                 get_url_basename(jira_job.recipe.url))[0]
         # build requests
         jinja_vars: dict[str, Any] = {
+            'EVENT': jira_job.event,
             'ERRATUM': jira_job.erratum,
             }
 
@@ -1163,6 +1170,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
         for request in requests:
             # prepare dict for Jinja template rendering
             jinja_vars = {
+                'EVENT': jira_job.event,
                 'ERRATUM': jira_job.erratum,
                 'COMPOSE': jira_job.compose,
                 'ROG': jira_job.rog,
