@@ -2107,31 +2107,38 @@ class ReportPortal:
 class RoGTool:
     """ Interface to RoG instance """
 
-    token: str
+    token: str = field()
+    url: str = 'https://gitlab.com'
+    # actual GitLab connection.
+    connection: gitlab.Gitlab = field(init=False)
 
-    def get_mr(self, url: str) -> RoG:
-        server_url = 'https://gitlab.com'
-        if not url.startswith(server_url):
-            raise Exception(f'Merge-request URL "{url}" does not start with "{server_url}"')
-        r = re.match(f'^{server_url}/(.*)/-/merge_requests/([0-9]+)', url)
+    @connection.default
+    def connection_factory(self) -> gitlab.Gitlab:
+        return gitlab.Gitlab(self.url, private_token=self.token)
+
+    def parse_mr_project_and_number(self, url: str) -> tuple[str, str]:
+        if not url.startswith(self.url):
+            raise Exception(f'Merge-request URL "{url}" does not start with "{self.url}"')
+        r = re.match(f'^{re.escape(self.url)}/(.*)/-/merge_requests/([0-9]+)', url)
         if not r:
             raise Exception(f'Failed parsing project from MR "{url}", incorrect URL?')
         project = r.group(1)
         number = r.group(2)
-        gl = gitlab.Gitlab(server_url, private_token=self.token)
+        return (project, number)
+
+    def get_mr_build_rpm_pipeline_job(self, url: str) -> gitlab.ProjectJob:
+        (project, number) = self.parse_mr_project_and_number(url)
         # get project object
-        gp = gl.projects.get(project)
+        gp = self.connection.projects.get(project)
         # git merge request object
         gm = gp.mergerequests.get(number)
-        title = gm.title
-        # get pipeline and sort them according to their id
-        pipelines = gm.pipelines.list()
-        pipelines.sort(key=lambda x: x.id)
-        # for unmerged mr choose the latest pipeline, otherwise the previous one
+        # get the 2 latest pipelines
+        pipelines = gm.pipelines.list(order_by='id', sort='desc', per_page=2, get_all=False)
+        # for unmerged mr choose the latest (1st) pipeline, otherwise the previous one (2nd one)
         if len(pipelines) >= 2 and gm.state == 'merged':
-            pipeline = pipelines[-2]
+            pipeline = pipelines[1]
         elif len(pipelines) >= 1 and gm.state != 'merged':
-            pipeline = pipelines[-1]
+            pipeline = pipelines[0]
         else:
             raise Exception(f'Failed to identify proper pipeline from MR "{url}".')
         # find the build_rpm job
@@ -2143,8 +2150,19 @@ class RoGTool:
                 break
         if not job:
             raise Exception(f'Failed to find pipeline job "build_rpm" in pipeline "{gpi.web_url}"')
+        # return job
+        return gp.jobs.get(job.id)
+
+    def get_mr(self, url: str) -> RoG:
+        (project, number) = self.parse_mr_project_and_number(url)
+        # get project object
+        gp = self.connection.projects.get(project)
+        # git merge request object
+        gm = gp.mergerequests.get(number)
+        title = gm.title
         # get job log
-        log = gp.jobs.get(job.id).trace().decode("utf-8")
+        job = self.get_mr_build_rpm_pipeline_job(url)
+        log = job.trace().decode("utf-8")
         r = re.search(r'Created task: ([0-9]+)', log)
         # parse task id
         if not r:

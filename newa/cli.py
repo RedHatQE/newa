@@ -544,7 +544,7 @@ def cmd_event(
     if rog_urls:
         if not ctx.settings.rog_token:
             raise Exception('RoG token is not configured!')
-        rog_tool = RoGTool(ctx.settings.rog_token)
+        rog_tool = RoGTool(token=ctx.settings.rog_token)
         for url in rog_urls:
             mr = rog_tool.get_mr(url)
             compose_id = derive_compose(mr.build_target, compose_mapping, ctx.logger)
