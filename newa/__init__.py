@@ -2107,18 +2107,18 @@ class ReportPortal:
 class RoGTool:
     """ Interface to RoG instance """
 
+    url: str
     token: str
 
     def get_mr(self, url: str) -> RoG:
-        server_url = 'https://gitlab.com'
-        if not url.startswith(server_url):
-            raise Exception(f'Merge-request URL "{url}" does not start with "{server_url}"')
-        r = re.match(f'^{server_url}/(.*)/-/merge_requests/([0-9]+)', url)
+        if not url.startswith(self.url):
+            raise Exception(f'Merge-request URL "{url}" does not start with "{self.url}"')
+        r = re.match(f'^{self.url}/(.*)/-/merge_requests/([0-9]+)', url)
         if not r:
             raise Exception(f'Failed parsing project from MR "{url}", incorrect URL?')
         project = r.group(1)
         number = r.group(2)
-        gl = gitlab.Gitlab(server_url, private_token=self.token)
+        gl = gitlab.Gitlab(self.url, private_token=self.token)
         # get project object
         gp = gl.projects.get(project)
         # git merge request object
