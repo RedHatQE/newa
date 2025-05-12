@@ -4,6 +4,7 @@ event = Event(type_=EventType.ERRATUM, id='foo')
 erratum = Erratum(id='12345',
                   content_type='rpm',
                   respin_count=1,
+                  # Intentionally ommiting 'revision'
                   summary='test errata',
                   people_assigned_to='user',
                   release='RHEL-9.4.0',

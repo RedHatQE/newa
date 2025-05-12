@@ -40,7 +40,9 @@ def _mock_errata_tool(monkeypatch):
                 "qe_group": "group1@domain.com",
                 "devel_group": "group2@domain.com",
                 },
-            "respin_count": "1"}
+            "respin_count": "1",
+            "revision": "2",
+            }
 
     def mock_et_fetch_releases(self, id: str):
         """ Return a meaningful json with releases/builds """

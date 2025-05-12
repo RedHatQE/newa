@@ -689,6 +689,8 @@ class ErrataTool:
                         content_type=content_type,
                         respin_count=int(
                             info_json["respin_count"]),
+                        revision=int(
+                            info_json["revision"]),
                         summary=info_json["synopsis"],
                         release=release,
                         builds=builds,
@@ -779,6 +781,7 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     people_package_owner: Optional[str] = None
     people_qe_group: Optional[str] = None
     people_devel_group: Optional[str] = None
+    revision: Optional[int] = field(repr=False, default=0)
 
 
 @define
