@@ -2126,15 +2126,12 @@ class RoGTool:
         number = r.group(2)
         return (project, number)
 
-    # def get_mr_build_rpm_pipeline_log(self, url):
-
-    def get_mr(self, url: str) -> RoG:
+    def get_mr_build_rpm_pipeline_job(self, url: str) -> gitlab.ProjectJob:
         (project, number) = self.parse_mr_project_and_number(url)
         # get project object
         gp = self.connection.projects.get(project)
         # git merge request object
         gm = gp.mergerequests.get(number)
-        title = gm.title
         # get pipeline and sort them according to their id
         pipelines = gm.pipelines.list()
         pipelines.sort(key=lambda x: x.id)
@@ -2154,8 +2151,19 @@ class RoGTool:
                 break
         if not job:
             raise Exception(f'Failed to find pipeline job "build_rpm" in pipeline "{gpi.web_url}"')
+        # return job
+        return gp.jobs.get(job.id)
+
+    def get_mr(self, url: str) -> RoG:
+        (project, number) = self.parse_mr_project_and_number(url)
+        # get project object
+        gp = self.connection.projects.get(project)
+        # git merge request object
+        gm = gp.mergerequests.get(number)
+        title = gm.title
         # get job log
-        log = gp.jobs.get(job.id).trace().decode("utf-8")
+        job = self.get_mr_build_rpm_pipeline_job(url)
+        log = job.trace().decode("utf-8")
         r = re.search(r'Created task: ([0-9]+)', log)
         # parse task id
         if not r:
