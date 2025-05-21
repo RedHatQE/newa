@@ -48,7 +48,7 @@ from requests_kerberos import HTTPKerberosAuth
 HTTP_STATUS_CODES_OK = [200, 201]
 
 # common sleep times to avoid too frequest Jira API requests
-SHORT_SLEEP = 0.6
+SHORT_SLEEP = 1
 
 STATEDIR_TOPDIR = Path('/var/tmp/newa')
 
