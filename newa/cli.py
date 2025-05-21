@@ -1091,7 +1091,13 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
             'use --force to override')
         sys.exit(1)
 
-    for jira_job in ctx.load_jira_jobs('jira-'):
+    jira_jobs = list(ctx.load_jira_jobs('jira-'))
+
+    if not jira_jobs:
+        ctx.logger.warn('Warning: There are no jira jobs to schedule')
+        return
+
+    for jira_job in jira_jobs:
         # prepare parameters based on the recipe from recipe.url
         # generate all relevant test request using the recipe data
         # prepare a list of Request objects
@@ -1356,6 +1362,15 @@ def cmd_execute(
     # check if we have sufficient TF CLI version
     check_tf_cli_version(ctx)
 
+    # read a list of files to be scheduled just to check there are any
+    schedule_list = [
+        (ctx, ctx.state_dirpath / child.name)
+        for child in ctx.state_dirpath.iterdir()
+        if child.name.startswith('schedule-')]
+    if not schedule_list:
+        ctx.logger.warn('Warning: There are no previously scheduled jobs to execute')
+        return
+
     # initialize RP connection
     rp_project = ctx.settings.rp_project
     rp_url = ctx.settings.rp_url
@@ -1486,7 +1501,7 @@ def cmd_execute(
                 ctx.logger.info(
                     f"Erratum {job.erratum.id} was updated with a comment about {jira_id}")
 
-    # get a list of files to be scheduled so that they can be distributed across workers
+    # re-read a list of files to be scheduled as they could have been updated with RP launch info
     schedule_list = [
         (ctx, ctx.state_dirpath / child.name)
         for child in ctx.state_dirpath.iterdir()
@@ -1687,6 +1702,12 @@ def cmd_report(ctx: CLIContext) -> None:
     # ensure state dir is present and initialized
     initialize_state_dir(ctx)
 
+    all_execute_jobs = list(ctx.load_execute_jobs('execute-'))
+
+    if not all_execute_jobs:
+        ctx.logger.warn('Warning: There are no previously executed jobs to report')
+        return
+
     # initialize RP connection
     rp_project = ctx.settings.rp_project
     rp_url = ctx.settings.rp_url
@@ -1706,7 +1727,7 @@ def cmd_report(ctx: CLIContext) -> None:
     # before actual reporting split jobs per jira id
     jira_execute_job_mapping = {}
     # load all jobs at first as we would be rewriting them later
-    for execute_job in ctx.load_execute_jobs('execute-'):
+    for execute_job in all_execute_jobs:
         jira_id = execute_job.jira.id
         if jira_id not in jira_execute_job_mapping:
             jira_execute_job_mapping[jira_id] = [execute_job]
