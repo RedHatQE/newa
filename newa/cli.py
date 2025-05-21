@@ -1362,11 +1362,13 @@ def cmd_execute(
     # check if we have sufficient TF CLI version
     check_tf_cli_version(ctx)
 
+    def _get_schedule_list() -> list[tuple[CLIContext, Path]]:
+        return [(ctx, ctx.state_dirpath / child.name)
+                for child in ctx.state_dirpath.iterdir()
+                if child.name.startswith('schedule-')]
+
     # read a list of files to be scheduled just to check there are any
-    schedule_list = [
-        (ctx, ctx.state_dirpath / child.name)
-        for child in ctx.state_dirpath.iterdir()
-        if child.name.startswith('schedule-')]
+    schedule_list = _get_schedule_list()
     if not schedule_list:
         ctx.logger.warning('Warning: There are no previously scheduled jobs to execute')
         return
@@ -1502,10 +1504,7 @@ def cmd_execute(
                     f"Erratum {job.erratum.id} was updated with a comment about {jira_id}")
 
     # re-read a list of files to be scheduled as they could have been updated with RP launch info
-    schedule_list = [
-        (ctx, ctx.state_dirpath / child.name)
-        for child in ctx.state_dirpath.iterdir()
-        if child.name.startswith('schedule-')]
+    schedule_list = _get_schedule_list()
 
     worker_pool = multiprocessing.Pool(workers if workers > 0 else len(schedule_list))
     for _ in worker_pool.starmap(worker, schedule_list):
