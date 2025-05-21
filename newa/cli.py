@@ -1637,7 +1637,8 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
     # finish without knowing request details
     if not tf_request.details:
         raise Exception(f"Failed to read details of TF request {tf_request.uuid}")
-    result = tf_request.details['result']['overall'] if tf_request.details['result'] else 'error'
+    result = tf_request.details['result']['overall'] if (
+        tf_request.details['result'] and tf_request.details['state'] != 'error') else 'error'
     log(f'finished with result: {result}')
     # now write execution details once more
     execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
