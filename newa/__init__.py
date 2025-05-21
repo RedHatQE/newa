@@ -2061,8 +2061,8 @@ class ReportPortal:
         launch_info = self.get_launch_info(launch_uuid)
         empty = bool(not launch_info.get('statistics', {}).get('executions', {}))
         if logger and empty:
-            logger.warn(f'WARN: Launch {launch_uuid} seems to be empty. '
-                        '`tmt` reportportal plugin may not be enabled or configured properly.')
+            logger.warning(f'WARN: Launch {launch_uuid} seems to be empty. '
+                           '`tmt` reportportal plugin may not be enabled or configured properly.')
         return empty
 
     def get_request(self,

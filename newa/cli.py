@@ -1094,7 +1094,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
     jira_jobs = list(ctx.load_jira_jobs('jira-'))
 
     if not jira_jobs:
-        ctx.logger.warn('Warning: There are no jira jobs to schedule')
+        ctx.logger.warning('Warning: There are no jira jobs to schedule')
         return
 
     for jira_job in jira_jobs:
@@ -1278,7 +1278,7 @@ def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[Request
                        for job in execute_jobs]
     # do not print warning about missing results if these are results we want reschedule
     if (RequestResult.NONE in current_results) and (RequestResult.NONE not in sanitized):
-        ctx.logger.warn('WARN: Some requests do not have a known result yet.')
+        ctx.logger.warning('WARN: Some requests do not have a known result yet.')
     # error out if no test results matches required ones
     if not set(current_results).intersection(sanitized):
         ctx.logger.error(
@@ -1368,7 +1368,7 @@ def cmd_execute(
         for child in ctx.state_dirpath.iterdir()
         if child.name.startswith('schedule-')]
     if not schedule_list:
-        ctx.logger.warn('Warning: There are no previously scheduled jobs to execute')
+        ctx.logger.warning('Warning: There are no previously scheduled jobs to execute')
         return
 
     # initialize RP connection
@@ -1705,7 +1705,7 @@ def cmd_report(ctx: CLIContext) -> None:
     all_execute_jobs = list(ctx.load_execute_jobs('execute-'))
 
     if not all_execute_jobs:
-        ctx.logger.warn('Warning: There are no previously executed jobs to report')
+        ctx.logger.warning('Warning: There are no previously executed jobs to report')
         return
 
     # initialize RP connection
