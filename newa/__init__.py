@@ -1846,6 +1846,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 if field == 'Reporter':
                     continue
 
+                if field not in IssueHandler.field_map:
+                    raise Exception(f"Could not find field '{field}' in Jira.")
                 field_id = IssueHandler.field_map[field].id_
                 field_type = IssueHandler.field_map[field].type_
                 field_items = IssueHandler.field_map[field].items
@@ -1862,6 +1864,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 if field == 'Sprint':
                     if not value:
                         continue
+                    if not self.board:
+                        raise Exception(
+                            "Jira 'board' is not configured in the issue-config file.")
                     if value == 'active':
                         sprint_id = self.sprint_cache['active'][0]
                     elif value == 'future':
