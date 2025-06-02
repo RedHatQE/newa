@@ -425,7 +425,7 @@ def eval_test(
         if isinstance(obj, ArtifactJob):
             return obj.event.type_ is EventType.COMPOSE
 
-        raise Exception(f"Unsupported type in 'compose' test: {type(obj)}")
+        raise Exception(f"Unsupported type in 'compose' test: {type(obj).__name__}")
 
     def _test_erratum(obj: Union[Event, ArtifactJob]) -> bool:
         if isinstance(obj, Event):
@@ -434,7 +434,7 @@ def eval_test(
         if isinstance(obj, ArtifactJob):
             return obj.event.type_ is EventType.ERRATUM
 
-        raise Exception(f"Unsupported type in 'erratum' test: {type(obj)}")
+        raise Exception(f"Unsupported type in 'erratum' test: {type(obj).__name__}")
 
     def _test_rog(obj: Union[Event, ArtifactJob]) -> bool:
         if isinstance(obj, Event):
@@ -443,7 +443,7 @@ def eval_test(
         if isinstance(obj, ArtifactJob):
             return obj.event.type_ is EventType.ROG
 
-        raise Exception(f"Unsupported type in 'rog-mr' test: {type(obj)}")
+        raise Exception(f"Unsupported type in 'rog-mr' test: {type(obj).__name__}")
 
     def _test_match(s: str, pattern: str) -> bool:
         return re.match(pattern, s) is not None
@@ -1858,7 +1858,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 elif isinstance(value, list):
                     field_values = list(map(str, value))
                 else:
-                    raise Exception(f'Unsupported Jira field conversion for {type(value)}')
+                    raise Exception(
+                        f'Unsupported Jira field conversion for {type(value).__name__}')
                 # there is extra handling for Sprint as it should be an integer, maybe
                 # wrong custom field definition
                 if field == 'Sprint':
@@ -1883,6 +1884,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     fdata[field_id] = field_values[0]
                 elif field_type == 'number':
                     fdata[field_id] = float(field_values[0])
+                elif field_type == 'option':
+                    fdata[field_id] = {"value": field_values[0]}
                 elif field_type == 'array':
                     if field_items == 'string':
                         fdata[field_id] = field_values
@@ -1891,13 +1894,13 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     elif field_items == 'component':
                         fdata[field_id] = [{"name": v} for v in field_values]
                     else:
-                        raise Exception(f'Unsupported Jira field item {field_items}')
+                        raise Exception(f'Unsupported Jira field item "{field_items}"')
                 elif field_type == 'priority':
                     fdata[field_id] = {"name": field_values[0]}
                 elif field_type == 'status':
                     transition_name = field_values[0]
                 else:
-                    raise Exception(f'Unsupported Jira field type {field_type}')
+                    raise Exception(f'Unsupported Jira field type "{field_type}"')
 
             jira_issue.update(fields=fdata)
             if transition_name:
