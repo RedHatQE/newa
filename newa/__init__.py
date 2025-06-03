@@ -1471,6 +1471,7 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
     iterate: Optional[list[RecipeEnvironment]] = None
     context: Optional[RecipeContext] = None
     environment: Optional[RecipeEnvironment] = None
+    links: Optional[dict[str, list[str]]] = None
 
     # function to handle issue-config file defaults
 
@@ -1487,6 +1488,16 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
                         self.fields = copy.deepcopy({**defaults.fields, **self.fields})
                     else:
                         setattr(self, attr_name, copy.deepcopy(defaults.fields))
+                elif attr_name == 'links' and defaults.links:
+                    if not self.links:
+                        self.links = copy.deepcopy(defaults.links)
+                    else:
+                        for relation in defaults.links:
+                            # if I have such a relation defined, extend the list
+                            if relation in self.links:
+                                self.links[relation].extend(defaults.links[relation])
+                            elif defaults.links[relation]:
+                                self.links[relation] = copy.deepcopy(defaults.links[relation])
                 elif not getattr(self, attr_name, None):
                     setattr(self, attr_name, copy.deepcopy(attr))
         return
@@ -1598,6 +1609,12 @@ class JiraField:
     items: Optional[str]
 
 
+@define
+class JiraIssueLinkType:
+    name: str
+    inward: bool
+
+
 @frozen
 class IssueHandler:  # type: ignore[no-untyped-def]
     """ An interface to Jira instance handling a specific ArtifactJob """
@@ -1630,6 +1647,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
     group: Optional[str] = field(default=None)
 
+    issue_link_types_map: ClassVar[dict[str, JiraIssueLinkType]] = {}
+
     @connection.default  # pyright: ignore [reportAttributeAccessIssue]
     def connection_factory(self) -> jira.JIRA:
         conn = jira.JIRA(self.url, token_auth=self.token)
@@ -1647,6 +1666,14 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     items=f['schema']['items']
                     if ('schema' in f and 'items' in f['schema'])
                     else None)
+            # read link issue types
+            issue_link_types = conn.issue_link_types()
+            # self.issue_link_types_map = {}
+            for link_type in issue_link_types:
+                self.issue_link_types_map[str(link_type.inward)] = JiraIssueLinkType(
+                    name=link_type.name, inward=True)
+                self.issue_link_types_map[str(link_type.outward)] = JiraIssueLinkType(
+                    name=link_type.name, inward=False)
             # read the current and next sprint for the board
             if self.board:
                 # if board is identified by name, find its id
@@ -1793,7 +1820,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                      group: Optional[str] = None,
                      transition_passed: Optional[str] = None,
                      transition_processed: Optional[str] = None,
-                     fields: Optional[dict[str, str | float | list[str]]] = None) -> Issue:
+                     fields: Optional[dict[str, str | float | list[str]]] = None,
+                     links: Optional[dict[str, list[str]]] = None) -> Issue:
         """ Create issue """
 
         data = {
@@ -1905,6 +1933,26 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
             jira_issue.update(fields=fdata)
             short_sleep()
+
+            # add links
+            if links:
+                for relation in links:
+                    issue_link_type = self.issue_link_types_map.get(relation, None)
+                    if issue_link_type:
+                        for linked_key in links[relation]:
+                            # create issue link
+                            # might raise false warning, see
+                            # https://github.com/pycontribs/jira/issues/1875
+                            if issue_link_type.inward:
+                                self.connection.create_issue_link(
+                                    issue_link_type.name, linked_key, jira_issue.key)
+                            else:
+                                self.connection.create_issue_link(
+                                    issue_link_type.name, jira_issue.key, linked_key)
+                            short_sleep()
+                    else:
+                        raise Exception(f'Unknown issue link type "{relation}"')
+
             if transition_name:
                 self.connection.transition_issue(jira_issue.key, transition=transition_name)
                 short_sleep()

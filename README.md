@@ -119,6 +119,10 @@ issues:
      - report
    fields:
      Sprint: active
+   links:
+     "is blocked by":
+       - ABC-1234
+       - ABC-3456
 ```
 
 Individual settings are described below.
@@ -261,6 +265,7 @@ The following options are available:
    - `report` - Adds a comment when automated tests results are reported by NEWA.
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
  - `fields`: A dictionary identifying additional Jira issue fields that should be set for the issue. Currently, fields Reporter, Sprint, Status, Component/s and other fields having type "number", "string", "option", "list/select" should be supported.
+ - `links`: A dictionary identifying required link relations to a list of other Jira issues.
 
 ### `NEWA_COMMENT_FOOTER` environment variable
 
