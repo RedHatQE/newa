@@ -1174,6 +1174,13 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
         requests = list(config.build_requests(initial_config, cli_config, jinja_vars))
         ctx.logger.info(f'{len(requests)} requests have been generated')
 
+        # make Jira issue fields available to Jinja templates as well
+        if jira_job.jira.id and (not jira_job.jira.id.startswith(JIRA_NONE_ID)):
+            jira_connection = initialize_jira_connection(ctx)
+            issue_fields = jira_connection.issue(jira_job.jira.id).fields
+        else:
+            issue_fields = {}
+
         # create ScheduleJob object for each request
         for request in requests:
             # prepare dict for Jinja template rendering
@@ -1183,7 +1190,8 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
                 'COMPOSE': jira_job.compose,
                 'ROG': jira_job.rog,
                 'CONTEXT': request.context,
-                'ENVIRONMENT': request.environment}
+                'ENVIRONMENT': request.environment,
+                'ISSUE': issue_fields}
             # before yaml export render all fields as Jinja templates
             for attr in (
                     "reportportal",
