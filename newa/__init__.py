@@ -1830,6 +1830,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         try:
             jira_issue = self.connection.create_issue(data)
+            short_sleep()
             if fields is None:
                 fields = {}
             # always add NEWA label to fields
@@ -1903,8 +1904,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     raise Exception(f'Unsupported Jira field type "{field_type}"')
 
             jira_issue.update(fields=fdata)
+            short_sleep()
             if transition_name:
                 self.connection.transition_issue(jira_issue.key, transition=transition_name)
+                short_sleep()
             return Issue(jira_issue.key,
                          group=self.group,
                          summary=summary,
@@ -1942,8 +1945,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         if new_description:
             try:
                 self.get_details(issue).update(fields={"description": new_description})
+                short_sleep()
                 self.comment_issue(
                     issue, "NEWA refreshed issue ID.")
+                short_sleep()
             except jira.JIRAError as e:
                 raise Exception(f"Unable to modify issue {issue}!") from e
         return return_value
@@ -1974,6 +1979,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                         'value': self.group} if self.group else None,
                     })
             # if the transition has a format status.resolution close with resolution
+            short_sleep()
             if '.' in self.transitions.dropped[0]:
                 status, resolution = self.transitions.dropped[0].split('.', 1)
                 self.connection.transition_issue(issue.id,

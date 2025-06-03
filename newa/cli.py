@@ -857,6 +857,7 @@ def cmd_jira(
                 else:
                     # Find existing issues related to artifact_job and action
                     # If we are supposed to recreate closed issues, search only for opened ones
+                    short_sleep()
                     if recreate:
                         search_result = jira_handler.get_related_issues(
                             action, all_respins=True, closed=False)
@@ -1009,6 +1010,7 @@ def cmd_jira(
                         raise Exception(
                             f"Invalid respin action {action.on_respin} for {old_issues}!")
                     for old_issue in old_issues:
+                        short_sleep()
                         jira_handler.drop_obsoleted_issue(
                             old_issue, obsoleted_by=processed_actions[action.id])
                         ctx.logger.info(f"Old issue {old_issue} closed")
