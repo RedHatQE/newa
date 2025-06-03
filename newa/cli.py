@@ -812,6 +812,24 @@ def cmd_jira(
                                 ROG=artifact_job.rog,
                                 CONTEXT=action.context,
                                 ENVIRONMENT=action.environment)
+                rendered_links: dict[str, list[str]] = {}
+                if action.links:
+                    for relation in action.links:
+                        rendered_links[relation] = []
+                        for linked_key in action.links[relation]:
+                            if isinstance(linked_key, str):
+                                rendered_links[relation].append(render_template(
+                                    linked_key,
+                                    EVENT=artifact_job.event,
+                                    ERRATUM=artifact_job.erratum,
+                                    COMPOSE=artifact_job.compose,
+                                    ROG=artifact_job.rog,
+                                    CONTEXT=action.context,
+                                    ENVIRONMENT=action.environment))
+                            else:
+                                # Log or raise error for non-string linked_key
+                                raise Exception(
+                                    f"Linked issue key '{linked_key}' must be a string")
 
                 # Detect that action has parent available (if applicable), if we went trough the
                 # actions already and parent was not found, we abort.
@@ -938,7 +956,8 @@ def cmd_jira(
                         group=config.group,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed,
-                        fields=rendered_fields)
+                        fields=rendered_fields,
+                        links=rendered_links)
 
                     processed_actions[action.id] = new_issue
                     created_action_ids.append(action.id)
