@@ -476,6 +476,7 @@ class EventType(Enum):
     ERRATUM = 'erratum'
     COMPOSE = 'compose'
     ROG = 'rog'
+    JIRA = 'jira'
 
 
 class Arch(Enum):

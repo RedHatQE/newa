@@ -428,6 +428,12 @@ def test_file_presence(statedir: Path, prefix: str) -> bool:
     help='Specifies compose-type event for a given compose.',
     )
 @click.option(
+    '--jira-issue', 'jira_keys',
+    default=[],
+    multiple=True,
+    help='Specifies Jira event for a given issue key.',
+    )
+@click.option(
     '--rog-mr', 'rog_urls',
     default=[],
     multiple=True,
@@ -454,6 +460,7 @@ def cmd_event(
         ctx: CLIContext,
         errata_ids: list[str],
         compose_ids: list[str],
+        jira_keys: list[str],
         rog_urls: list[str],
         compose_mapping: list[str],
         prev_event: bool) -> None:
@@ -484,7 +491,7 @@ def cmd_event(
             ctx.save_artifact_job('event-', artifact_job)
 
     # Errata IDs were not given, try to load them from init- files.
-    if not errata_ids and not compose_ids and not rog_urls:
+    if not errata_ids and not compose_ids and not rog_urls and not jira_keys:
         events = [e.event for e in ctx.load_initial_errata('init-')]
         for event in events:
             if event.type_ is EventType.ERRATUM:
@@ -493,8 +500,10 @@ def cmd_event(
                 compose_ids.append(event.id)
             if event.type_ is EventType.ROG:
                 rog_urls.append(event.id)
+            if event.type_ is EventType.JIRA:
+                jira_keys.append(event.id)
 
-    if not errata_ids and not compose_ids and not rog_urls and not prev_event:
+    if not errata_ids and not compose_ids and not rog_urls and not jira_keys and not prev_event:
         raise Exception('Missing event IDs!')
 
     # process errata IDs
@@ -553,6 +562,16 @@ def cmd_event(
             artifact_job = ArtifactJob(event=event, erratum=None,
                                        compose=Compose(id=compose_id),
                                        rog=mr)
+            ctx.save_artifact_job('event-', artifact_job)
+
+    # process Jira keys
+    if jira_keys:
+        for jira_key in jira_keys:
+            event = Event(type_=EventType.JIRA, id=jira_key)
+            # TODO: identify compose id, obtain MR details
+            artifact_job = ArtifactJob(event=event, erratum=None,
+                                       compose=None,
+                                       rog=None)
             ctx.save_artifact_job('event-', artifact_job)
 
 
@@ -704,6 +723,14 @@ def cmd_jira(
             # Use to prevent endless loop over the issue actions.
             endless_loop_check: dict[str, int] = {}
 
+            # for a Jira event read issue details for Jinja template usage
+            if artifact_job.event.type_ is EventType.JIRA:
+                jira_event_fields = jira_handler.get_details(Issue(artifact_job.event.id)).fields
+                jira_event_fields.id = artifact_job.event.id
+                short_sleep()
+            else:
+                jira_event_fields = {}
+
             # Iterate over issue actions. Take one, if it's not possible to finish it,
             # put it back at the end of the queue.
             while issue_actions:
@@ -750,6 +777,8 @@ def cmd_jira(
                                                  EVENT=artifact_job.event,
                                                  ERRATUM=artifact_job.erratum,
                                                  COMPOSE=artifact_job.compose,
+                                                 JIRA=jira_event_fields,
+                                                 ROG=artifact_job.rog,
                                                  CONTEXT=action.context,
                                                  ENVIRONMENT=action.environment):
                     ctx.logger.info(f"Skipped, issue action is irrelevant ({action.when})")
@@ -765,6 +794,7 @@ def cmd_jira(
                     EVENT=artifact_job.event,
                     ERRATUM=artifact_job.erratum,
                     COMPOSE=artifact_job.compose,
+                    JIRA=jira_event_fields,
                     ROG=artifact_job.rog,
                     CONTEXT=action.context,
                     ENVIRONMENT=action.environment)
@@ -773,6 +803,7 @@ def cmd_jira(
                     EVENT=artifact_job.event,
                     ERRATUM=artifact_job.erratum,
                     COMPOSE=artifact_job.compose,
+                    JIRA=jira_event_fields,
                     ROG=artifact_job.rog,
                     CONTEXT=action.context,
                     ENVIRONMENT=action.environment)
@@ -786,6 +817,7 @@ def cmd_jira(
                         EVENT=artifact_job.event,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
+                        JIRA=jira_event_fields,
                         ROG=artifact_job.rog,
                         CONTEXT=action.context,
                         ENVIRONMENT=action.environment)
@@ -797,6 +829,7 @@ def cmd_jira(
                         EVENT=artifact_job.event,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
+                        JIRA=jira_event_fields,
                         ROG=artifact_job.rog,
                         CONTEXT=action.context,
                         ENVIRONMENT=action.environment)
@@ -809,6 +842,7 @@ def cmd_jira(
                                 EVENT=artifact_job.event,
                                 ERRATUM=artifact_job.erratum,
                                 COMPOSE=artifact_job.compose,
+                                JIRA=jira_event_fields,
                                 ROG=artifact_job.rog,
                                 CONTEXT=action.context,
                                 ENVIRONMENT=action.environment)
@@ -823,6 +857,7 @@ def cmd_jira(
                                     EVENT=artifact_job.event,
                                     ERRATUM=artifact_job.erratum,
                                     COMPOSE=artifact_job.compose,
+                                    JIRA=jira_event_fields,
                                     ROG=artifact_job.rog,
                                     CONTEXT=action.context,
                                     ENVIRONMENT=action.environment))
@@ -1006,6 +1041,7 @@ def cmd_jira(
                         EVENT=artifact_job.event,
                         ERRATUM=artifact_job.erratum,
                         COMPOSE=artifact_job.compose,
+                        JIRA=jira_event_fields,
                         ROG=artifact_job.rog,
                         CONTEXT=action.context,
                         ENVIRONMENT=action.environment)
@@ -1197,6 +1233,8 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
         if jira_job.jira.id and (not jira_job.jira.id.startswith(JIRA_NONE_ID)):
             jira_connection = initialize_jira_connection(ctx)
             issue_fields = jira_connection.issue(jira_job.jira.id).fields
+            issue_fields.id = jira_job.jira.id
+            short_sleep()
         else:
             issue_fields = {}
 
