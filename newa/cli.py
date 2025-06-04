@@ -1419,13 +1419,26 @@ def cmd_execute(
         job = schedule_jobs[0]
         launch_uuid = job.request.reportportal.get('launch_uuid', None)
         launch_description = job.request.reportportal.get('launch_description', '')
+        if launch_description:
+            launch_description += '<br><br>'
+        # add the number of jobs
+        if not jira_id.startswith(JIRA_NONE_ID):
+            issue_url = urllib.parse.urljoin(
+                jira_url,
+                f"/browse/{jira_id}")
+            launch_description += f'[{jira_id}]({issue_url}): '
+        launch_description += (f'{len(schedule_jobs)} '
+                               'request(s) in total')
+        # at this point we have the beginning of launch description
+        # we will eventually (re)use it when restarting requests
         if launch_uuid:
             ctx.logger.debug(
                 f'Skipping RP launch creation for {jira_id} as {launch_uuid} already exists.')
             launch_list.append(launch_uuid)
             continue
+
         # otherwise we proceed with launch creation
-        # get launch details from the first schedule job
+        # get additional launch details from the first schedule job
         launch_name = schedule_jobs[0].request.reportportal['launch_name']
         launch_attrs = schedule_jobs[0].request.reportportal.get(
             'launch_attributes', {})
@@ -1440,18 +1453,6 @@ def cmd_execute(
         # when testing erratum, add special context erratum=XXXX
         if schedule_jobs[0].erratum and 'erratum' not in launch_attrs:
             launch_attrs['erratum'] = str(schedule_jobs[0].erratum.id)
-        launch_description = schedule_jobs[0].request.reportportal.get(
-            'launch_description', '')
-        if launch_description:
-            launch_description += '<br><br>'
-        # add the number of jobs
-        if not jira_id.startswith(JIRA_NONE_ID):
-            issue_url = urllib.parse.urljoin(
-                jira_url,
-                f"/browse/{jira_id}")
-            launch_description += f'[{jira_id}]({issue_url}): '
-        launch_description += (f'{len(schedule_jobs)} '
-                               'request(s) in total')
         # create the actual launch
         launch_uuid = rp.create_launch(launch_name,
                                        launch_description,
