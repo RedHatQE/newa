@@ -398,6 +398,7 @@ A couple of examples:
 when: EVENT is erratum
 when: EVENT is compose
 when: EVENT is RoG
+when: EVENT is jira
 when: EVENT is not erratum
 
 # Checking if errata number starts with (or contains or matches regexp) string "RHSA"
@@ -521,7 +522,7 @@ Enables YAML files rewrite when they already exist in state-dir.
 
 ### Subcommand `event`
 
-This subcommand is associated with a particular event (like an erratum) and it attempts to read details about it so that this data can be utilized in later parts of the workflow. While we are using erratum as an event example, other event types could be supported in the future (e.g. compose, build, GitLab MR etc.).
+This subcommand is associated with a particular event (like an erratum) and it attempts to read details about it so that this data can be utilized in later parts of the workflow. While we are using erratum as an event example, other event types could be supported in the future (e.g. compose, build, GitLab MR, Jira issue etc.).
 
 `event` subcommands reads event details either from a command line.
 ```shell
@@ -587,6 +588,29 @@ Example:
 ```
 $ newa event --erratum 12345
 $ newa event --prev-event jira ...
+```
+
+#### Option `--jira-issue`
+
+Directs NEWA to the `JIRA`-type event it should use, in particular a Jira issue key. Option can be used multiple times but each event will be processed individually. This event is not that useful for test scheduling at the moment. But you can use NEWA to create a pre-configure set of associated Jira issues.
+
+Example:
+```
+$ cat demodata/jira-jira-config.yaml
+issues:
+
+ - summary: "{{ JIRA.summary }} (review)"
+   description: "{{ JIRA.description }}"
+   type: task
+   id: tier_task
+   on_respin: close
+   links:
+     "blocks":
+       - "{{ JIRA.id }}"
+   fields:
+     Priority: "{{ JIRA.priority }}"
+
+$ newa event --jira-issue ABC-12345 jira --issue-config demodata/jira-jira-config.yaml
 ```
 
 #### Option `--rog-mr`

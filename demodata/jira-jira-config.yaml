@@ -1,0 +1,22 @@
+project: BASEQESEC
+
+transitions:
+  closed:
+    - Done
+    - Dropped
+    - Completed
+  dropped:
+    - Dropped
+
+issues:
+
+ - summary: "{{ JIRA.summary }} (results review)"
+   description: "{{ JIRA.description }}"
+   type: task
+   id: tier_task
+   on_respin: close
+   links:
+     "blocks":
+       - "{{ JIRA.id }}"
+   fields:
+     Priority: "{{ JIRA.priority }}"
