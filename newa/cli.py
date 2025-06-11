@@ -179,7 +179,7 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     '--extract-state-dir',
     '-E',
     default='',
-    help='Extract YAML files from the specified archive to state-dir.',
+    help='Extract YAML files from the specified archive to state-dir (implies --force).',
     )
 @click.option(
     '--force',
@@ -240,6 +240,8 @@ def main(click_context: click.Context,
     # extract YAML files from the given archive to state-dir
     if extract_state_dir:
         ctx.new_state_dir = False
+        # enforce --force
+        ctx.force = True
         tar_open_kwargs: dict[str, Any] = {
             'mode': 'r:*',
             }
