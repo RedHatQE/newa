@@ -590,6 +590,12 @@ def cmd_event(
           'Example: --map-issue jira_epic=RHEL-123456'),
     )
 @click.option(
+    '--no-newa-id',
+    is_flag=True,
+    default=False,
+    help='Do not update issue with newa identifier and ignore any existing ones.',
+    )
+@click.option(
     '--recreate',
     is_flag=True,
     default=False,
@@ -625,6 +631,7 @@ def cmd_jira(
         ctx: CLIContext,
         issue_config: str,
         map_issue: list[str],
+        no_newa_id: bool,
         recreate: bool,
         issue: str,
         prev_issue: bool,
@@ -909,7 +916,8 @@ def cmd_jira(
                     new_issues.append(mapped_issue)
 
                 # otherwise we need to search for the issue in Jira
-                else:
+                # unless newa id is not supposed to be used
+                elif not no_newa_id:
                     # Find existing issues related to artifact_job and action
                     # If we are supposed to recreate closed issues, search only for opened ones
                     short_sleep()
@@ -985,11 +993,12 @@ def cmd_jira(
                     # wait a bit to avoid too frequest Jira API requests
                     short_sleep()
                     new_issue = jira_handler.create_issue(
-                        action,
-                        rendered_summary,
-                        rendered_description,
-                        rendered_assignee,
-                        parent,
+                        action=action,
+                        summary=rendered_summary,
+                        description=rendered_description,
+                        use_newa_id=not no_newa_id,
+                        assignee_email=rendered_assignee,
+                        parent=parent,
                         group=config.group,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed,

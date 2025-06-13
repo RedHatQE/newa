@@ -700,6 +700,15 @@ issues:
 $ newa ... jira --issue-config issue-config.yaml --map-issue errata_epic=RHEL-12345 ...
 ```
 
+#### Option `--no-newa-id`
+
+With this option NEWA won't search for any existing Jira issues and also won't update newly created ones with special identifier in Description that would help NEWA to find the issue again in the future. Use carefully, this always leads to new issues "invisible" to NEWA in future invocations.
+
+Example:
+```
+$ newa ... jira --issue-config issue-config.yaml --no-newa-id
+```
+
 #### Option `--recreate`
 
 By default, NEWA won't create a new Jira issue if a matching one but closed is found. With this option, NEWA will created a new Jira issue instead.

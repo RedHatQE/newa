@@ -1816,6 +1816,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                      action: IssueAction,
                      summary: str,
                      description: str,
+                     use_newa_id: bool = True,
                      assignee_email: str | None = None,
                      parent: Issue | None = None,
                      group: Optional[str] = None,
@@ -1824,11 +1825,12 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                      fields: Optional[dict[str, str | float | list[str]]] = None,
                      links: Optional[dict[str, list[str]]] = None) -> Issue:
         """ Create issue """
-
+        if use_newa_id:
+            description = f"{self.newa_id(action)}\n\n{description}"
         data = {
             "project": {"key": self.project},
             "summary": summary,
-            "description": f"{self.newa_id(action)}\n\n{description}",
+            "description": description,
             }
         if assignee_email and self.get_user_name(assignee_email):
             data |= {"assignee": {"name": self.get_user_name(assignee_email)}}
@@ -1862,11 +1864,12 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             short_sleep()
             if fields is None:
                 fields = {}
-            # always add NEWA label to fields
-            if "Labels" in fields and isinstance(fields['Labels'], list):
-                fields['Labels'].append(IssueHandler.newa_label)
-            else:
-                fields['Labels'] = [IssueHandler.newa_label]
+            # add NEWA label unless not using newa id
+            if use_newa_id:
+                if "Labels" in fields and isinstance(fields['Labels'], list):
+                    fields['Labels'].append(IssueHandler.newa_label)
+                else:
+                    fields['Labels'] = [IssueHandler.newa_label]
             # populate fdata with configuration provided by the user
             fdata: dict[str, str | float | list[Any] | dict[str, Any]] = {}
             transition_name: Optional[str] = None
