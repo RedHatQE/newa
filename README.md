@@ -806,6 +806,22 @@ Example:
 $ newa event --compose CentOS-Stream-9 job-recipe path/to/recipe.yaml schedule --arch x86_64 --arch aarch64 execute report
 ```
 
+#### Option `--fixture`
+
+Sets a single fixture default on a cmdline. Use with caution, hic sun leones. Can be specified multiple times.
+
+Example: Overriding Testing Farm compose used for system provisioning.
+```
+$ newa --context distro=RHEL-9.6.0 event --erratum 12345 jira --job-recipe recipe.yaml schedule --fixture compose=RHEL-9.6.0-20250408.20 execute
+```
+
+Example: Changing TF CLI arguments.
+```
+$ newa ... schedule --fixture testingfarm.cli_args="--repository-file URL" ...
+```
+
+
+
 ### Subcommand `cancel`
 
 Cancels TF reqests found in `execute-` files within the given state-dir.
