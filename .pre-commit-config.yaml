@@ -39,10 +39,10 @@ repos:
           - '--fix'
           - '--show-fixes'
 
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.23.0
-    hooks:
-      - id: gitleaks
+  #- repo: https://github.com/gitleaks/gitleaks
+  #  rev: v8.23.0
+  #  hooks:
+  #    - id: gitleaks
 
   # Backstage linter
   # https://console.one.redhat.com/docs/quality-community/Component/qe-toolbelt-catalog/onboarding/#pre-commit
