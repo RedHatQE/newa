@@ -73,6 +73,7 @@ include = [
 platforms = ["linux"]
 
 [tool.hatch.envs.dev]
+dev-mode = true
 description = "Development environment"
 dependencies = [
     "autopep8",
