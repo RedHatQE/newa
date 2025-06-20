@@ -1388,6 +1388,7 @@ def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[Request
                     'Example: --restart-request REQ-1.2.1'),
               )
 @click.option('--restart-result',
+              '-r',
               default=[],
               multiple=True,
               help=('Restart finished TF jobs having the specified result. '
