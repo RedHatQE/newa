@@ -1515,7 +1515,9 @@ def cmd_execute(
 
         # otherwise we proceed with launch creation
         # get additional launch details from the first schedule job
-        launch_name = schedule_jobs[0].request.reportportal['launch_name']
+        launch_name = schedule_jobs[0].request.reportportal['launch_name'].strip()
+        if not launch_name:
+            raise Exception("RP launch name is not configured")
         launch_attrs = schedule_jobs[0].request.reportportal.get(
             'launch_attributes', {})
         launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
