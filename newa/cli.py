@@ -197,6 +197,11 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     default=False,
     help='Force rewrite of existing YAML files.',
     )
+@click.option(
+    '--action-id-filter',
+    default='',
+    help='Regular expression matching issue-config action ids to process (only).',
+    )
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
@@ -207,7 +212,8 @@ def main(click_context: click.Context,
          envvars: list[str],
          contexts: list[str],
          extract_state_dir: str,
-         force: bool) -> None:
+         force: bool,
+         action_id_filter: str) -> None:
 
     # load settings
     settings = Settings.load(Path(os.path.expandvars(conf_file)))
@@ -216,7 +222,7 @@ def main(click_context: click.Context,
     try:
         prev_state_dirpath = prev_state_dirpath = get_state_dir(
             settings.newa_statedir_topdir, use_ppid=True)
-    except BaseException:
+    except Exception:
         prev_state_dirpath = None
 
     # handle state_dir settings
@@ -230,6 +236,12 @@ def main(click_context: click.Context,
     # handle --clear param
     settings.newa_clear_on_subcommand = clear
 
+    try:
+        pattern = re.compile(action_id_filter) if action_id_filter else None
+    except re.error as e:
+        raise Exception(
+            f'Cannot compile --action-id-filter regular expression. {e!r}') from e
+
     ctx = CLIContext(
         settings=settings,
         logger=logging.getLogger(),
@@ -238,6 +250,7 @@ def main(click_context: click.Context,
         cli_context={},
         prev_state_dirpath=prev_state_dirpath,
         force=force,
+        action_id_filter_pattern=pattern,
         )
     click_context.obj = ctx
 
@@ -333,17 +346,21 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
             else:
                 _print(2, f'event {event_job.id}')
             jira_file_prefix = f'{JIRA_FILE_PREFIX}{event_job.event.id}-{event_job.short_id}'
-            jira_jobs = list(ctx.load_jira_jobs(jira_file_prefix))
+            jira_jobs = list(ctx.load_jira_jobs(jira_file_prefix, filter_actions=True))
             for jira_job in jira_jobs:
                 jira_summary = f'- {jira_job.jira.summary}' if jira_job.jira.summary else ''
-                _print(4, f'issue {jira_job.jira.id} {jira_summary}')
+                jira_action_id = jira_job.jira.action_id or 'no action id'
+                _print(4, f'issue {jira_job.jira.id} ({jira_action_id}) {jira_summary}')
                 if jira_job.jira.url:
                     _print(4, jira_job.jira.url)
                 if jira_job.recipe.url:
                     _print(6, f'recipe: {jira_job.recipe.url}')
                 schedule_file_prefix = (f'{SCHEDULE_FILE_PREFIX}{event_job.event.id}-'
                                         f'{event_job.short_id}-{jira_job.jira.id}')
-                schedule_jobs = list(ctx.load_schedule_jobs(schedule_file_prefix))
+                schedule_jobs = list(
+                    ctx.load_schedule_jobs(
+                        schedule_file_prefix,
+                        filter_actions=True))
                 # print RP launch URL, should be common for all execute jobs
                 if schedule_jobs and schedule_jobs[0].request.reportportal:
                     launch_name = schedule_jobs[0].request.reportportal.get('launch_name', None)
@@ -357,7 +374,10 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                     execute_file_prefix = (f'{EXECUTE_FILE_PREFIX}{event_job.event.id}-'
                                            f'{event_job.short_id}-{jira_job.jira.id}-'
                                            f'{schedule_job.request.id}')
-                    execute_jobs = list(ctx.load_execute_jobs(execute_file_prefix))
+                    execute_jobs = list(
+                        ctx.load_execute_jobs(
+                            execute_file_prefix,
+                            filter_actions=True))
                     if execute_jobs:
                         for execute_job in execute_jobs:
                             if hasattr(execute_job, 'execution'):
@@ -771,8 +791,6 @@ def cmd_jira(
                 if not action.id:
                     raise Exception(f"Action {action} does not have 'id' assigned")
 
-                ctx.logger.info(f"Processing {action.id}")
-
                 # check if there are iteration is defined
                 if action.iterate:
                     # for each value prepare a separate action
@@ -791,6 +809,12 @@ def cmd_jira(
                     ctx.logger.info(f"Created {i} iterations of action {action.id}")
                     # now all iterations for a given action, let's process them one by one
                     continue
+
+                # check if action.id matches filtered items
+                if ctx.skip_action(action.id):
+                    continue
+
+                ctx.logger.info(f"Processing {action.id}")
 
                 # update action.environment and action.context for jinja template rendering
                 if action.context:
@@ -1081,6 +1105,7 @@ def cmd_jira(
                         ENVIRONMENT=action.environment)
                     if action.erratum_comment_triggers:
                         new_issue.erratum_comment_triggers = action.erratum_comment_triggers
+                    new_issue.action_id = action.id
                     jira_job = JiraJob(
                         event=artifact_job.event,
                         erratum=artifact_job.erratum,
@@ -1185,13 +1210,14 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
             'use --force to override')
         sys.exit(1)
 
-    jira_jobs = list(ctx.load_jira_jobs())
+    jira_jobs = list(ctx.load_jira_jobs(filter_actions=True))
 
     if not jira_jobs:
         ctx.logger.warning('Warning: There are no jira jobs to schedule')
         return
 
     for jira_job in jira_jobs:
+
         # prepare parameters based on the recipe from recipe.url
         # generate all relevant test request using the recipe data
         # prepare a list of Request objects
@@ -1343,7 +1369,7 @@ def cmd_cancel(ctx: CLIContext) -> None:
         raise ValueError("TESTING_FARM_API_TOKEN not set!")
     os.environ["TESTING_FARM_API_TOKEN"] = tf_token
 
-    for execute_job in ctx.load_execute_jobs():
+    for execute_job in ctx.load_execute_jobs(filter_actions=True):
         if execute_job.request.how == ExecuteHow.TESTING_FARM:
             tf_request = TFRequest(
                 api=execute_job.execution.request_api,
@@ -1470,14 +1496,9 @@ def cmd_execute(
     # check if we have sufficient TF CLI version
     check_tf_cli_version(ctx)
 
-    def _get_schedule_list() -> list[tuple[CLIContext, Path]]:
-        return [(ctx, ctx.state_dirpath / child.name)
-                for child in ctx.state_dirpath.iterdir()
-                if child.name.startswith(SCHEDULE_FILE_PREFIX)]
-
     # read a list of files to be scheduled just to check there are any
-    schedule_list = _get_schedule_list()
-    if not schedule_list:
+    schedule_job_list = list(ctx.load_schedule_jobs(filter_actions=True))
+    if not schedule_job_list:
         ctx.logger.warning('Warning: There are no previously scheduled jobs to execute')
         return
 
@@ -1509,7 +1530,7 @@ def cmd_execute(
     # schedule_jobs per Jira id
     jira_schedule_job_mapping = {}
     # load all jobs at first as we would be rewriting them later
-    for schedule_job in ctx.load_schedule_jobs():
+    for schedule_job in schedule_job_list:
         jira_id = schedule_job.jira.id
         if jira_id not in jira_schedule_job_mapping:
             jira_schedule_job_mapping[jira_id] = [schedule_job]
@@ -1614,9 +1635,9 @@ def cmd_execute(
                 ctx.logger.info(
                     f"Erratum {job.erratum.id} was updated with a comment about {jira_id}")
 
-    # re-read a list of files to be scheduled as they could have been updated with RP launch info
-    schedule_list = _get_schedule_list()
-
+    # prepare a list of yaml files for workers to process
+    schedule_list = [(ctx, ctx.get_schedule_job_filepath(job))
+                     for job in schedule_job_list]
     worker_pool = multiprocessing.Pool(workers if workers > 0 else len(schedule_list))
     for _ in worker_pool.starmap(worker, schedule_list):
         # small sleep to avoid race conditions inside tmt code
@@ -1627,7 +1648,7 @@ def cmd_execute(
         rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit or RP_LAUNCH_DESCR_CHARS_LIMIT
         rp_launch_descr_updated = launch_description + "\n"
         rp_launch_descr_dots = True
-        for execute_job in ctx.load_execute_jobs():
+        for execute_job in ctx.load_execute_jobs(filter_actions=True):
             req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
             if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
                 rp_launch_descr_updated += req_link
@@ -1818,8 +1839,7 @@ def cmd_report(ctx: CLIContext) -> None:
     # ensure state dir is present and initialized
     initialize_state_dir(ctx)
 
-    all_execute_jobs = list(ctx.load_execute_jobs())
-
+    all_execute_jobs = list(ctx.load_execute_jobs(filter_actions=True))
     if not all_execute_jobs:
         ctx.logger.warning('Warning: There are no previously executed jobs to report')
         return

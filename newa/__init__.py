@@ -23,6 +23,7 @@ from collections.abc import Generator, Iterable, Iterator
 from configparser import ConfigParser
 from enum import Enum
 from pathlib import Path
+from re import Pattern
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -837,6 +838,7 @@ class Issue(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     url: Optional[str] = None
     transition_processed: Optional[str] = None
     transition_passed: Optional[str] = None
+    action_id: Optional[str] = None
 
     def __str__(self) -> str:
         return self.id
@@ -1054,7 +1056,8 @@ class Request(Cloneable, Serializable):
                     '--tmt-environment',
                     f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH="{rp_launch}"'""",
                     '--tmt-environment',
-                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH="{self.reportportal["launch_name"]}"'""",
+                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH="{
+                        self.reportportal["launch_name"]}"'""",
                     '--tmt-environment',
                     """TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1""",
                     '--context',
@@ -1977,7 +1980,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                          summary=summary,
                          url=urllib.parse.urljoin(self.url, f'/browse/{jira_issue.key}'),
                          transition_passed=transition_passed,
-                         transition_processed=transition_processed)
+                         transition_processed=transition_processed,
+                         action_id=action.id)
         except jira.JIRAError as e:
             raise Exception("Unable to create issue!") from e
 
@@ -2308,6 +2312,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
     new_state_dir: bool = False
     prev_state_dirpath: Optional[Path] = None
     force: bool = False
+    action_id_filter_pattern: Optional[Pattern[str]] = None
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(
@@ -2353,12 +2358,18 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
         return job
 
-    def load_jira_jobs(self, filename_prefix: str = JIRA_FILE_PREFIX) -> Iterator[JiraJob]:
+    def load_jira_jobs(
+            self,
+            filename_prefix: str = JIRA_FILE_PREFIX,
+            filter_actions: bool = False) -> Iterator[JiraJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_jira_job(child.resolve())
+            job = self.load_jira_job(child.resolve())
+            if filter_actions and self.skip_action(job.jira.action_id):
+                continue
+            yield job
 
     def load_schedule_job(self, filepath: Path) -> ScheduleJob:
         job = ScheduleJob.from_yaml_file(filepath)
@@ -2369,12 +2380,16 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
     def load_schedule_jobs(
             self,
-            filename_prefix: str = SCHEDULE_FILE_PREFIX) -> Iterator[ScheduleJob]:
+            filename_prefix: str = SCHEDULE_FILE_PREFIX,
+            filter_actions: bool = False) -> Iterator[ScheduleJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_schedule_job(child.resolve())
+            job = self.load_schedule_job(child.resolve())
+            if filter_actions and self.skip_action(job.jira.action_id):
+                continue
+            yield job
 
     def load_execute_job(self, filepath: Path) -> ExecuteJob:
         job = ExecuteJob.from_yaml_file(filepath)
@@ -2385,20 +2400,47 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
     def load_execute_jobs(
             self,
-            filename_prefix: str = EXECUTE_FILE_PREFIX) -> Iterator[ExecuteJob]:
+            filename_prefix: str = EXECUTE_FILE_PREFIX,
+            filter_actions: bool = False) -> Iterator[ExecuteJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_execute_job(child.resolve())
+            job = self.load_execute_job(child.resolve())
+            if filter_actions and self.skip_action(job.jira.action_id):
+                continue
+            yield job
+
+    def get_artifact_job_filepath(
+            self,
+            job: ArtifactJob,
+            filename_prefix: str = EVENT_FILE_PREFIX) -> Path:
+        return self.state_dirpath / \
+            f'{filename_prefix}{job.event.short_id}-{job.short_id}.yaml'
+
+    def get_jira_job_filepath(self, job: JiraJob, filename_prefix: str = JIRA_FILE_PREFIX) -> Path:
+        return self.state_dirpath / \
+            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}.yaml'
+
+    def get_schedule_job_filepath(
+            self,
+            job: ScheduleJob,
+            filename_prefix: str = SCHEDULE_FILE_PREFIX) -> Path:
+        return self.state_dirpath / \
+            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
+
+    def get_execute_job_filepath(
+            self,
+            job: ExecuteJob,
+            filename_prefix: str = EXECUTE_FILE_PREFIX) -> Path:
+        return self.state_dirpath / \
+            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
     def save_artifact_job(
             self,
             job: ArtifactJob,
             filename_prefix: str = EVENT_FILE_PREFIX) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.short_id}-{job.short_id}.yaml'
-
+        filepath = self.get_artifact_job_filepath(job, filename_prefix)
         job.to_yaml_file(filepath)
         self.logger.info(f'Artifact job {job.id} written to {filepath}')
 
@@ -2410,9 +2452,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
             self.save_artifact_job(job, filename_prefix)
 
     def save_jira_job(self, job: JiraJob, filename_prefix: str = JIRA_FILE_PREFIX) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}.yaml'
-
+        filepath = self.get_jira_job_filepath(job, filename_prefix)
         job.to_yaml_file(filepath)
         self.logger.info(f'Jira job {job.id} written to {filepath}')
 
@@ -2420,9 +2460,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
             self,
             job: ScheduleJob,
             filename_prefix: str = SCHEDULE_FILE_PREFIX) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
-
+        filepath = self.get_schedule_job_filepath(job, filename_prefix)
         job.to_yaml_file(filepath)
         self.logger.info(f'Schedule job {job.id} written to {filepath}')
 
@@ -2430,9 +2468,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
             self,
             job: ExecuteJob,
             filename_prefix: str = EXECUTE_FILE_PREFIX) -> None:
-        filepath = self.state_dirpath / \
-            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
-
+        filepath = self.get_execute_job_filepath(job, filename_prefix)
         job.to_yaml_file(filepath)
         self.logger.info(f'Execute job {job.id} written to {filepath}')
 
@@ -2440,3 +2476,14 @@ class CLIContext:  # type: ignore[no-untyped-def]
         for filepath in self.state_dirpath.glob(f'{filename_prefix}*'):
             self.logger.debug(f'Removing existing file {filepath}')
             filepath.unlink()
+
+    def skip_action(self, action_id: Optional[str], log_message: bool = True) -> bool:
+        # check if action_id matches filtered items
+        if self.action_id_filter_pattern and not (
+                action_id and self.action_id_filter_pattern.fullmatch(action_id)):
+            if log_message:
+                self.logger.info(
+                    f"Skipping action {action_id} as it doesn't match "
+                    "the --action-id-filter regular expression.")
+            return True
+        return False
