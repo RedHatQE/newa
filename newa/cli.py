@@ -1834,7 +1834,8 @@ def cmd_report(ctx: CLIContext) -> None:
                 execute_job.execution.result = RequestResult.ERROR
             if tf_request.details['state']:
                 execute_job.execution.state = tf_request.details['state']
-            if tf_request.details['run']['artifacts']:
+            # artifacts won't be available yet if the request is still queued
+            if tf_request.details['run'] and tf_request.details['run'].get('artifacts', None):
                 execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
             ctx.save_execute_job('execute-', execute_job)
 
