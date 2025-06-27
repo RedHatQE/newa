@@ -599,6 +599,17 @@ $ newa event --erratum 12345
 $ newa event --prev-event jira ...
 ```
 
+#### Option `--action-id-filter`
+
+Instructs NEWA to process only a subset of issue-config actions, depending on whether the issue-config action id matches the provided regular expression.
+This option has an effect across all NEWA subcommands so users can use this option to limit requests that would be cancelled, executed, reported etc.
+Use with caution.
+
+Example:
+```
+$ newa --action-id-filter '(epic|tier1).*' event --compose CentOS-Stream-10 jira --issue-config all-tier-config.yaml schedule execute report
+```
+
 #### Option `--jira-issue`
 
 Directs NEWA to the `JIRA`-type event it should use, in particular a Jira issue key. Option can be used multiple times but each event will be processed individually. This event is not that useful for test scheduling at the moment. But you can use NEWA to create a pre-configure set of associated Jira issues.
