@@ -165,6 +165,7 @@ class Settings:  # type: ignore[no-untyped-def]
 
     newa_statedir_topdir: Path = field(  # type: ignore[var-annotated]
         factory=Path, converter=lambda p: Path(p) if p else STATEDIR_TOPDIR)
+    newa_clear_on_subcommand: bool = False
     et_url: str = ''
     et_enable_comments: bool = False
     rp_url: str = ''
@@ -206,6 +207,11 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'newa/statedir_topdir',
                 'NEWA_STATEDIR_TOPDIR'),
+            newa_clear_on_subcommand=_str_to_bool(
+                _get(
+                    cp,
+                    'newa/clear_on_subcommand',
+                    'NEWA_CLEAR_ON_SUBCOMMAND')),
             et_url=_get(
                 cp,
                 'erratatool/url',
@@ -2429,3 +2435,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Execute job {job.id} written to {filepath}')
+
+    def remove_job_files(self, filename_prefix: str) -> None:
+        for filepath in self.state_dirpath.glob(f'{filename_prefix}*'):
+            self.logger.debug(f'Removing existing file {filepath}')
+            filepath.unlink()
