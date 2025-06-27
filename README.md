@@ -435,6 +435,15 @@ $ REQUESTS_CA_BUNDLE=/etc/pki/tls/cert.pem newa event --erratum 124115 jira --is
 
 ### NEWA options
 
+#### Option `--clear`
+
+Instructs `newa` that subcommands `event`, `jira`, `schedule`, `execute` should remove existing YAML files before proceeding. This is especially useful in combination with `-P` and `-D` options to ensure that any artifacts from a previously executed subcommand are removed and won't interfere. OTOH, do not use `--clear` option only when restarting subset of jobs as you won't be able to `report` all results later.
+
+Example: Re-using previous state-dir and running requests only on x86_64 architecture.
+```
+$ newa -P --clear schedule --arch x86_64 execute report
+```
+
 #### Option `--conf-file`
 
 Tells `newa` to use alternate config file location (default is `~/.newa`).
