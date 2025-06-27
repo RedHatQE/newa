@@ -306,7 +306,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
     for state_dir in state_dirs:
         print(f'{state_dir}:')
         ctx.state_dirpath = state_dir
-        event_jobs = list(ctx.load_artifact_jobs('event-'))
+        event_jobs = list(ctx.load_artifact_jobs())
         for event_job in event_jobs:
             if event_job.erratum:
                 _print(2, f'event {event_job.id} - {event_job.erratum.summary}')
@@ -486,15 +486,15 @@ def cmd_event(
         ctx_prev = copy.deepcopy(ctx)
         ctx_prev.state_dirpath = ctx.prev_state_dirpath
         # now load all event- files and store them in the current state-dir
-        artifact_jobs = list(ctx_prev.load_artifact_jobs('event-'))
+        artifact_jobs = list(ctx_prev.load_artifact_jobs())
         if not artifact_jobs:
             raise Exception(f'No event- YAML files found in {ctx_prev.state_dirpath}')
         for artifact_job in artifact_jobs:
-            ctx.save_artifact_job('event-', artifact_job)
+            ctx.save_artifact_job(artifact_job)
 
     # Errata IDs were not given, try to load them from init- files.
     if not errata_ids and not compose_ids and not rog_urls and not jira_keys:
-        events = [e.event for e in ctx.load_initial_errata('init-')]
+        events = [e.event for e in ctx.load_initial_errata()]
         for event in events:
             if event.type_ is EventType.ERRATUM:
                 errata_ids.append(event.id)
@@ -532,7 +532,7 @@ def cmd_event(
                 if erratum.content_type in (ErratumContentType.RPM, ErratumContentType.MODULE):
                     artifact_job = ArtifactJob(event=event, erratum=erratum,
                                                compose=Compose(id=compose), rog=None)
-                    ctx.save_artifact_job('event-', artifact_job)
+                    ctx.save_artifact_job(artifact_job)
                 # for docker content type we create ArtifactJob per build
                 if erratum.content_type == ErratumContentType.DOCKER:
                     erratum_clone = erratum.clone()
@@ -541,7 +541,7 @@ def cmd_event(
                         erratum_clone.components = [NVRParser(build).name]
                         artifact_job = ArtifactJob(event=event, erratum=erratum_clone,
                                                    compose=Compose(id=compose), rog=None)
-                        ctx.save_artifact_job('event-', artifact_job)
+                        ctx.save_artifact_job(artifact_job)
 
     # process compose IDs
     for compose_id in compose_ids:
@@ -549,7 +549,7 @@ def cmd_event(
         artifact_job = ArtifactJob(
             event=event, erratum=None, compose=Compose(
                 id=compose_id), rog=None)
-        ctx.save_artifact_job('event-', artifact_job)
+        ctx.save_artifact_job(artifact_job)
 
     # process RoG URLs
     if rog_urls:
@@ -564,7 +564,7 @@ def cmd_event(
             artifact_job = ArtifactJob(event=event, erratum=None,
                                        compose=Compose(id=compose_id),
                                        rog=mr)
-            ctx.save_artifact_job('event-', artifact_job)
+            ctx.save_artifact_job(artifact_job)
 
     # process Jira keys
     if jira_keys:
@@ -574,7 +574,7 @@ def cmd_event(
             artifact_job = ArtifactJob(event=event, erratum=None,
                                        compose=None,
                                        rog=None)
-            ctx.save_artifact_job('event-', artifact_job)
+            ctx.save_artifact_job(artifact_job)
 
 
 @main.command(name='jira')
@@ -677,7 +677,7 @@ def cmd_jira(
 
     # load issue mapping specified on a command line
     issue_mapping: dict[str, str] = {}
-    artifact_jobs = ctx.load_artifact_jobs('event-')
+    artifact_jobs = ctx.load_artifact_jobs()
 
     # issue mapping is relevant only when using issue-config file
     # check for wrong ids provided on a cmdline
@@ -1068,7 +1068,7 @@ def cmd_jira(
                             url=recipe_url,
                             context=action.context,
                             environment=action.environment))
-                    ctx.save_jira_job('jira-', jira_job)
+                    ctx.save_jira_job(jira_job)
 
                 # Processing old issues - we only expect old issues that are to be closed (if any).
                 if old_issues:
@@ -1097,7 +1097,7 @@ def cmd_jira(
                 ctx_prev = copy.deepcopy(ctx)
                 ctx_prev.state_dirpath = ctx.prev_state_dirpath
                 # now load all jira- files from prev_state_dirpath
-                jira_jobs = ctx_prev.load_jira_jobs('jira-')
+                jira_jobs = ctx_prev.load_jira_jobs()
                 jira_keys = [
                     job.jira.id for job in jira_jobs if not job.jira.id.startswith(JIRA_NONE_ID)]
                 if len(jira_keys) == 1:
@@ -1127,7 +1127,7 @@ def cmd_jira(
                                    url=job_recipe,
                                    context=ctx.cli_context,
                                    environment=ctx.cli_environment))
-            ctx.save_jira_job('jira-', jira_job)
+            ctx.save_jira_job(jira_job)
 
 
 @main.command(name='schedule')
@@ -1159,7 +1159,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
             'use --force to override')
         sys.exit(1)
 
-    jira_jobs = list(ctx.load_jira_jobs('jira-'))
+    jira_jobs = list(ctx.load_jira_jobs())
 
     if not jira_jobs:
         ctx.logger.warning('Warning: There are no jira jobs to schedule')
@@ -1294,7 +1294,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
                 jira=jira_job.jira,
                 recipe=jira_job.recipe,
                 request=request)
-            ctx.save_schedule_job('schedule-', schedule_job)
+            ctx.save_schedule_job(schedule_job)
 
 
 @main.command(name='cancel')
@@ -1317,7 +1317,7 @@ def cmd_cancel(ctx: CLIContext) -> None:
         raise ValueError("TESTING_FARM_API_TOKEN not set!")
     os.environ["TESTING_FARM_API_TOKEN"] = tf_token
 
-    for execute_job in ctx.load_execute_jobs('execute-'):
+    for execute_job in ctx.load_execute_jobs():
         if execute_job.request.how == ExecuteHow.TESTING_FARM:
             tf_request = TFRequest(
                 api=execute_job.execution.request_api,
@@ -1332,7 +1332,7 @@ def cmd_cancel(ctx: CLIContext) -> None:
                 if tf_request.details['result']:
                     execute_job.execution.result = RequestResult(
                         tf_request.details['result']['overall'])
-                ctx.save_execute_job('execute-', execute_job)
+                ctx.save_execute_job(execute_job)
 
 
 def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[RequestResult]:
@@ -1480,7 +1480,7 @@ def cmd_execute(
     # schedule_jobs per Jira id
     jira_schedule_job_mapping = {}
     # load all jobs at first as we would be rewriting them later
-    for schedule_job in ctx.load_schedule_jobs('schedule-'):
+    for schedule_job in ctx.load_schedule_jobs():
         jira_id = schedule_job.jira.id
         if jira_id not in jira_schedule_job_mapping:
             jira_schedule_job_mapping[jira_id] = [schedule_job]
@@ -1545,7 +1545,7 @@ def cmd_execute(
         for job in jira_schedule_job_mapping[jira_id]:
             job.request.reportportal['launch_uuid'] = launch_uuid
             job.request.reportportal['launch_url'] = launch_url
-            ctx.save_schedule_job('schedule-', job)
+            ctx.save_schedule_job(job)
 
         # update Jira issue with a note about the RP launch
         if not jira_id.startswith(JIRA_NONE_ID):
@@ -1598,7 +1598,7 @@ def cmd_execute(
         rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit or RP_LAUNCH_DESCR_CHARS_LIMIT
         rp_launch_descr_updated = launch_description + "\n"
         rp_launch_descr_dots = True
-        for execute_job in ctx.load_execute_jobs('execute-'):
+        for execute_job in ctx.load_execute_jobs():
             req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
             if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
                 rp_launch_descr_updated += req_link
@@ -1692,7 +1692,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
                                 batch_id=schedule_job.request.get_hash(ctx.timestamp),
                                 command=command),
             )
-        ctx.save_execute_job('execute-', execute_job)
+        ctx.save_execute_job(execute_job)
     else:
         log(f'Re-using existing request {execute_job.request.id}')
         tf_request = TFRequest(api=execute_job.execution.request_api,
@@ -1719,7 +1719,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
                     url = tf_request.details['run']['artifacts']
                     # store execute_job updated with artifacts_url
                     execute_job.execution.artifacts_url = url
-                    ctx.save_execute_job('execute-', execute_job)
+                    ctx.save_execute_job(execute_job)
                 except (KeyError, TypeError):
                     pass
             envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
@@ -1740,7 +1740,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
     execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
     execute_job.execution.state = state
     execute_job.execution.result = RequestResult(result)
-    ctx.save_execute_job('execute-', execute_job)
+    ctx.save_execute_job(execute_job)
 
 
 def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -> None:
@@ -1772,7 +1772,7 @@ def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) 
         execution=Execution(batch_id=schedule_job.request.get_hash(ctx.timestamp),
                             command=command),
         )
-    ctx.save_execute_job('execute-', execute_job)
+    ctx.save_execute_job(execute_job)
 
 
 @main.command(name='report')
@@ -1783,7 +1783,7 @@ def cmd_report(ctx: CLIContext) -> None:
     # ensure state dir is present and initialized
     initialize_state_dir(ctx)
 
-    all_execute_jobs = list(ctx.load_execute_jobs('execute-'))
+    all_execute_jobs = list(ctx.load_execute_jobs())
 
     if not all_execute_jobs:
         ctx.logger.warning('Warning: There are no previously executed jobs to report')
@@ -1837,7 +1837,7 @@ def cmd_report(ctx: CLIContext) -> None:
             # artifacts won't be available yet if the request is still queued
             if tf_request.details['run'] and tf_request.details['run'].get('artifacts', None):
                 execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
-            ctx.save_execute_job('execute-', execute_job)
+            ctx.save_execute_job(execute_job)
 
     # now for each jira id finish the respective launch and report results
     for jira_id, execute_jobs in jira_execute_job_mapping.items():
