@@ -47,6 +47,12 @@ from requests_kerberos import HTTPKerberosAuth
 
 HTTP_STATUS_CODES_OK = [200, 201]
 
+EVENT_FILE_PREFIX = 'event-'
+INIT_FILE_PREFIX = 'init-'
+JIRA_FILE_PREFIX = 'jira-'
+SCHEDULE_FILE_PREFIX = 'schedule-'
+EXECUTE_FILE_PREFIX = 'execute-'
+
 # common sleep times to avoid too frequest Jira API requests
 SHORT_SLEEP = 1
 
@@ -2309,7 +2315,9 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
         return erratum
 
-    def load_initial_errata(self, filename_prefix: str) -> Iterator[InitialErratum]:
+    def load_initial_errata(
+            self,
+            filename_prefix: str = INIT_FILE_PREFIX) -> Iterator[InitialErratum]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
@@ -2323,7 +2331,9 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
         return job
 
-    def load_artifact_jobs(self, filename_prefix: str) -> Iterator[ArtifactJob]:
+    def load_artifact_jobs(
+            self,
+            filename_prefix: str = EVENT_FILE_PREFIX) -> Iterator[ArtifactJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
@@ -2337,7 +2347,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
         return job
 
-    def load_jira_jobs(self, filename_prefix: str) -> Iterator[JiraJob]:
+    def load_jira_jobs(self, filename_prefix: str = JIRA_FILE_PREFIX) -> Iterator[JiraJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
@@ -2351,7 +2361,9 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
         return job
 
-    def load_schedule_jobs(self, filename_prefix: str) -> Iterator[ScheduleJob]:
+    def load_schedule_jobs(
+            self,
+            filename_prefix: str = SCHEDULE_FILE_PREFIX) -> Iterator[ScheduleJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
@@ -2365,39 +2377,53 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
         return job
 
-    def load_execute_jobs(self, filename_prefix: str) -> Iterator[ExecuteJob]:
+    def load_execute_jobs(
+            self,
+            filename_prefix: str = EXECUTE_FILE_PREFIX) -> Iterator[ExecuteJob]:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
 
             yield self.load_execute_job(child.resolve())
 
-    def save_artifact_job(self, filename_prefix: str, job: ArtifactJob) -> None:
+    def save_artifact_job(
+            self,
+            job: ArtifactJob,
+            filename_prefix: str = EVENT_FILE_PREFIX) -> None:
         filepath = self.state_dirpath / \
             f'{filename_prefix}{job.event.short_id}-{job.short_id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Artifact job {job.id} written to {filepath}')
 
-    def save_artifact_jobs(self, filename_prefix: str, jobs: Iterable[ArtifactJob]) -> None:
+    def save_artifact_jobs(
+            self,
+            jobs: Iterable[ArtifactJob],
+            filename_prefix: str = EVENT_FILE_PREFIX) -> None:
         for job in jobs:
-            self.save_artifact_job(filename_prefix, job)
+            self.save_artifact_job(job, filename_prefix)
 
-    def save_jira_job(self, filename_prefix: str, job: JiraJob) -> None:
+    def save_jira_job(self, job: JiraJob, filename_prefix: str = JIRA_FILE_PREFIX) -> None:
         filepath = self.state_dirpath / \
             f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Jira job {job.id} written to {filepath}')
 
-    def save_schedule_job(self, filename_prefix: str, job: ScheduleJob) -> None:
+    def save_schedule_job(
+            self,
+            job: ScheduleJob,
+            filename_prefix: str = SCHEDULE_FILE_PREFIX) -> None:
         filepath = self.state_dirpath / \
             f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
         job.to_yaml_file(filepath)
         self.logger.info(f'Schedule job {job.id} written to {filepath}')
 
-    def save_execute_job(self, filename_prefix: str, job: ExecuteJob) -> None:
+    def save_execute_job(
+            self,
+            job: ExecuteJob,
+            filename_prefix: str = EXECUTE_FILE_PREFIX) -> None:
         filepath = self.state_dirpath / \
             f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
 
