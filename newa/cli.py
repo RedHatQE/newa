@@ -18,6 +18,10 @@ import click
 import jira
 
 from . import (
+    EVENT_FILE_PREFIX,
+    EXECUTE_FILE_PREFIX,
+    JIRA_FILE_PREFIX,
+    SCHEDULE_FILE_PREFIX,
     Arch,
     ArtifactJob,
     CLIContext,
@@ -158,6 +162,12 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     help='Path to newa configuration file.',
     )
 @click.option(
+    '--clear',
+    is_flag=True,
+    default=False,
+    help='Each subcommand will remove existing YAML files before proceeding',
+    )
+@click.option(
     '--debug',
     is_flag=True,
     default=False,
@@ -192,6 +202,7 @@ def main(click_context: click.Context,
          state_dir: str,
          prev_state_dir: bool,
          conf_file: str,
+         clear: bool,
          debug: bool,
          envvars: list[str],
          contexts: list[str],
@@ -216,6 +227,9 @@ def main(click_context: click.Context,
     elif not state_dir:
         state_dir = str(get_state_dir(settings.newa_statedir_topdir))
 
+    # handle --clear param
+    settings.newa_clear_on_subcommand = clear
+
     ctx = CLIContext(
         settings=settings,
         logger=logging.getLogger(),
@@ -236,6 +250,9 @@ def main(click_context: click.Context,
 
     ctx.logger.info(f'Using --state-dir={ctx.state_dirpath}')
     ctx.logger.debug(f'prev_state_dirpath={ctx.prev_state_dirpath}')
+
+    if ctx.settings.newa_clear_on_subcommand:
+        ctx.logger.debug('NEWA subcommands will remove existing YAML files.')
 
     # extract YAML files from the given archive to state-dir
     if extract_state_dir:
@@ -315,7 +332,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                 _print(2, f'event {event_job.id} - {event_job.rog.title}')
             else:
                 _print(2, f'event {event_job.id}')
-            jira_file_prefix = f'jira-{event_job.event.id}-{event_job.short_id}'
+            jira_file_prefix = f'{JIRA_FILE_PREFIX}{event_job.event.id}-{event_job.short_id}'
             jira_jobs = list(ctx.load_jira_jobs(jira_file_prefix))
             for jira_job in jira_jobs:
                 jira_summary = f'- {jira_job.jira.summary}' if jira_job.jira.summary else ''
@@ -324,7 +341,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                     _print(4, jira_job.jira.url)
                 if jira_job.recipe.url:
                     _print(6, f'recipe: {jira_job.recipe.url}')
-                schedule_file_prefix = (f'schedule-{event_job.event.id}-'
+                schedule_file_prefix = (f'{SCHEDULE_FILE_PREFIX}{event_job.event.id}-'
                                         f'{event_job.short_id}-{jira_job.jira.id}')
                 schedule_jobs = list(ctx.load_schedule_jobs(schedule_file_prefix))
                 # print RP launch URL, should be common for all execute jobs
@@ -337,7 +354,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                             _print(6, launch_url)
                 for schedule_job in schedule_jobs:
                     _print(6, f'{schedule_job.request.id}', end='')
-                    execute_file_prefix = (f'execute-{event_job.event.id}-'
+                    execute_file_prefix = (f'{EXECUTE_FILE_PREFIX}{event_job.event.id}-'
                                            f'{event_job.short_id}-{jira_job.jira.id}-'
                                            f'{schedule_job.request.id}')
                     execute_jobs = list(ctx.load_execute_jobs(execute_file_prefix))
@@ -471,9 +488,12 @@ def cmd_event(
     # ensure state dir is present and initialized
     initialize_state_dir(ctx)
 
-    if test_file_presence(ctx.state_dirpath, 'event-') and not ctx.force:
+    if ctx.settings.newa_clear_on_subcommand:
+        ctx.remove_job_files(EVENT_FILE_PREFIX)
+
+    if test_file_presence(ctx.state_dirpath, EVENT_FILE_PREFIX) and not ctx.force:
         ctx.logger.error(
-            f'"event-" files already exist in state-dir {ctx.state_dirpath}, '
+            f'"{EVENT_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
             'use --force to override')
         sys.exit(1)
 
@@ -488,7 +508,7 @@ def cmd_event(
         # now load all event- files and store them in the current state-dir
         artifact_jobs = list(ctx_prev.load_artifact_jobs())
         if not artifact_jobs:
-            raise Exception(f'No event- YAML files found in {ctx_prev.state_dirpath}')
+            raise Exception(f'No {EVENT_FILE_PREFIX} YAML files found in {ctx_prev.state_dirpath}')
         for artifact_job in artifact_jobs:
             ctx.save_artifact_job(artifact_job)
 
@@ -643,9 +663,12 @@ def cmd_jira(
     # ensure state dir is present and initialized
     initialize_state_dir(ctx)
 
-    if test_file_presence(ctx.state_dirpath, 'jira-') and not ctx.force:
+    if ctx.settings.newa_clear_on_subcommand:
+        ctx.remove_job_files(JIRA_FILE_PREFIX)
+
+    if test_file_presence(ctx.state_dirpath, JIRA_FILE_PREFIX) and not ctx.force:
         ctx.logger.error(
-            f'"jira-" files already exist in state-dir {ctx.state_dirpath}, '
+            f'"{JIRA_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
             'use --force to override')
         sys.exit(1)
 
@@ -1153,9 +1176,12 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
     # ensure state dir is present and initialized
     initialize_state_dir(ctx)
 
-    if test_file_presence(ctx.state_dirpath, 'schedule-') and not ctx.force:
+    if ctx.settings.newa_clear_on_subcommand:
+        ctx.remove_job_files(SCHEDULE_FILE_PREFIX)
+
+    if test_file_presence(ctx.state_dirpath, SCHEDULE_FILE_PREFIX) and not ctx.force:
         ctx.logger.error(
-            f'"schedule-" files already exist in state-dir {ctx.state_dirpath}, '
+            f'"{SCHEDULE_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
             'use --force to override')
         sys.exit(1)
 
@@ -1350,7 +1376,7 @@ def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[Request
     execute_files_list = [
         (ctx.state_dirpath / child.name)
         for child in ctx.state_dirpath.iterdir()
-        if child.name.startswith('execute-')]
+        if child.name.startswith(EXECUTE_FILE_PREFIX)]
     execute_jobs = [ExecuteJob.from_yaml_file(path) for path in execute_files_list]
     current_results = [job.execution.result if job.execution.result else RequestResult.NONE
                        for job in execute_jobs]
@@ -1430,11 +1456,14 @@ def cmd_execute(
             'NEWA state-dir was not specified! Use --state-dir or similar option.')
         sys.exit(1)
 
-    if test_file_presence(ctx.state_dirpath, 'execute-') and \
+    if ctx.settings.newa_clear_on_subcommand:
+        ctx.remove_job_files(EXECUTE_FILE_PREFIX)
+
+    if test_file_presence(ctx.state_dirpath, EXECUTE_FILE_PREFIX) and \
             not ctx.continue_execution and \
             not ctx.force:
         ctx.logger.error(
-            f'"execute-" files already exist in state-dir {ctx.state_dirpath}, '
+            f'"{EXECUTE_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
             'use --force to override')
         sys.exit(1)
 
@@ -1444,7 +1473,7 @@ def cmd_execute(
     def _get_schedule_list() -> list[tuple[CLIContext, Path]]:
         return [(ctx, ctx.state_dirpath / child.name)
                 for child in ctx.state_dirpath.iterdir()
-                if child.name.startswith('schedule-')]
+                if child.name.startswith(SCHEDULE_FILE_PREFIX)]
 
     # read a list of files to be scheduled just to check there are any
     schedule_list = _get_schedule_list()
@@ -1651,7 +1680,13 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
     if ctx.continue_execution:
         parent = schedule_file.parent
         name = schedule_file.name
-        execute_job_file = Path(os.path.join(parent, name.replace('schedule-', 'execute-', 1)))
+        execute_job_file = Path(
+            os.path.join(
+                parent,
+                name.replace(
+                    SCHEDULE_FILE_PREFIX,
+                    EXECUTE_FILE_PREFIX,
+                    1)))
         if execute_job_file.exists():
             execute_job = ExecuteJob.from_yaml_file(execute_job_file)
             if execute_job.execution.result in ctx.restart_result:
