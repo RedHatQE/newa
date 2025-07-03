@@ -1229,7 +1229,8 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
                 [Arch(a.strip()) for a in arch])
         else:
             architectures = jira_job.erratum.archs if (
-                jira_job.erratum and jira_job.erratum.archs) else Arch.architectures()
+                jira_job.erratum and jira_job.erratum.archs) else Arch.architectures(
+                compose=compose)
 
         # prepare cli_config and initial config copying it from jira_job
         initial_config = RawRecipeConfigDimension(
