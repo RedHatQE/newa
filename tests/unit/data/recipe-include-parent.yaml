@@ -1,0 +1,14 @@
+includes:
+  - tests/unit/data/recipe-include-child1.yaml
+  - tests/unit/data/recipe-include-child2.yaml
+fixtures:
+    context:
+        tier: 0
+    environment:
+        DESCRIPTION: "parent description"
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
+       - context:
+             arch: aarch64

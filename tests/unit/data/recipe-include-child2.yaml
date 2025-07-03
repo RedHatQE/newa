@@ -1,0 +1,8 @@
+includes:
+  - tests/unit/data/recipe-include-child3.yaml
+fixtures:
+    context:
+        trigger: nightly
+    environment:
+        DESCRIPTION: "child2 description"
+        LAST_CHILD: 2
