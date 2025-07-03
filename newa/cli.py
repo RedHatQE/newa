@@ -413,6 +413,8 @@ def apply_release_mapping(string: str,
             r'-candidate$=',
             r'-draft$=',
             r'$=-Nightly',
+            # ugly hack to narrow weird TF compose naming for RHEL-7
+            r'RHEL-7-ELS-Nightly=RHEL-7.9-ZStream',
             ]
     new_string = string
     for m in mapping:

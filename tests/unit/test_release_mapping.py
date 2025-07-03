@@ -13,6 +13,7 @@ def test_release_mapping():
         ('RHEL-9.0.0.Z.E4S', 'RHEL-9.0.0-Nightly'),
         ('RHEL-8.10.0.Z.MAIN+EUS', 'RHEL-8.10.0-Nightly'),
         ('RHEL-8.6.0.Z.AUS', 'RHEL-8.6.0-Nightly'),
+        ('RHEL-7-ELS', 'RHEL-7.9-ZStream'),
         # build target mapping
         ('rhel-10.1-candidate', 'RHEL-10.1-Nightly'),
         ('rhel-9.7.0-draft', 'RHEL-9.7.0-Nightly'),
