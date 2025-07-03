@@ -1,0 +1,7 @@
+fixtures:
+    context:
+        tier: 2
+        trigger: weekly
+    environment:
+        DESCRIPTION: "child1 description"
+        LAST_CHILD: 1

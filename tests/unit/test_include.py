@@ -1,9 +1,11 @@
-from newa import IssueConfig, IssueType
+from newa import IssueConfig, IssueType, RecipeConfig
 
 c = IssueConfig.read_file('tests/unit/data/issue-config-include-parent.yaml')
+r = RecipeConfig.from_yaml_with_includes('tests/unit/data/recipe-include-parent.yaml')
+print(r)
 
 
-def test_include_on_defaults():
+def test_issue_config_include_on_defaults():
     # issues come from all 3 files
     assert len(c.issues) == 3
     # project comes form child2
@@ -22,7 +24,7 @@ def test_include_on_defaults():
     assert c.defaults.fields["Story Points"] == 1
 
 
-def test_defaults_override_on_issue():
+def test_issue_config_defaults_override_on_issue():
     i = c.issues[0]
     # 1st issue action overrides some defaults
     assert i.type == IssueType.EPIC
@@ -34,3 +36,16 @@ def test_defaults_override_on_issue():
     assert i.type == IssueType.TASK
     assert i.assignee is None
     assert i.fields['Story Points'] == 1
+
+
+def test_recipe_include():
+    # LAST_CHILD comes from child2
+    assert r.fixtures["environment"]["LAST_CHILD"] == 2
+    # DESCRIPTION comes from parent
+    assert r.fixtures["environment"]["DESCRIPTION"] == "parent description"
+    # tier comes from parent
+    assert r.fixtures["context"]["tier"] == 0
+    # trigger comes from child1
+    assert r.fixtures["context"]["trigger"] == "nightly"
+    # verbosity comes from child3
+    assert r.fixtures["context"]["verbosity"] == 99
