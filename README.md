@@ -278,11 +278,13 @@ A recipe file is associated with a Jira issue through the `job_recipe` attribute
 
 Recipe configuration file enables users to describe a complex test matrix. This is achieved by using a set of parameters passed to each Testing Farm requests and parameterized tmt plans enabling runtime adjustments.
 
-A recipe file configuration is split into two sections. The first section is named `fixtures` and contains configuration that is relevant to all test jobs triggered by the recipe file.
+A recipe file configuration is split into three sections. The first section is named `fixtures` and contains configuration that is relevant to all test jobs triggered by the recipe file.
 
 The second section is named` dimensions` and it outlines how the test matrix looks like. Each dimension is identified by its name and defines a list of possible values, each value representing  a configuration snippet that would be used for the respective test job. `newa` does a Cartesian product of defined dimensions, building all possible combinations. Those will be saved for further execution.
 
-When mergine attributes from `fixtures` and `dimensions`, value from a particular `dimension` may override a value from `fixtures`. This is on purpose so that `fixtures` may provide sane defaults that could be possibly overriden (yes, bad naming). A recipe can also override `context` or `environment` value obtained from the `jira-` YAML file (e.g. specified in issue-config file). However, a recipe can't override a value that has been defined on a command line directly using `newa --context ...`, `newa --environment ...` or `newa schedule --fixture ...` options.
+The third section is called `includes` and contains a list of other recipe files. `fixtures` definitions from those files will be included and merged with `fixtures` definition of the current recipe file. Particular settings from definitions loaded later may override settings from definitions loaded earlier. Please note that `dimensions` are not loaded from `includes`.
+
+When merging attributes from `fixtures` and `dimensions`, value from a particular `dimension` may override a value from `fixtures`. This is on purpose so that `fixtures` may provide sane defaults that could be possibly overridden (yes, bad naming). A recipe can also override `context` or `environment` value obtained from the `jira-` YAML file (e.g. specified in issue-config file). However, a recipe can't override a value that has been defined on a command line directly using `newa --context ...`, `newa --environment ...` or `newa schedule --fixture ...` options.
 
 Example:
 Using the recipe file
