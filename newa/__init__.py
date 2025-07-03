@@ -499,25 +499,33 @@ class Arch(Enum):
     AARCH64 = 'aarch64'
     S390X = 's390x'
     PPC64LE = 'ppc64le'
+    PPC64 = 'ppc64'
     NOARCH = 'noarch'
     MULTI = 'multi'
     SRPMS = 'SRPMS'  # just to ease errata processing
 
     @classmethod
     def architectures(cls: type[Arch],
-                      preset: Optional[list[Arch]] = None) -> list[Arch]:
+                      preset: Optional[list[Arch]] = None,
+                      compose: Optional[str] = None) -> list[Arch]:
 
         _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH]
         _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
+        _default = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'aarch64']]
+        _default_rhel7 = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'ppc64']]
 
+        if compose and re.match('^rhel-7', compose, flags=re.IGNORECASE):
+            default = _default_rhel7
+        else:
+            default = _default
         if not preset:
-            return _all
+            return default
         # 'noarch' should be tested on all architectures
         if Arch('noarch') in preset:
-            return _all
+            return default
         # 'multi' is given for container advisories
         if Arch('multi') in preset:
-            return _all
+            return default
         return list(set(_all).intersection(set(preset)))
 
 
