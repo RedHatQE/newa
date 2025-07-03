@@ -1,0 +1,5 @@
+fixtures:
+  environment:
+    PLANET: Earth
+  context:
+    navigate: yes

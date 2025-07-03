@@ -1,0 +1,6 @@
+fixtures:
+  context:
+    reverse: yes
+  reportportal:
+    launch_name: "default_name"
+    launch_description: "default_description"

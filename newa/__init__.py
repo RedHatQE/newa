@@ -923,26 +923,37 @@ class RecipeConfig(Cloneable, Serializable):
         factory=cast(Callable[[], RawRecipeConfigDimension], dict))
     dimensions: RawRecipeConfigDimensions = field(
         factory=cast(Callable[[], RawRecipeConfigDimensions], dict))
+    includes: list[str] = field(factory=list)
 
-    def build_requests(self,
-                       initial_config: RawRecipeConfigDimension,
-                       cli_config: RawRecipeConfigDimension,
-                       jinja_vars: Optional[dict[str, Any]] = None) -> Iterator[Request]:
-        # cli_config has a priority while initial_config can be modified by a recipe
+    @classmethod
+    def from_yaml_with_includes(
+            cls: type[RecipeConfig],
+            location: str,
+            stack: Optional[list[str]] = None) -> RecipeConfig:
+        base_config = cls.from_yaml_url(location) if \
+            re.search('^https?://', location) else cls.from_yaml_file(Path(location))
+        # process each include
+        fixtures_combination = []
+        for source in base_config.includes:
+            if stack and source in stack:
+                raise Exception(
+                    f'Duplicate location encountered while loading recipe YAML from "{location}"')
+            if stack:
+                stack.append(location)
+            else:
+                stack = [location]
+            source_config = cls.from_yaml_with_includes(source, stack=stack)
+            if source_config.fixtures:
+                fixtures_combination.append(source_config.fixtures)
+        if base_config.fixtures:
+            fixtures_combination.append(base_config.fixtures)
+        if len(fixtures_combination) > 1:
+            merged_fixtures = base_config.merge_combination_data(tuple(fixtures_combination))
+            base_config.fixtures = copy.deepcopy(merged_fixtures)
+        return base_config
 
-        # this is here to generate unique recipe IDs
-        recipe_id_gen = itertools.count(start=1)
-
-        # get all options from dimentions
-        options: list[list[RawRecipeConfigDimension]] = []
-        for dimension in self.dimensions:
-            options.append(self.dimensions[dimension])
-        # generate combinations
-        combinations = list(itertools.product(*options))
-        # extend each combination with initial_config, fixtures and cli_config
-        for i in range(len(combinations)):
-            combinations[i] = (initial_config, ) + (self.fixtures,) + \
-                combinations[i] + (cli_config, )
+    def merge_combination_data(
+            self, combination: tuple[RawRecipeConfigDimension, ...]) -> RawRecipeConfigDimension:
 
         # Note: moved into its own function to avoid being indented too much;
         # mypy needs to be silenced because we use `key` variable instead of
@@ -970,16 +981,33 @@ class RecipeConfig(Cloneable, Serializable):
             else:
                 raise Exception(f"Don't know how to merge record type '{key}'")
 
-        def merge_combination_data(
-                combination: tuple[RawRecipeConfigDimension, ...]) -> RawRecipeConfigDimension:
-            merged: RawRecipeConfigDimension = {}
-            for record in combination:
-                for key in record:
-                    _merge_key(merged, record, key)
-            return merged
+        merged: RawRecipeConfigDimension = {}
+        for record in combination:
+            for key in record:
+                _merge_key(merged, record, key)
+        return merged
+
+    def build_requests(self,
+                       initial_config: RawRecipeConfigDimension,
+                       cli_config: RawRecipeConfigDimension,
+                       jinja_vars: Optional[dict[str, Any]] = None) -> Iterator[Request]:
+        # cli_config has a priority while initial_config can be modified by a recipe
+
+        # this is here to generate unique recipe IDs
+        recipe_id_gen = itertools.count(start=1)
+
+        # get all options from dimensions
+        options: list[list[RawRecipeConfigDimension]] = [self.dimensions[dimension]
+                                                         for dimension in self.dimensions]
+        # generate combinations
+        combinations = list(itertools.product(*options))
+        # extend each combination with initial_config, fixtures and cli_config
+        for i in range(len(combinations)):
+            combinations[i] = (initial_config, ) + (self.fixtures,) + \
+                combinations[i] + (cli_config, )
 
         # now for each combination merge data from individual dimensions
-        merged_combinations = list(map(merge_combination_data, combinations))
+        merged_combinations = list(map(self.merge_combination_data, combinations))
         # and filter them evaluating 'when' conditions
         filtered_combinations = []
         for combination in merged_combinations:
@@ -1546,7 +1574,9 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
         def load_data_from_location(location: str,
                                     stack: Optional[list[str]] = None) -> dict[str, Any]:
             if stack and location in stack:
-                raise Exception(f"Recursion encountered when loading YAML from {location}")
+                raise Exception(
+                    'Duplicate location encountered while loading issue-config YAML '
+                    f'from "{location}"')
             # include location into the stack so we can detect recursion
             if stack:
                 stack.append(location)

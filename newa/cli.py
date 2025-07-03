@@ -1264,10 +1264,7 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
         if jira_job.erratum:
             initial_config['context'].update({'erratum': str(jira_job.erratum.id)})
 
-        if re.search('^https?://', jira_job.recipe.url):
-            config = RecipeConfig.from_yaml_url(jira_job.recipe.url)
-        else:
-            config = RecipeConfig.from_yaml_file(Path(jira_job.recipe.url))
+        config = RecipeConfig.from_yaml_with_includes(jira_job.recipe.url)
         # extend dimensions with system architecture but do not override existing settings
         if 'arch' not in config.dimensions:
             config.dimensions['arch'] = []
