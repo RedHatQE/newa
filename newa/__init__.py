@@ -495,6 +495,7 @@ class EventType(Enum):
 class Arch(Enum):
     """ Available system architectures """
 
+    I686 = 'i686'
     X86_64 = 'x86_64'
     AARCH64 = 'aarch64'
     S390X = 's390x'
@@ -509,7 +510,7 @@ class Arch(Enum):
                       preset: Optional[list[Arch]] = None,
                       compose: Optional[str] = None) -> list[Arch]:
 
-        _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH]
+        _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH, Arch.I686]
         _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
         _default = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'aarch64']]
         _default_rhel7 = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'ppc64']]
