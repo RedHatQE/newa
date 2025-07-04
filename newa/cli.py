@@ -345,7 +345,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                 _print(2, f'event {event_job.id} - {event_job.rog.title}')
             else:
                 _print(2, f'event {event_job.id}')
-            jira_file_prefix = f'{JIRA_FILE_PREFIX}{event_job.event.id}-{event_job.short_id}'
+            jira_file_prefix = f'{JIRA_FILE_PREFIX}{event_job.event.short_id}-{event_job.short_id}'
             jira_jobs = list(ctx.load_jira_jobs(jira_file_prefix, filter_actions=True))
             for jira_job in jira_jobs:
                 jira_summary = f'- {jira_job.jira.summary}' if jira_job.jira.summary else ''
@@ -355,7 +355,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                     _print(4, jira_job.jira.url)
                 if jira_job.recipe.url:
                     _print(6, f'recipe: {jira_job.recipe.url}')
-                schedule_file_prefix = (f'{SCHEDULE_FILE_PREFIX}{event_job.event.id}-'
+                schedule_file_prefix = (f'{SCHEDULE_FILE_PREFIX}{event_job.event.short_id}-'
                                         f'{event_job.short_id}-{jira_job.jira.id}')
                 schedule_jobs = list(
                     ctx.load_schedule_jobs(
@@ -371,7 +371,7 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                             _print(6, launch_url)
                 for schedule_job in schedule_jobs:
                     _print(6, f'{schedule_job.request.id}', end='')
-                    execute_file_prefix = (f'{EXECUTE_FILE_PREFIX}{event_job.event.id}-'
+                    execute_file_prefix = (f'{EXECUTE_FILE_PREFIX}{event_job.event.short_id}-'
                                            f'{event_job.short_id}-{jira_job.jira.id}-'
                                            f'{schedule_job.request.id}')
                     execute_jobs = list(
