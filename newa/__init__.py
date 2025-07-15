@@ -2048,6 +2048,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         elif isinstance(description, str) and self.newa_id(action) not in description:
             new_description = re.sub(f"^{re.escape(self.newa_id())}.*\n",
                                      f"{self.newa_id(action)}\n", description)
+            return_value = True
 
         if new_description:
             try:
