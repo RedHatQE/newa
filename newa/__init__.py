@@ -681,6 +681,9 @@ class ErrataTool:
         info_json = self.fetch_info(event.id)
         releases_json = self.fetch_releases(event.id)
         for release in releases_json:
+            # ignore EUS.EXTENSION releases
+            if release.endswith('EUS.EXTENSION'):
+                continue
             builds = []
             builds_json = releases_json[release]
             blocking_builds = []
