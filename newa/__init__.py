@@ -1480,7 +1480,7 @@ class IssueType(Enum):
     EPIC = 'epic'
     TASK = 'task'
     SUBTASK = 'subtask'
-
+    STORY = 'story'
 
 class OnRespinAction(Enum):
     # TODO: what's the default? It would simplify the class a bit.
@@ -1897,6 +1897,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 "issuetype": {"name": "Epic"},
                 IssueHandler.field_map["Epic Name"].id_: data["summary"],
                 }
+        elif action.type == IssueType.STORY:
+            data |= {"issuetype": {"name": "Story"}}
+            if parent:
+                data |= {IssueHandler.field_map["Epic Link"].id_: parent.id}
         elif action.type == IssueType.TASK:
             data |= {"issuetype": {"name": "Task"}}
             if parent:
