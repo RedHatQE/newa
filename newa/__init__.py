@@ -1482,6 +1482,7 @@ class IssueType(Enum):
     SUBTASK = 'subtask'
     STORY = 'story'
 
+
 class OnRespinAction(Enum):
     # TODO: what's the default? It would simplify the class a bit.
     KEEP = 'keep'
