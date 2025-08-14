@@ -761,6 +761,9 @@ class InitialErratum(Serializable):
         )
 
 
+UNDEFINED_COMPOSE = '_undefined_'
+
+
 @define
 class Compose(Cloneable, Serializable):
     """
@@ -770,6 +773,32 @@ class Compose(Cloneable, Serializable):
     """
 
     id: ComposeId = field()
+
+    @property
+    def prev_minor(self) -> ComposeId:
+        r = re.match(r'^RHEL-([0-9]+)\.([0-9]+)', self.id)
+        if r:
+            major, minor = map(int, r.groups())
+            if major in {8, 9} and minor > 0:
+                return f'RHEL-{major}.{minor - 1}.0-Nightly'
+            if major == 10 and minor > 0:
+                return f'RHEL-{major}.{minor - 1}-Nightly'
+        return UNDEFINED_COMPOSE
+
+    @property
+    def prev_major(self) -> ComposeId:
+        r = re.match(r'^(Fedora|RHEL)-([0-9]+)', self.id)
+        if r:
+            distro = r.group(1)
+            major = int(r.group(2))
+            if distro == 'RHEL':
+                if major == 8:
+                    return 'RHEL-7-LatestUpdated'
+                if major in {9, 10}:
+                    return f'RHEL-{major - 1}-Nightly'
+            if distro == 'Fedora' and major > 36:
+                return f'Fedora-{major - 1}-Updated'
+        return UNDEFINED_COMPOSE
 
 
 class ErratumContentType(Enum):
