@@ -22,6 +22,7 @@ from . import (
     EXECUTE_FILE_PREFIX,
     JIRA_FILE_PREFIX,
     SCHEDULE_FILE_PREFIX,
+    TF_REQUEST_FINISHED_STATES,
     Arch,
     ArtifactJob,
     CLIContext,
@@ -1917,7 +1918,7 @@ def cmd_report(ctx: CLIContext) -> None:
                     'plan': job.request.tmt.get('plan', '')}
                 if job.execution.result != RequestResult.PASSED:
                     all_tests_passed = False
-                if job.execution.state not in ['complete', 'error', 'canceled']:
+                if job.execution.state not in TF_REQUEST_FINISHED_STATES:
                     all_tests_finished = False
             launch_description = execute_jobs[0].request.reportportal.get(
                 'launch_description', '')
