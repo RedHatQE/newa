@@ -270,10 +270,14 @@ class Settings:  # type: ignore[no-untyped-def]
             )
 
 
+TF_REQUEST_FINISHED_STATES = {'complete', 'error', 'canceled', 'skipped'}
+
+
 class RequestResult(Enum):
     PASSED = 'passed'
     FAILED = 'failed'
     ERROR = 'error'
+    SKIPPED = 'skipped'
     NONE = 'None'
 
     @classmethod
@@ -1293,8 +1297,7 @@ class TFRequest(Cloneable, Serializable):
             response_content=ResponseContentType.JSON)
 
     def is_finished(self) -> bool:
-        return bool(self.details and self.details.get('state', None) in [
-            'complete', 'error', 'canceled'])
+        return bool(self.details and self.details.get('state', None) in TF_REQUEST_FINISHED_STATES)
 
 
 def check_tf_cli_version(ctx: CLIContext) -> None:
