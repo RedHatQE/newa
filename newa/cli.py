@@ -1161,9 +1161,12 @@ def cmd_jira(
             if issue:
                 # verify that specified Jira issue truly exists
                 jira_connection = initialize_jira_connection(ctx)
-                jira_connection.issue(issue)
+                jira_issue = jira_connection.issue(issue)
                 ctx.logger.info(f"Using issue {issue}")
-                new_issue = Issue(issue)
+                new_issue = Issue(issue,
+                                  summary=jira_issue.fields.summary,
+                                  url=urllib.parse.urljoin(
+                                      ctx.settings.jira_url, f'/browse/{jira_issue.key}'))
             else:
                 # when --issue is not specified, we would use an empty string as ID
                 # so we will skip Jira reporting steps in later stages
