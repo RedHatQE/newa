@@ -1915,7 +1915,8 @@ def cmd_report(ctx: CLIContext) -> None:
                     'result': str(job.execution.result),
                     'uuid': job.execution.request_uuid,
                     'url': job.execution.artifacts_url,
-                    'plan': job.request.tmt.get('plan', '')}
+                    'plan': job.request.tmt.get('plan', ''),
+                    'suite_desc': job.request.reportportal.get('suite_description', '')}
                 if job.execution.result != RequestResult.PASSED:
                     all_tests_passed = False
                 if job.execution.state not in TF_REQUEST_FINISHED_STATES:
@@ -1940,8 +1941,10 @@ def cmd_report(ctx: CLIContext) -> None:
                 # it would be nice to use hyperlinks in launch description however we
                 # would hit description length limit. Therefore using plain text
                 launch_description += "<br>{id}: {state}, {result}".format(**results[req])
-                jira_description += "\n| [{id}|{url}] | {state} | {result} | {plan} |".format(
-                    **results[req])
+                jira_description += (
+                    "\n| [{id}|{url}] | {state} | {result} | {plan} | {suite_desc} |".format(
+                        **results[req])
+                    )
             # finish launch just in case it hasn't been finished already
             # and update description with more detailed results
             rp.finish_launch(launch_uuid)
