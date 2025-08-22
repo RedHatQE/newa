@@ -2108,7 +2108,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 self.get_details(issue).update(fields={"description": new_description})
                 short_sleep()
                 self.comment_issue(
-                    issue, "NEWA refreshed issue ID.")
+                    issue, f"NEWA ID has been updated to:\n{self.newa_id(action)}")
                 short_sleep()
             except jira.JIRAError as e:
                 raise Exception(f"Unable to modify issue {issue}!") from e
