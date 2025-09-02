@@ -413,6 +413,7 @@ def apply_release_mapping(string: str,
             r'RHEL-10\.0\.BETA=RHEL-10-Beta',
             r'-candidate$=',
             r'-draft$=',
+            r'-z$=',
             r'$=-Nightly',
             # ugly hack to narrow weird TF compose naming for RHEL-7
             r'RHEL-7-ELS-Nightly=RHEL-7.9-ZStream',
