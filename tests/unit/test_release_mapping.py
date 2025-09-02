@@ -17,6 +17,7 @@ def test_release_mapping():
         # build target mapping
         ('rhel-10.1-candidate', 'RHEL-10.1-Nightly'),
         ('rhel-9.7.0-draft', 'RHEL-9.7.0-Nightly'),
+        ('rhel-10.1-z-draft', 'RHEL-10.1-Nightly'),
         ]
     for release, distro in matrix:
         assert cli.apply_release_mapping(release) == distro
