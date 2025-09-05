@@ -1317,6 +1317,8 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
                 'CONTEXT': request.context,
                 'ENVIRONMENT': request.environment,
                 'ISSUE': issue_fields}
+            if request.arch:
+                jinja_vars['ARCH'] = request.arch.value
             # before yaml export render all fields as Jinja templates
             for attr in (
                     "reportportal",
