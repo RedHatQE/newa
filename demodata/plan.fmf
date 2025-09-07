@@ -1,9 +1,6 @@
 execute:
     how: tmt
 
-report:
-    how: reportportal
-
 /plan1:
   summary: demo testplan 1
 
@@ -21,3 +18,8 @@ report:
     tests:
      - name: execution context test 2
        test: echo PLANET=${PLANET} CITY=${CITY} color=$@{color}
+
+adjust:
+  - when: newa_report_rp is defined
+    report:
+        how: reportportal

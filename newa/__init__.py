@@ -1136,6 +1136,8 @@ class Request(Cloneable, Serializable):
                             self.reportportal["launch_name"]}"'""",
                         '--tmt-environment',
                         """TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1""",
+                        '--context',
+                        'newa_report_rp=1',
                         ]
             if self.reportportal.get("suite_description", None):
                 # we are intentionally using suite_description, not launch description
@@ -1215,9 +1217,20 @@ class Request(Cloneable, Serializable):
         return TFRequest(api=api, uuid=request_uuid)
 
     def generate_tmt_exec_command(self, ctx: CLIContext) -> tuple[list[str], dict[str, str]]:
+        # beginning of the tmt command
+        command: list[str] = ['tmt']
+        # newa request ID
+        command += ['-c', f'newa_req="{self.id}"']
+        command += ['-c', f'newa_batch="{self.get_hash(ctx.timestamp)}"']
+        # process context
+        if self.context:
+            for k, v in self.context.items():
+                command += ['-c', f'{k}="{v}"']
         # process envvars
         environment: dict[str, str] = {}
         if self.reportportal:
+            # add newa_report_rp context
+            command += ['-c', 'newa_report_rp=1']
             # reportportal settings will be passed through envvars
             rp_token = ctx.settings.rp_token
             rp_url = ctx.settings.rp_url
@@ -1250,15 +1263,6 @@ class Request(Cloneable, Serializable):
             if rp_test_param_filter:
                 environment['TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES'] = \
                     f"{rp_test_param_filter}"
-        # beginning of the tmt command
-        command: list[str] = ['tmt']
-        # newa request ID
-        command += ['-c', f'newa_req="{self.id}"']
-        command += ['-c', f'newa_batch="{self.get_hash(ctx.timestamp)}"']
-        # process context
-        if self.context:
-            for k, v in self.context.items():
-                command += ['-c', f'{k}="{v}"']
         # tmt run --all
         command += ['run']
         # process environment
