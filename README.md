@@ -842,6 +842,14 @@ Example: Changing TF CLI arguments.
 $ newa ... schedule --fixture testingfarm.cli_args="--repository-file URL" ...
 ```
 
+#### Option `--no-reportportal`
+
+If a recipe contains `reportportal` launch configuration, NEWA will create a RP launch and instruct `tmt` to report test results to it. With `schedule --no-reportportal` option NEWA will ignore `reportportal` section form the recipe and test results won't be reported to ReportPortal. Please note that when `how: reportportal` reporting is enabled in a `tmt` plan then both `tmt` and TestinFarm request may finish with an error. Therefore, when disabling ReportPortal reporting in NEWA a user should also ensure that it is not enabled in the `tmt` plan itself.
+
+Example:
+```
+$ newa event --compose CentOS-Stream-9 job-recipe path/to/recipe.yaml schedule --no-reportportal execute
+```
 
 
 ### Subcommand `cancel`

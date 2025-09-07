@@ -1105,37 +1105,50 @@ class Request(Cloneable, Serializable):
             }
         command: list[str] = [
             'testing-farm', 'request', '--no-wait',
+            '--context',
+            f"""newa_batch={self.get_hash(ctx.timestamp)}""",
             ]
-        rp_token = ctx.settings.rp_token
-        rp_url = ctx.settings.rp_url
-        rp_project = ctx.settings.rp_project
-        rp_test_param_filter = ctx.settings.rp_test_param_filter
+        # set ReportPortal related parameters only when reportportal attribute is not empty
         if self.reportportal:
+            rp_token = ctx.settings.rp_token
+            rp_url = ctx.settings.rp_url
+            rp_project = ctx.settings.rp_project
+            rp_test_param_filter = ctx.settings.rp_test_param_filter
             rp_launch = self.reportportal.get("launch_uuid", None)
-        if not rp_token:
-            raise Exception('ERROR: ReportPortal token is not set')
-        if not rp_url:
-            raise Exception('ERROR: ReportPortal URL is not set')
-        if not rp_project:
-            raise Exception('ERROR: ReportPortal project is not set')
-        if (not self.reportportal) or (not self.reportportal['launch_name']):
-            raise Exception('ERROR: ReportPortal launch name is not specified')
-        command += ['--tmt-environment',
-                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"'""",
+            if not rp_token:
+                raise Exception('ERROR: ReportPortal token is not set')
+            if not rp_url:
+                raise Exception('ERROR: ReportPortal URL is not set')
+            if not rp_project:
+                raise Exception('ERROR: ReportPortal project is not set')
+            if not self.reportportal['launch_name']:
+                raise Exception('ERROR: ReportPortal launch name is not specified')
+            command += ['--tmt-environment',
+                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"'""",
+                        '--tmt-environment',
+                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_URL="{rp_url}"'""",
+                        '--tmt-environment',
+                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT="{rp_project}"'""",
+                        '--tmt-environment',
+                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH="{rp_launch}"'""",
+                        '--tmt-environment',
+                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH="{
+                            self.reportportal["launch_name"]}"'""",
+                        '--tmt-environment',
+                        """TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1""",
+                        ]
+            if self.reportportal.get("suite_description", None):
+                # we are intentionally using suite_description, not launch description
+                # as due to SUITE_PER_PLAN enabled the launch description will end up
+                # in suite description as well once
+                # https://github.com/teemtee/tmt/issues/2990 is implemented
+                desc = self.reportportal.get("suite_description")
+                command += [
                     '--tmt-environment',
-                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_URL="{rp_url}"'""",
-                    '--tmt-environment',
-                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT="{rp_project}"'""",
-                    '--tmt-environment',
-                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH="{rp_launch}"'""",
-                    '--tmt-environment',
-                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH="{
-                        self.reportportal["launch_name"]}"'""",
-                    '--tmt-environment',
-                    """TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1""",
-                    '--context',
-                    f"""newa_batch={self.get_hash(ctx.timestamp)}""",
-                    ]
+                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION="{desc}"'"""]
+            if rp_test_param_filter:
+                command += ['--tmt-environment',
+                            f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES="{rp_test_param_filter}"'"""]
         # check compose
         if not self.compose:
             raise Exception('ERROR: compose is not specified for the request')
@@ -1159,20 +1172,6 @@ class Request(Cloneable, Serializable):
         # process arch
         if self.arch:
             command += ['--arch', self.arch.value]
-        # process reportportal configuration
-        if self.reportportal and self.reportportal.get("suite_description", None):
-            # we are intentionally using suite_description, not launch description
-            # as due to SUITE_PER_PLAN enabled the launch description will end up
-            # in suite description as well once
-            # https://github.com/teemtee/tmt/issues/2990 is implemented
-            desc = self.reportportal.get("suite_description")
-            command += [
-                '--tmt-environment',
-                f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION="{desc}"'"""]
-        if rp_test_param_filter:
-            command += [
-                '--tmt-environment',
-                f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES="{rp_test_param_filter}"'"""]
         # newa request ID
         command += ['-c', f"""'newa_req="{self.id}"'"""]
         # process context
@@ -1217,39 +1216,40 @@ class Request(Cloneable, Serializable):
 
     def generate_tmt_exec_command(self, ctx: CLIContext) -> tuple[list[str], dict[str, str]]:
         # process envvars
-        # reportportal settings will be passed through envvars
-        rp_token = ctx.settings.rp_token
-        rp_url = ctx.settings.rp_url
-        rp_project = ctx.settings.rp_project
-        rp_test_param_filter = ctx.settings.rp_test_param_filter
+        environment: dict[str, str] = {}
         if self.reportportal:
+            # reportportal settings will be passed through envvars
+            rp_token = ctx.settings.rp_token
+            rp_url = ctx.settings.rp_url
+            rp_project = ctx.settings.rp_project
+            rp_test_param_filter = ctx.settings.rp_test_param_filter
             rp_launch = self.reportportal.get("launch_uuid", None)
-        if not rp_token:
-            raise Exception('ERROR: ReportPortal token is not set')
-        if not rp_url:
-            raise Exception('ERROR: ReportPortal URL is not set')
-        if not rp_project:
-            raise Exception('ERROR: ReportPortal project is not set')
-        if (not self.reportportal) or (not self.reportportal['launch_name']):
-            raise Exception('ERROR: ReportPortal launch name is not specified')
-        environment: dict[str, str] = {
-            'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN': f"{rp_token}",
-            'TMT_PLUGIN_REPORT_REPORTPORTAL_URL': f"{rp_url}",
-            'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT': f"{rp_project}",
-            'TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH': f"{rp_launch}",
-            'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH': f"{self.reportportal['launch_name']}",
-            'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN': '1',
-            }
-        if self.reportportal and self.reportportal.get("suite_description", None):
-            # we are intentionally using suite_description, not launch description
-            # as due to SUITE_PER_PLAN enabled the launch description will end up
-            # in suite description as well once
-            # https://github.com/teemtee/tmt/issues/2990 is implemented
-            desc = self.reportportal.get("suite_description")
-            environment['TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION'] = f"{desc}"
-        if rp_test_param_filter:
-            environment['TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES'] = \
-                f"{rp_test_param_filter}"
+            if not rp_token:
+                raise Exception('ERROR: ReportPortal token is not set')
+            if not rp_url:
+                raise Exception('ERROR: ReportPortal URL is not set')
+            if not rp_project:
+                raise Exception('ERROR: ReportPortal project is not set')
+            if (not self.reportportal) or (not self.reportportal['launch_name']):
+                raise Exception('ERROR: ReportPortal launch name is not specified')
+            environment.update({
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN': f"{rp_token}",
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_URL': f"{rp_url}",
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT': f"{rp_project}",
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH': f"{rp_launch}",
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH': f"{self.reportportal['launch_name']}",
+                'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN': '1',
+                })
+            if self.reportportal.get("suite_description", None):
+                # we are intentionally using suite_description, not launch description
+                # as due to SUITE_PER_PLAN enabled the launch description will end up
+                # in suite description as well once
+                # https://github.com/teemtee/tmt/issues/2990 is implemented
+                desc = self.reportportal.get("suite_description")
+                environment['TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION'] = f"{desc}"
+            if rp_test_param_filter:
+                environment['TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES'] = \
+                    f"{rp_test_param_filter}"
         # beginning of the tmt command
         command: list[str] = ['tmt']
         # newa request ID
