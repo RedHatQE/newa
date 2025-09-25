@@ -36,6 +36,7 @@ from . import (
     ExecuteJob,
     Execution,
     Issue,
+    IssueAction,
     IssueConfig,
     IssueHandler,
     JiraJob,
@@ -849,78 +850,54 @@ def cmd_jira(
                 if not action.description:
                     raise Exception(f"Action {action} does not have a 'description' defined.")
 
-                rendered_summary = render_template(
-                    action.summary,
-                    EVENT=artifact_job.event,
-                    ERRATUM=artifact_job.erratum,
-                    COMPOSE=artifact_job.compose,
-                    JIRA=jira_event_fields,
-                    ROG=artifact_job.rog,
-                    CONTEXT=action.context,
-                    ENVIRONMENT=action.environment)
-                rendered_description = render_template(
-                    action.description,
-                    EVENT=artifact_job.event,
-                    ERRATUM=artifact_job.erratum,
-                    COMPOSE=artifact_job.compose,
-                    JIRA=jira_event_fields,
-                    ROG=artifact_job.rog,
-                    CONTEXT=action.context,
-                    ENVIRONMENT=action.environment)
+                def _render_value(value: str,
+                                  artifact_job: ArtifactJob,
+                                  action: IssueAction,
+                                  jira_event_fields: dict[str, Any]) -> str:
+                    return render_template(
+                        value,
+                        EVENT=artifact_job.event,
+                        ERRATUM=artifact_job.erratum,
+                        COMPOSE=artifact_job.compose,
+                        JIRA=jira_event_fields,
+                        ROG=artifact_job.rog,
+                        CONTEXT=action.context,
+                        ENVIRONMENT=action.environment)
+
+                rendered_summary = _render_value(
+                    action.summary, artifact_job, action, jira_event_fields)
+                rendered_description = _render_value(
+                    action.description, artifact_job, action, jira_event_fields)
                 if assignee:
                     rendered_assignee = assignee
                 elif unassigned:
                     rendered_assignee = None
                 elif action.assignee:
-                    rendered_assignee = render_template(
-                        action.assignee,
-                        EVENT=artifact_job.event,
-                        ERRATUM=artifact_job.erratum,
-                        COMPOSE=artifact_job.compose,
-                        JIRA=jira_event_fields,
-                        ROG=artifact_job.rog,
-                        CONTEXT=action.context,
-                        ENVIRONMENT=action.environment)
+                    rendered_assignee = _render_value(
+                        action.assignee, artifact_job, action, jira_event_fields)
                 else:
                     rendered_assignee = None
                 if action.newa_id:
-                    action.newa_id = render_template(
-                        action.newa_id,
-                        EVENT=artifact_job.event,
-                        ERRATUM=artifact_job.erratum,
-                        COMPOSE=artifact_job.compose,
-                        JIRA=jira_event_fields,
-                        ROG=artifact_job.rog,
-                        CONTEXT=action.context,
-                        ENVIRONMENT=action.environment)
+                    action.newa_id = _render_value(
+                        action.newa_id, artifact_job, action, jira_event_fields)
                 rendered_fields = copy.deepcopy(action.fields)
                 if rendered_fields:
                     for key, value in rendered_fields.items():
                         if isinstance(value, str):
-                            rendered_fields[key] = render_template(
-                                value,
-                                EVENT=artifact_job.event,
-                                ERRATUM=artifact_job.erratum,
-                                COMPOSE=artifact_job.compose,
-                                JIRA=jira_event_fields,
-                                ROG=artifact_job.rog,
-                                CONTEXT=action.context,
-                                ENVIRONMENT=action.environment)
+                            rendered_fields[key] = _render_value(
+                                value, artifact_job, action, jira_event_fields)
+                        elif isinstance(value, list):
+                            rendered_fields[key] = [_render_value(
+                                v, artifact_job, action, jira_event_fields) for v in value]
+
                 rendered_links: dict[str, list[str]] = {}
                 if action.links:
                     for relation in action.links:
                         rendered_links[relation] = []
                         for linked_key in action.links[relation]:
                             if isinstance(linked_key, str):
-                                rendered_links[relation].append(render_template(
-                                    linked_key,
-                                    EVENT=artifact_job.event,
-                                    ERRATUM=artifact_job.erratum,
-                                    COMPOSE=artifact_job.compose,
-                                    JIRA=jira_event_fields,
-                                    ROG=artifact_job.rog,
-                                    CONTEXT=action.context,
-                                    ENVIRONMENT=action.environment))
+                                rendered_links[relation].append(_render_value(
+                                    linked_key, artifact_job, action, jira_event_fields))
                             else:
                                 # Log or raise error for non-string linked_key
                                 raise Exception(
