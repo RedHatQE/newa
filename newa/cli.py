@@ -1178,8 +1178,18 @@ def cmd_jira(
                     'Can be specified multiple times. '
                     'Example: --fixture testingfarm.cli_args="--repository-file URL"'),
               )
+@click.option(
+    '--no-reportportal',
+    is_flag=True,
+    default=False,
+    help='Do not report test results to ReportPortal.',
+    )
 @click.pass_obj
-def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
+def cmd_schedule(
+        ctx: CLIContext,
+        arch: list[str],
+        fixtures: list[str],
+        no_reportportal: bool) -> None:
     ctx.enter_command('schedule')
 
     # ensure state dir is present and initialized
@@ -1285,6 +1295,9 @@ def cmd_schedule(ctx: CLIContext, arch: list[str], fixtures: list[str]) -> None:
 
         # create ScheduleJob object for each request
         for request in requests:
+            # clear reportportal attribute when --no-reportportal
+            if no_reportportal:
+                request.reportportal = None
             # prepare dict for Jinja template rendering
             jinja_vars = {
                 'EVENT': jira_job.event,
@@ -1525,67 +1538,75 @@ def cmd_execute(
     # now we process jobs for each jira_id
     jira_url = ctx.settings.jira_url
     for jira_id, schedule_jobs in jira_schedule_job_mapping.items():
-        # when --continue the launch was probably already created
-        # check the 1st job for launch_uuid
+
         job = schedule_jobs[0]
-        launch_uuid = job.request.reportportal.get('launch_uuid', None)
-        launch_description = job.request.reportportal.get('launch_description', '')
-        if launch_description:
-            launch_description += '<br><br>'
-        # add the number of jobs
-        if not jira_id.startswith(JIRA_NONE_ID):
-            issue_url = urllib.parse.urljoin(
-                jira_url,
-                f"/browse/{jira_id}")
-            launch_description += f'[{jira_id}]({issue_url}): '
-        launch_description += (f'{len(schedule_jobs)} '
-                               'request(s) in total')
-        # at this point we have the beginning of launch description
-        # we will eventually (re)use it when restarting requests
-        if launch_uuid:
-            ctx.logger.debug(
-                f'Skipping RP launch creation for {jira_id} as {launch_uuid} already exists.')
+
+        # now we create or reuse RP launch
+        if schedule_jobs[0].request.reportportal:
+            # when --continue the launch was probably already created
+            # check the 1st job for launch_uuid
+            launch_uuid = job.request.reportportal.get('launch_uuid', None)
+            launch_description = job.request.reportportal.get('launch_description', '')
+            if launch_description:
+                launch_description += '<br><br>'
+            # add the number of jobs
+            if not jira_id.startswith(JIRA_NONE_ID):
+                issue_url = urllib.parse.urljoin(
+                    jira_url,
+                    f"/browse/{jira_id}")
+                launch_description += f'[{jira_id}]({issue_url}): '
+            launch_description += (f'{len(schedule_jobs)} '
+                                   'request(s) in total')
+            # at this point we have the beginning of launch description
+            # we will eventually (re)use it when restarting requests
+            if launch_uuid:
+                ctx.logger.debug(
+                    f'Skipping RP launch creation for {jira_id} as {launch_uuid} already exists.')
+                launch_list.append(launch_uuid)
+                continue
+
+            # otherwise we proceed with launch creation
+            # get additional launch details from the first schedule job
+            launch_name = schedule_jobs[0].request.reportportal['launch_name'].strip()
+            if not launch_name:
+                raise Exception("RP launch name is not configured")
+            launch_attrs = schedule_jobs[0].request.reportportal.get(
+                'launch_attributes', {})
+            launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
+            # we store CLI --context definitions as well but not overriding
+            # existing launch_attributes
+            for (k, v) in ctx.cli_context.items():
+                if k in launch_attrs:
+                    ctx.logger.debug(
+                        f'Not storing context {k} as launch attribute due to a collision')
+                else:
+                    launch_attrs[k] = v
+            # when testing erratum, add special context erratum=XXXX
+            if schedule_jobs[0].erratum and 'erratum' not in launch_attrs:
+                launch_attrs['erratum'] = str(schedule_jobs[0].erratum.id)
+            # create the actual launch
+            launch_uuid = rp.create_launch(launch_name,
+                                           launch_description,
+                                           attributes=launch_attrs)
+            if not launch_uuid:
+                raise Exception('Failed to create RP launch')
             launch_list.append(launch_uuid)
-            continue
+            # save each schedule job with launch_uuid and launch_url
+            ctx.logger.info(f'Created RP launch {launch_uuid} for issue {jira_id}')
+            launch_url = rp.get_launch_url(launch_uuid)
+            for job in jira_schedule_job_mapping[jira_id]:
+                job.request.reportportal['launch_uuid'] = launch_uuid
+                job.request.reportportal['launch_url'] = launch_url
+                ctx.save_schedule_job(job)
 
-        # otherwise we proceed with launch creation
-        # get additional launch details from the first schedule job
-        launch_name = schedule_jobs[0].request.reportportal['launch_name'].strip()
-        if not launch_name:
-            raise Exception("RP launch name is not configured")
-        launch_attrs = schedule_jobs[0].request.reportportal.get(
-            'launch_attributes', {})
-        launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
-        # we store CLI --context definitions as well but not overriding
-        # existing launch_attributes
-        for (k, v) in ctx.cli_context.items():
-            if k in launch_attrs:
-                ctx.logger.debug(f'Not storing context {k} as launch attribute due to a collision')
-            else:
-                launch_attrs[k] = v
-        # when testing erratum, add special context erratum=XXXX
-        if schedule_jobs[0].erratum and 'erratum' not in launch_attrs:
-            launch_attrs['erratum'] = str(schedule_jobs[0].erratum.id)
-        # create the actual launch
-        launch_uuid = rp.create_launch(launch_name,
-                                       launch_description,
-                                       attributes=launch_attrs)
-        if not launch_uuid:
-            raise Exception('Failed to create RP launch')
-        launch_list.append(launch_uuid)
-        # save each schedule job with launch_uuid and launch_url
-        ctx.logger.info(f'Created RP launch {launch_uuid} for issue {jira_id}')
-        launch_url = rp.get_launch_url(launch_uuid)
-        for job in jira_schedule_job_mapping[jira_id]:
-            job.request.reportportal['launch_uuid'] = launch_uuid
-            job.request.reportportal['launch_url'] = launch_url
-            ctx.save_schedule_job(job)
-
-        # update Jira issue with a note about the RP launch
+        # update Jira issue with a note about the execution
         if not jira_id.startswith(JIRA_NONE_ID):
             jira_connection = initialize_jira_connection(ctx)
-            comment = ("NEWA has scheduled automated test recipe for this issue, test "
-                       f"results will be uploaded to ReportPortal launch\n{launch_url}")
+            if schedule_jobs[0].request.reportportal:
+                comment = ("NEWA has scheduled automated test recipe for this issue, test "
+                           f"results will be uploaded to ReportPortal launch\n{launch_url}")
+            else:
+                comment = "NEWA has scheduled automated test recipe for this issue"
             # check if we have a comment footer defined in envvar
             footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
             if footer:
@@ -1599,7 +1620,8 @@ def cmd_execute(
                         'value': job.jira.group}
                     if job.jira.group else None)
                 ctx.logger.info(
-                    f'Jira issue {jira_id} was updated with a RP launch URL {launch_url}')
+                    f'Jira issue {jira_id} was updated with a comment '
+                    'about initiated test execution')
             except jira.JIRAError as e:
                 raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
 
@@ -1627,31 +1649,34 @@ def cmd_execute(
         # small sleep to avoid race conditions inside tmt code
         time.sleep(0.1)
 
-    # for ctx.no_wait update launch description at least with TF requests API URLs
-    if ctx.no_wait:
-        rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit or RP_LAUNCH_DESCR_CHARS_LIMIT
-        rp_launch_descr_updated = launch_description + "\n"
-        rp_launch_descr_dots = True
-        for execute_job in ctx.load_execute_jobs(filter_actions=True):
-            req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
-            if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
-                rp_launch_descr_updated += req_link
-            elif rp_launch_descr_dots:
-                rp_launch_descr_updated += "\n..."
-                rp_launch_descr_dots = False
-        rp.update_launch(launch_uuid, description=rp_launch_descr_updated)
+    # do some final RP launch updates
+    if schedule_jobs[0].request.reportportal:
+        # for ctx.no_wait update launch description at least with TF requests API URLs
+        if ctx.no_wait:
+            rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit \
+                or RP_LAUNCH_DESCR_CHARS_LIMIT
+            rp_launch_descr_updated = launch_description + "\n"
+            rp_launch_descr_dots = True
+            for execute_job in ctx.load_execute_jobs(filter_actions=True):
+                req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
+                if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
+                    rp_launch_descr_updated += req_link
+                elif rp_launch_descr_dots:
+                    rp_launch_descr_updated += "\n..."
+                    rp_launch_descr_dots = False
+            rp.update_launch(launch_uuid, description=rp_launch_descr_updated)
 
-    ctx.logger.info('Finished execution')
+        ctx.logger.info('Finished execution')
 
-    # let's keep the RP lauch unfinished when using --no-wait
-    if not ctx.no_wait:
-        # finish all RP launches so that they won't remain unfinished
-        # in the report step we will update description with additional
-        # details about the result
-        for launch_uuid in launch_list:
-            ctx.logger.info(f'Finishing launch {launch_uuid}')
-            rp.finish_launch(launch_uuid)
-            rp.check_for_empty_launch(launch_uuid, logger=ctx.logger)
+        # let's keep the RP lauch unfinished when using --no-wait
+        if not ctx.no_wait:
+            # finish all RP launches so that they won't remain unfinished
+            # in the report step we will update description with additional
+            # details about the result
+            for launch_uuid in launch_list:
+                ctx.logger.info(f'Finishing launch {launch_uuid}')
+                rp.finish_launch(launch_uuid)
+                rp.check_for_empty_launch(launch_uuid, logger=ctx.logger)
 
 
 def test_patterns_match(s: str, patterns: list[str]) -> tuple[bool, str]:
@@ -1815,6 +1840,61 @@ def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) 
     ctx.save_execute_job(execute_job)
 
 
+# prepares a fancy summary for Jira or ReportPortal
+def execute_jobs_summary(ctx: CLIContext,
+                         jira_id: str,
+                         execute_jobs: list[ExecuteJob],
+                         target: str = 'Jira') -> str:
+    """
+    Prepares a string with a summary of executed jobs.
+    Parameter 'target' could be either 'Jira' or 'ReportPortal'.
+    """
+    separator = '<br>' if target == 'ReportPortal' else '\n'
+    summary = ''
+    # add configured RP description if available
+    if execute_jobs[0].request.reportportal:
+        launch_description = execute_jobs[0].request.reportportal.get(
+            'launch_description', '')
+        summary += launch_description + 2 * separator if launch_description else ''
+    # prepare content with individual results
+    results: dict[str, dict[str, str]] = {}
+    for job in execute_jobs:
+        results[job.request.id] = {
+            'id': job.request.id,
+            'state': job.execution.state,
+            'result': str(job.execution.result),
+            'uuid': job.execution.request_uuid,
+            'url': job.execution.artifacts_url,
+            'plan': job.request.tmt.get('plan', '')}
+        if job.request.reportportal:
+            results[job.request.id]['suite_desc'] = job.request.reportportal.get(
+                'suite_description', '')
+        else:
+            results[job.request.id]['suite_desc'] = ''
+    if not jira_id.startswith(JIRA_NONE_ID):
+        jira_url = ctx.settings.jira_url
+        issue_url = urllib.parse.urljoin(
+            jira_url,
+            f"/browse/{jira_id}")
+        if target == 'ReportPortal':
+            summary += f'[{jira_id}]({issue_url}): '
+        else:
+            summary += f'{jira_id}: '
+    summary += f'{len(execute_jobs)} request(s) in total:'
+    for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
+        # it would be nice to use hyperlinks in launch description however we
+        # would hit launch description length limit. Therefore using plain text
+        summary += separator
+        if target == 'ReportPortal':
+            summary += "{id}: {state}, {result}".format(**results[req])
+        else:
+            summary += (
+                "| [{id}|{url}] | {state} | {result} | {plan} | {suite_desc} |".format(
+                    **results[req])
+                )
+    return summary
+
+
 @main.command(name='report')
 @click.pass_obj
 def cmd_report(ctx: CLIContext) -> None:
@@ -1828,12 +1908,14 @@ def cmd_report(ctx: CLIContext) -> None:
         ctx.logger.warning('Warning: There are no previously executed jobs to report')
         return
 
-    # initialize RP connection
-    rp_project = ctx.settings.rp_project
-    rp_url = ctx.settings.rp_url
-    rp = ReportPortal(url=rp_url,
-                      token=ctx.settings.rp_token,
-                      project=rp_project)
+    # initialize RP connection if RP instance is configured
+    if ctx.settings.rp_url:
+        rp_project = ctx.settings.rp_project
+        rp_url = ctx.settings.rp_url
+        rp = ReportPortal(url=rp_url,
+                          token=ctx.settings.rp_token,
+                          project=rp_project)
+
     # initialize Jira connection
     jira_connection = initialize_jira_connection(ctx)
     # initialize ET connection
@@ -1880,108 +1962,89 @@ def cmd_report(ctx: CLIContext) -> None:
 
     # now for each jira id finish the respective launch and report results
     for jira_id, execute_jobs in jira_execute_job_mapping.items():
-        all_tests_passed = True
-        all_tests_finished = True
-        # get RP launch details
-        launch_uuid = execute_jobs[0].request.reportportal.get(
-            'launch_uuid', None)
-        launch_url = execute_jobs[0].request.reportportal.get(
-            'launch_url', None)
+
+        # get some RP launch details
+        launch_uuid = None
+        launch_url = None
+        if execute_jobs[0].request.reportportal:
+            launch_uuid = execute_jobs[0].request.reportportal.get(
+                'launch_uuid', None)
+            launch_url = execute_jobs[0].request.reportportal.get(
+                'launch_url', None)
         if launch_uuid:
             rp.check_for_empty_launch(launch_uuid, logger=ctx.logger)
-            # prepare description with individual results
-            results: dict[str, dict[str, str]] = {}
-            for job in execute_jobs:
-                results[job.request.id] = {
-                    'id': job.request.id,
-                    'state': job.execution.state,
-                    'result': str(job.execution.result),
-                    'uuid': job.execution.request_uuid,
-                    'url': job.execution.artifacts_url,
-                    'plan': job.request.tmt.get('plan', ''),
-                    'suite_desc': job.request.reportportal.get('suite_description', '')}
-                if job.execution.result != RequestResult.PASSED:
-                    all_tests_passed = False
-                if job.execution.state not in TF_REQUEST_FINISHED_STATES:
-                    all_tests_finished = False
-            launch_description = execute_jobs[0].request.reportportal.get(
-                'launch_description', '')
-            if launch_description:
-                launch_description += '<br><br>'
-            if not jira_id.startswith(JIRA_NONE_ID):
-                jira_url = ctx.settings.jira_url
-                issue_url = urllib.parse.urljoin(
-                    jira_url,
-                    f"/browse/{jira_id}")
-                launch_description += f'{jira_id}: '
-            launch_description += f'{len(execute_jobs)} request(s) in total:'
-            jira_description = launch_description.replace('<br>', '\n')
-            # add hyperlink to Jira issue only for the RP launch
-            if not jira_id.startswith(JIRA_NONE_ID):
-                launch_description = launch_description.replace(
-                    f'{jira_id}:', f'[{jira_id}]({issue_url}):')
-            for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
-                # it would be nice to use hyperlinks in launch description however we
-                # would hit description length limit. Therefore using plain text
-                launch_description += "<br>{id}: {state}, {result}".format(**results[req])
-                jira_description += (
-                    "\n| [{id}|{url}] | {state} | {result} | {plan} | {suite_desc} |".format(
-                        **results[req])
-                    )
+
+        # check if all tests have finished and passed
+        all_tests_passed = True
+        all_tests_finished = True
+        for job in execute_jobs:
+            if job.execution.result != RequestResult.PASSED:
+                all_tests_passed = False
+            if job.execution.state not in TF_REQUEST_FINISHED_STATES:
+                all_tests_finished = False
+        jira_description = execute_jobs_summary(ctx, jira_id, execute_jobs, target='Jira')
+        launch_description = execute_jobs_summary(
+            ctx, jira_id, execute_jobs, target='ReportPortal')
+
+        if launch_uuid:
             # finish launch just in case it hasn't been finished already
             # and update description with more detailed results
             rp.finish_launch(launch_uuid)
             ctx.logger.info(f'Updating launch description, {launch_url}')
             rp.update_launch(launch_uuid, description=launch_description)
-            # do not report to Jira if JIRA_NONE_ID was used
-            if not jira_id.startswith(JIRA_NONE_ID):
-                try:
-                    comment = (f"NEWA has imported test results to RP launch "
-                               f"{launch_url}\n\n{jira_description}")
-                    # check if we have a comment footer defined in envvar
-                    footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
-                    if footer:
-                        comment += f'\n{footer}'
-                    jira_connection.add_comment(
-                        jira_id,
-                        comment,
-                        visibility={
-                            'type': 'group',
-                            'value': execute_job.jira.group}
-                        if execute_job.jira.group else None)
-                    ctx.logger.info(
-                        f'Jira issue {jira_id} was updated with a RP launch URL {launch_url}')
-                except jira.JIRAError as e:
-                    raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
-                # change Jira issue state if required
-                if execute_job.jira.transition_passed and all_tests_passed:
-                    issue_transition(jira_connection,
-                                     execute_job.jira.transition_passed,
-                                     jira_id)
-                    ctx.logger.info(
-                        f'Issue {jira_id} state changed to {execute_job.jira.transition_passed}')
-                elif execute_job.jira.transition_processed and all_tests_finished:
-                    issue_transition(jira_connection,
-                                     execute_job.jira.transition_processed,
-                                     jira_id)
-                    ctx.logger.info(
-                        f'Issue {jira_id} state changed '
-                        f'to {execute_job.jira.transition_processed}')
 
-                # update Errata Tool with a comment when required
-                if (ctx.settings.et_enable_comments and
-                        ErratumCommentTrigger.REPORT in
-                        execute_job.jira.erratum_comment_triggers and
-                        execute_job.erratum):
-                    issue_summary = jira_connection.issue(jira_id).fields.summary
-                    issue_url = urllib.parse.urljoin(ctx.settings.jira_url, f"/browse/{jira_id}")
-                    et.add_comment(
-                        execute_job.erratum.id,
-                        'The New Errata Workflow Automation (NEWA) has finished test execution '
-                        'for this advisory.\n'
-                        f'{jira_id} - {issue_summary}\n'
-                        f'{issue_url}\n'
-                        f'{launch_url}')
+        # do not report to Jira if JIRA_NONE_ID was used
+        if not jira_id.startswith(JIRA_NONE_ID):
+            try:
+                if launch_uuid:
+                    comment = ("NEWA has finished test execution and imported test results "
+                               f"to RP launch\n{launch_url}\n\n{jira_description}")
+                else:
+                    comment = (f"NEWA has finished test execution\n\n{jira_description}")
+                # check if we have a comment footer defined in envvar
+                footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
+                if footer:
+                    comment += f'\n{footer}'
+                jira_connection.add_comment(
+                    jira_id,
+                    comment,
+                    visibility={
+                        'type': 'group',
+                        'value': execute_job.jira.group}
+                    if execute_job.jira.group else None)
+                ctx.logger.debug(
+                    f'Jira issue {jira_id} was updated with test results')
+            except jira.JIRAError as e:
+                raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
+            # change Jira issue state if required
+            if execute_job.jira.transition_passed and all_tests_passed:
+                issue_transition(jira_connection,
+                                 execute_job.jira.transition_passed,
+                                 jira_id)
+                ctx.logger.info(
+                    f'Issue {jira_id} state changed to {execute_job.jira.transition_passed}')
+            elif execute_job.jira.transition_processed and all_tests_finished:
+                issue_transition(jira_connection,
+                                 execute_job.jira.transition_processed,
+                                 jira_id)
+                ctx.logger.info(
+                    f'Issue {jira_id} state changed '
+                    f'to {execute_job.jira.transition_processed}')
+
+            # update Errata Tool with a comment when required
+            if (ctx.settings.et_enable_comments and
+                    ErratumCommentTrigger.REPORT in
+                    execute_job.jira.erratum_comment_triggers and
+                    execute_job.erratum):
+                issue_summary = jira_connection.issue(jira_id).fields.summary
+                issue_url = urllib.parse.urljoin(ctx.settings.jira_url, f"/browse/{jira_id}")
+                comment = 'The New Errata Workflow Automation (NEWA) has finished '
+                'test execution for this advisory.\n'
+                f'{jira_id} - {issue_summary}\n'
+                f'{issue_url}\n'
+                if launch_url:
+                    comment += f'{launch_url}\n'
+                    et.add_comment(execute_job.erratum.id, comment)
                     ctx.logger.info(
                         f"Erratum {execute_job.erratum.id} was updated "
                         f"with a comment about {jira_id}")
