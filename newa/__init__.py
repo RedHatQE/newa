@@ -2030,7 +2030,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     fdata[field_id] = field_values
                 elif field_items == 'option':
                     fdata[field_id] = [{"value": v} for v in field_values]
-                elif field_items == 'component':
+                elif field_items in ['component', 'version']:
                     fdata[field_id] = [{"name": v} for v in field_values]
                 else:
                     raise Exception(f'Unsupported Jira field item "{field_items}"')
