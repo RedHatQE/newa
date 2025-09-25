@@ -1121,7 +1121,7 @@ class Request(Cloneable, Serializable):
                 raise Exception('ERROR: ReportPortal URL is not set')
             if not rp_project:
                 raise Exception('ERROR: ReportPortal project is not set')
-            if not self.reportportal['launch_name']:
+            if not self.reportportal.get('launch_name', None):
                 raise Exception('ERROR: ReportPortal launch name is not specified')
             command += ['--tmt-environment',
                         f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"'""",
