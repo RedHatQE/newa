@@ -3,3 +3,6 @@ fixtures:
     PLANET: Earth
   context:
     navigate: yes
+adjustments:
+  - context:
+      traveller: Karel

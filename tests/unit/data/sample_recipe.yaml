@@ -11,6 +11,12 @@ fixtures:
     environment:
         DESCRIPTION: "fixtures description"
     compose: Fedora-fix
+adjustments:
+  - context:
+        distro: fedora
+  - environment:
+        DESCRIPTION: "adjustments description"
+    when: CONTEXT.arch is match('x86_64') and CONTEXT.fips is match('yes')
 dimensions:
     arch:
        - context:
