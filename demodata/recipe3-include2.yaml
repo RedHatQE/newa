@@ -4,3 +4,7 @@ fixtures:
   reportportal:
     launch_name: "default_name"
     launch_description: "default_description"
+adjustments:
+  - environment:
+      STREET: Rehorova
+    when: ENVIRONMENT.CITY is match('Brno')

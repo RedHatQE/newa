@@ -967,6 +967,8 @@ class RecipeConfig(Cloneable, Serializable):
 
     fixtures: RawRecipeConfigDimension = field(
         factory=cast(Callable[[], RawRecipeConfigDimension], dict))
+    adjustments: list[RawRecipeConfigDimension] = field(
+        factory=cast(Callable[[], list[RawRecipeConfigDimension]], list))
     dimensions: RawRecipeConfigDimensions = field(
         factory=cast(Callable[[], RawRecipeConfigDimensions], dict))
     includes: list[str] = field(factory=list)
@@ -980,6 +982,7 @@ class RecipeConfig(Cloneable, Serializable):
             re.search('^https?://', location) else cls.from_yaml_file(Path(location))
         # process each include
         fixtures_combination = []
+        adjustments = []
         for source in base_config.includes:
             if stack and source in stack:
                 raise Exception(
@@ -991,11 +994,16 @@ class RecipeConfig(Cloneable, Serializable):
             source_config = cls.from_yaml_with_includes(source, stack=stack)
             if source_config.fixtures:
                 fixtures_combination.append(source_config.fixtures)
+            if source_config.adjustments:
+                adjustments.extend(source_config.adjustments)
         if base_config.fixtures:
             fixtures_combination.append(base_config.fixtures)
+        if base_config.adjustments:
+            adjustments.extend(base_config.adjustments)
         if len(fixtures_combination) > 1:
             merged_fixtures = base_config.merge_combination_data(tuple(fixtures_combination))
             base_config.fixtures = copy.deepcopy(merged_fixtures)
+        base_config.adjustments = copy.deepcopy(adjustments)
         return base_config
 
     def merge_combination_data(
@@ -1045,6 +1053,14 @@ class RecipeConfig(Cloneable, Serializable):
         # get all options from dimensions
         options: list[list[RawRecipeConfigDimension]] = [self.dimensions[dimension]
                                                          for dimension in self.dimensions]
+        # extend options with adjustments
+        for adjustment in self.adjustments:
+            # if 'when' rule is present, we need to provide an empty alternative with
+            # negated condition not to cancel other options when condition is not match
+            if 'when' in adjustment:
+                options.append([adjustment, {'when': f'not ({adjustment["when"]})'}])
+            else:
+                options.append([adjustment])
         # generate combinations
         combinations = list(itertools.product(*options))
         # extend each combination with initial_config, fixtures and cli_config

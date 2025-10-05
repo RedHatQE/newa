@@ -15,6 +15,13 @@ fixtures:
       city: "{{ ENVIRONMENT.CITY }}"
       color: "{{ CONTEXT.color }}"
 
+adjustments:
+  - environment:
+      STREET: Rehorova
+    when: ENVIRONMENT.CITY is match('Brno')
+  - context:
+      traveller: Karel
+
 dimensions:
   cities:
     - environment:
