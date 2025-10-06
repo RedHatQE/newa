@@ -341,6 +341,7 @@ Identifies test plans that should be executed. Possible parameters are:
  - `ref`: Git repo `ref` within a repository.
  - `path`: Path to `tmt` root within a repository.
  - `plan`: Identifies `tmt` test plans to execute, a regexp used to filter plans by name.
+ - `plan_filter`: Specifies test plan filter. See `tmt` and Testing Farm documentation for details.
  - `cli_args`: Sets `tmt run` arguments when `how: tmt` is used. When configured by a user, `newa` will automatically append only the `plan --name ...` parameter, utilizing the above option. It is up to a user to pass all the subsequent `tmt` subcommands `discover provision prepare execute report finish` with required parameters! When `cli_args` is not set, `newa` will add all these subcommands automatically.
 
 #### testingfarm
