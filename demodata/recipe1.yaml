@@ -4,7 +4,7 @@ fixtures:
 
   tmt:
     url: https://github.com/RedHatQE/newa.git
-    ref: ks_no_tf
+    ref: main
     path: demodata
     plan: /plan1
   reportportal:

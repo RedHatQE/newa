@@ -910,10 +910,11 @@ class RawRecipeTmtConfigDimension(TypedDict, total=False):
     ref: Optional[str]
     path: Optional[str]
     plan: Optional[str]
+    plan_filter: Optional[str]
     cli_args: Optional[str]
 
 
-_RecipeTmtConfigDimensionKey = Literal['url', 'ref', 'path', 'plan']
+_RecipeTmtConfigDimensionKey = Literal['url', 'ref', 'path', 'plan', 'plan_filter', 'cli_args']
 
 
 class RawRecipeTFConfigDimension(TypedDict, total=False):
@@ -1168,6 +1169,8 @@ class Request(Cloneable, Serializable):
             command += ['--path', self.tmt['path']]
         if self.tmt.get("plan") and self.tmt['plan']:
             command += ['--plan', self.tmt['plan']]
+        if self.tmt.get("plan_filter") and self.tmt['plan_filter']:
+            command += ['--plan-filter', f"""'{self.tmt['plan_filter']}'"""]
         # process Testing Farm related settings
         if self.testingfarm and self.testingfarm['cli_args']:
             command += [self.testingfarm['cli_args']]
@@ -1278,8 +1281,12 @@ class Request(Cloneable, Serializable):
             raise Exception('ERROR: tmt settings is not specified for the request')
         if not self.tmt.get("url", None):
             raise Exception('ERROR: tmt "url" is not specified for the request')
-        if self.tmt.get("plan", None):
-            command += ['plan', '--name', f"""'{self.tmt["plan"]}'"""]
+        if self.tmt.get("plan", None) or self.tmt.get("plan_filter", None):
+            command += ['plan']
+            if self.tmt.get("plan", None):
+                command += ['--name', f"""'{self.tmt["plan"]}'"""]
+            if self.tmt.get("plan_filter", None):
+                command += ['--filter', f"""'{self.tmt["plan_filter"]}'"""]
         # add tmt cmd args
         if self.tmt.get("cli_args", None):
             command += [f'{self.tmt["cli_args"]}']
