@@ -63,6 +63,7 @@ from . import (
 JIRA_NONE_ID = '_NO_ISSUE'
 STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
 RP_LAUNCH_DESCR_CHARS_LIMIT = 1024
+NEWA_DEFAULT_CONFIG = '$HOME/.newa'
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -160,7 +161,7 @@ def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     )
 @click.option(
     '--conf-file',
-    default='$HOME/.newa',
+    default='',
     help='Path to newa configuration file.',
     )
 @click.option(
@@ -217,6 +218,12 @@ def main(click_context: click.Context,
          force: bool,
          action_id_filter: str) -> None:
 
+    # when user has specified config file, check its presence
+    if conf_file:
+        if not Path(conf_file).exists():
+            raise FileNotFoundError(f"Configuration file '{conf_file}' does not exist.")
+    else:
+        conf_file = NEWA_DEFAULT_CONFIG
     # load settings
     settings = Settings.load(Path(os.path.expandvars(conf_file)))
     # try to identify prev_state_dirpath just in case we need it
