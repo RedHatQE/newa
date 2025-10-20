@@ -129,6 +129,26 @@ def initialize_jira_connection(ctx: CLIContext) -> Any:
     return jira.JIRA(jira_url, token_auth=jira_token)
 
 
+def initialize_rp_connection(ctx: CLIContext) -> ReportPortal:
+    rp_project = ctx.settings.rp_project
+    rp_url = ctx.settings.rp_url
+    rp = ReportPortal(url=rp_url,
+                      token=ctx.settings.rp_token,
+                      project=rp_project)
+    rp.check_connection(rp_url, ctx.logger)
+    return rp
+
+
+def initialize_et_connection(ctx: CLIContext) -> ErrataTool:
+    et_url = ctx.settings.et_url
+    if not et_url:
+        raise Exception('Errata Tool URL is not configured!')
+
+    et = ErrataTool(url=ctx.settings.et_url)
+    et.check_connection(et_url, ctx.logger)
+    return et
+
+
 def issue_transition(connection: Any, transition: str, issue_id: str) -> None:
     try:
         # if the transition has a format status.resolution close with resolution
@@ -516,13 +536,11 @@ def process_event_errata(
     if not errata_ids:
         return
 
-    et_url = ctx.settings.et_url
-    if not et_url:
-        raise Exception('Errata Tool URL is not configured!')
+    et = initialize_et_connection(ctx)
 
     for erratum_id in errata_ids:
         event = Event(type_=EventType.ERRATUM, id=erratum_id)
-        errata = ErrataTool(url=et_url).get_errata(event)
+        errata = et.get_errata(event)
 
         for erratum in errata:
             release = erratum.release.strip()
@@ -1385,13 +1403,10 @@ def cmd_jira(
     if assignee and unassigned:
         raise Exception('Options --assignee and --unassigned cannot be used together')
 
-    # Initialize Errata Tool connection if needed
+    # Initialize Errata Tool connection
     et = None
     if ctx.settings.et_enable_comments:
-        et_url = ctx.settings.et_url
-        if not et_url:
-            raise Exception('Errata Tool URL is not configured!')
-        et = ErrataTool(url=et_url)
+        et = initialize_et_connection(ctx)
 
     # Initialize fake Jira ID generator
     jira_none_id = _create_jira_fake_id_generator()
@@ -1770,18 +1785,11 @@ def cmd_execute(
         return
 
     # initialize RP connection
-    rp_project = ctx.settings.rp_project
-    rp_url = ctx.settings.rp_url
-    rp = ReportPortal(url=rp_url,
-                      token=ctx.settings.rp_token,
-                      project=rp_project)
+    rp = initialize_rp_connection(ctx)
 
     # initialize ET connection
     if ctx.settings.et_enable_comments:
-        et_url = ctx.settings.et_url
-        if not et_url:
-            raise Exception('Errata Tool URL is not configured!')
-        et = ErrataTool(url=et_url)
+        et = initialize_et_connection(ctx)
 
     # store timestamp of this execution
     ctx.timestamp = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
@@ -2180,20 +2188,13 @@ def cmd_report(ctx: CLIContext) -> None:
 
     # initialize RP connection if RP instance is configured
     if ctx.settings.rp_url:
-        rp_project = ctx.settings.rp_project
-        rp_url = ctx.settings.rp_url
-        rp = ReportPortal(url=rp_url,
-                          token=ctx.settings.rp_token,
-                          project=rp_project)
+        rp = initialize_rp_connection(ctx)
 
     # initialize Jira connection
     jira_connection = initialize_jira_connection(ctx)
     # initialize ET connection
     if ctx.settings.et_enable_comments:
-        et_url = ctx.settings.et_url
-        if not et_url:
-            raise Exception('Errata Tool URL is not configured!')
-        et = ErrataTool(url=et_url)
+        et = initialize_et_connection(ctx)
 
     # process each stored execute file
     # before actual reporting split jobs per jira id

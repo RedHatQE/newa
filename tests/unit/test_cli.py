@@ -63,14 +63,20 @@ def _mock_errata_tool(monkeypatch):
         """ Return empty json for blocking errata """
         return {}
 
+    def mock_et_fetch_system_info(self):
+        """ Return dictionary with information about ErrataTool system """
+        return {
+            "errata_version": "v1.5.3",
+            }
+
     # TODO in the future we might want to do more complex patching of the class
     # methods, but this will suffice for now
     monkeypatch.setenv("NEWA_ET_URL", "https://fake.erratatool.com")
-    # We want to make sure we don't make requests to errata tool
     monkeypatch.setattr(newa, 'get_request', mock_get_request)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_info', mock_et_fetch_info)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_releases', mock_et_fetch_releases)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_blocking_errata', mock_et_fetch_blocking_errata)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_system_info', mock_et_fetch_system_info)
 
 
 # TODO There's still not much logic to test in cli. These test is just a stub to
