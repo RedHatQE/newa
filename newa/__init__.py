@@ -633,6 +633,15 @@ class ErrataTool:
             krb=True,
             response_content=ResponseContentType.JSON)
 
+    def fetch_system_info(self) -> JSON:
+        return get_request(
+            url=urllib.parse.urljoin(
+                self.url,
+                "/system_info.json"),
+            # not using krb=True due to an authentization error/bug, we did auth already
+            # krb=True,
+            response_content=ResponseContentType.JSON)
+
     def fetch_blocking_errata(self, erratum_id: str) -> JSON:
         return get_request(
             url=urllib.parse.urljoin(
@@ -641,6 +650,15 @@ class ErrataTool:
             # not using krb=True due to an authentization error/bug, we did auth already
             # krb=True,
             response_content=ResponseContentType.JSON)
+
+    def check_connection(self, et_url: str, logger: logging.Logger) -> None:
+        try:
+            et_system_info = self.fetch_system_info()
+            logger.debug(f"ErrataTool system version is={et_system_info['errata_version']}")
+            if not et_system_info:
+                raise Exception("Could not get ErrataTool system version info.")
+        except Exception as e:
+            raise Exception(f"ErrataTool is not available at {et_url}.") from e
 
     def get_errata(self, event: Event, process_blocking_errata: bool = True) -> list[Erratum]:
         """
@@ -2262,6 +2280,24 @@ class ReportPortal:
     def get_launch_url(self, launch_uuid: str) -> str:
         return urllib.parse.urljoin(
             self.url, f"/ui/#{Q(self.project)}/launches/all/{Q(launch_uuid)}")
+
+    def get_current_user_info(self) -> JSON:
+        url = urllib.parse.urljoin(
+            self.url, "/api/users")
+        headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
+        req = requests.get(url, headers=headers)
+        if req.status_code in HTTP_STATUS_CODES_OK:
+            return req.json()
+        return None
+
+    def check_connection(self, rp_url: str, logger: logging.Logger) -> None:
+        try:
+            rp_user_info = self.get_current_user_info()
+            logger.debug(f"ReportPortal user is={rp_user_info['id']}")
+            if not rp_user_info:
+                raise Exception("Could not get ReportPortal user info.")
+        except Exception as e:
+            raise Exception(f"ReportPortal is not available at {rp_url}.") from e
 
     def check_for_empty_launch(self, launch_uuid: str,
                                logger: Optional[logging.Logger] = None) -> bool:
