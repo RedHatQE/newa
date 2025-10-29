@@ -12,7 +12,7 @@ import urllib
 from collections.abc import Generator
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union, cast
 
 import click
 import jira
@@ -1742,7 +1742,7 @@ def cmd_cancel(ctx: CLIContext) -> None:
                 if 'cancel' in execute_job.execution.state:
                     execute_job.execution.state = 'canceled'
                     execute_job.execution.result = RequestResult.ERROR
-                if tf_request.details['result']:
+                elif tf_request.details['result']:
                     execute_job.execution.result = RequestResult(
                         tf_request.details['result']['overall'])
                 ctx.save_execute_job(execute_job)
@@ -1776,6 +1776,309 @@ def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[Request
             f"""ERROR: There are no requests with result: {" or ".join(results)}.""")
         sys.exit(1)
     return sanitized
+
+
+def _validate_execute_parameters(
+        ctx: CLIContext,
+        _continue: bool,
+        restart_request: list[str],
+        restart_result: list[str]) -> None:
+    """Validate and configure execute parameters."""
+    ctx.continue_execution = _continue
+
+    if restart_request:
+        ctx.restart_request = restart_request
+        ctx.continue_execution = True
+
+    if restart_result:
+        ctx.restart_result = sanitize_restart_result(ctx, restart_result)
+        ctx.continue_execution = True
+
+    if ctx.continue_execution and ctx.new_state_dir:
+        ctx.logger.error(
+            'NEWA state-dir was not specified! Use --state-dir or similar option.')
+        sys.exit(1)
+
+
+def _check_execute_file_conflicts(ctx: CLIContext) -> None:
+    """Check for execute file conflicts in state directory."""
+    if (test_file_presence(ctx.state_dirpath, EXECUTE_FILE_PREFIX) and
+            not ctx.continue_execution and
+            not ctx.force):
+        ctx.logger.error(
+            f'"{EXECUTE_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
+            'use --force to override')
+        sys.exit(1)
+
+
+def _initialize_execute_environment(ctx: CLIContext) -> None:
+    """Initialize environment variables and timestamp for execution."""
+    ctx.timestamp = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    tf_token = ctx.settings.tf_token
+    if not tf_token:
+        raise ValueError("TESTING_FARM_API_TOKEN not set!")
+    os.environ["TESTING_FARM_API_TOKEN"] = tf_token
+
+
+def _create_jira_job_mapping(
+        job_list: Union[list[ScheduleJob], list[ExecuteJob]],
+        ) -> dict[str, Union[list[ScheduleJob], list[ExecuteJob]]]:
+    """Group schedule or execute jobs by Jira ID."""
+    jira_job_mapping: dict[str, Union[list[ScheduleJob], list[ExecuteJob]]] = {}
+    for job in job_list:
+        jira_id = job.jira.id
+        if jira_id not in jira_job_mapping:
+            jira_job_mapping[jira_id] = [job]
+        else:
+            jira_job_mapping[jira_id].append(job)  # type: ignore[arg-type]
+    return jira_job_mapping
+
+
+def _prepare_launch_description(
+        jira_id: str,
+        schedule_jobs: Union[list[ScheduleJob], list[ExecuteJob]],
+        jira_url: str) -> str:
+    """Prepare the launch description for ReportPortal."""
+    launch_description: str = str(
+        schedule_jobs[0].request.reportportal.get('launch_description', ''))
+    if launch_description:
+        launch_description += '<br><br>'
+
+    if not jira_id.startswith(JIRA_NONE_ID):
+        issue_url = urllib.parse.urljoin(jira_url, f"/browse/{jira_id}")
+        launch_description += f'[{jira_id}]({issue_url}): '
+
+    launch_description += f'{len(schedule_jobs)} request(s) in total'
+    return launch_description
+
+
+def _create_or_reuse_rp_launch(
+        ctx: CLIContext,
+        rp: ReportPortal,
+        jira_id: str,
+        schedule_jobs: list[ScheduleJob],
+        launch_description: str) -> Optional[str]:
+    """Create or reuse a ReportPortal launch for the given jira_id."""
+    # Check if launch already exists
+    existing_launch_uuid: Optional[str] = schedule_jobs[0].request.reportportal.get(
+        'launch_uuid', None)
+    if existing_launch_uuid:
+        ctx.logger.debug(
+            f'Skipping RP launch creation for {jira_id} as {existing_launch_uuid} already exists.')
+        return str(existing_launch_uuid)
+
+    # Create new launch
+    launch_name: str = str(schedule_jobs[0].request.reportportal['launch_name']).strip()
+    if not launch_name:
+        raise Exception("RP launch name is not configured")
+
+    launch_attrs: dict[str, Any] = schedule_jobs[0].request.reportportal.get(
+        'launch_attributes', {})
+    launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
+
+    # Store CLI --context definitions as launch attributes
+    for (k, v) in ctx.cli_context.items():
+        if k in launch_attrs:
+            ctx.logger.debug(
+                f'Not storing context {k} as launch attribute due to a collision')
+        else:
+            launch_attrs[k] = v
+
+    # Add erratum context if available
+    if schedule_jobs[0].erratum and 'erratum' not in launch_attrs:
+        launch_attrs['erratum'] = str(schedule_jobs[0].erratum.id)
+
+    # Create the launch
+    new_launch_uuid: Optional[str] = rp.create_launch(
+        launch_name, launch_description, attributes=launch_attrs)
+    if not new_launch_uuid:
+        raise Exception('Failed to create RP launch')
+
+    ctx.logger.info(f'Created RP launch {new_launch_uuid} for issue {jira_id}')
+    return str(new_launch_uuid)
+
+
+def _update_schedule_jobs_with_launch(
+        ctx: CLIContext,
+        rp: ReportPortal,
+        jira_id: str,
+        schedule_jobs: list[ScheduleJob],
+        launch_uuid: str,
+        jira_schedule_job_mapping: dict[str, list[ScheduleJob]]) -> str:
+    """Update schedule jobs with launch UUID and URL."""
+    launch_url = rp.get_launch_url(launch_uuid)
+    for job in jira_schedule_job_mapping[jira_id]:
+        job.request.reportportal['launch_uuid'] = launch_uuid
+        job.request.reportportal['launch_url'] = launch_url
+        ctx.save_schedule_job(job)
+    return launch_url
+
+
+def _add_jira_comment_for_execution(
+        ctx: CLIContext,
+        jira_connection: Any,
+        jira_id: str,
+        job: ScheduleJob,
+        launch_url: Optional[str]) -> None:
+    """Add a comment to Jira issue about test execution."""
+    if job.request.reportportal:
+        comment = ("NEWA has scheduled automated test recipe for this issue, test "
+                   f"results will be uploaded to ReportPortal launch\n{launch_url}")
+    else:
+        comment = "NEWA has scheduled automated test recipe for this issue"
+
+    footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
+    if footer:
+        comment += f'\n{footer}'
+
+    try:
+        jira_connection.add_comment(
+            jira_id,
+            comment,
+            visibility={
+                'type': 'group',
+                'value': job.jira.group}
+            if job.jira.group else None)
+        ctx.logger.info(
+            f'Jira issue {jira_id} was updated with a comment '
+            'about initiated test execution')
+    except jira.JIRAError as e:
+        raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
+
+
+def _add_erratum_comment_for_execution(
+        ctx: CLIContext,
+        et: ErrataTool,
+        jira_connection: Any,
+        job: ScheduleJob,
+        jira_id: str,
+        launch_url: str) -> None:
+    """Add a comment to Errata Tool about test execution."""
+    if (ctx.settings.et_enable_comments and
+            ErratumCommentTrigger.EXECUTE in job.jira.erratum_comment_triggers and
+            job.erratum):
+        issue_summary = jira_connection.issue(jira_id).fields.summary
+        issue_url = urllib.parse.urljoin(ctx.settings.jira_url, f"/browse/{jira_id}")
+        et.add_comment(
+            job.erratum.id,
+            'The New Errata Workflow Automation (NEWA) has initiated test execution '
+            'for this advisory.\n'
+            f'{jira_id} - {issue_summary}\n'
+            f'{issue_url}\n'
+            f'{launch_url}')
+        ctx.logger.info(
+            f"Erratum {job.erratum.id} was updated with a comment about {jira_id}")
+
+
+def _process_rp_launches_and_jira_updates(
+        ctx: CLIContext,
+        rp: ReportPortal,
+        et: Optional[ErrataTool],
+        jira_schedule_job_mapping: dict[str, list[ScheduleJob]]) -> list[str]:
+    """
+    Process ReportPortal launches and update Jira issues.
+    Returns list of created launch UUIDs.
+    """
+    launch_list: list[str] = []
+    jira_url = ctx.settings.jira_url
+
+    for jira_id, schedule_jobs in jira_schedule_job_mapping.items():
+        job = schedule_jobs[0]
+
+        # Handle ReportPortal launch creation
+        if schedule_jobs[0].request.reportportal:
+            launch_description = _prepare_launch_description(jira_id, schedule_jobs, jira_url)
+            launch_uuid = _create_or_reuse_rp_launch(
+                ctx, rp, jira_id, schedule_jobs, launch_description)
+
+            if launch_uuid:
+                launch_list.append(launch_uuid)
+                # Update schedule jobs if launch was just created
+                if launch_uuid != schedule_jobs[0].request.reportportal.get('launch_uuid', None):
+                    launch_url = _update_schedule_jobs_with_launch(
+                        ctx, rp, jira_id, schedule_jobs, launch_uuid, jira_schedule_job_mapping)
+                else:
+                    launch_url = rp.get_launch_url(launch_uuid)
+            else:
+                continue
+        else:
+            launch_url = None
+
+        # Update Jira issue if not using execute --continue
+        if not (jira_id.startswith(JIRA_NONE_ID) or ctx.continue_execution):
+            jira_connection = initialize_jira_connection(ctx)
+            _add_jira_comment_for_execution(
+                ctx, jira_connection, jira_id, job, launch_url)
+
+            # Update Errata Tool if needed
+            if et and launch_url:
+                _add_erratum_comment_for_execution(
+                    ctx, et, jira_connection, job, jira_id, launch_url)
+
+    return launch_list
+
+
+def _execute_worker_pool(
+        ctx: CLIContext,
+        schedule_job_list: list[ScheduleJob],
+        workers: int) -> None:
+    """Execute the worker pool for processing schedule jobs."""
+    schedule_list = [(ctx, ctx.get_schedule_job_filepath(job))
+                     for job in schedule_job_list]
+    worker_pool = multiprocessing.Pool(workers if workers > 0 else len(schedule_list))
+    for _ in worker_pool.starmap(worker, schedule_list):
+        # small sleep to avoid race conditions inside tmt code
+        time.sleep(0.1)
+
+
+def _finalize_rp_launches(
+        ctx: CLIContext,
+        rp: ReportPortal,
+        launch_list: list[str]) -> None:
+    """Finalize ReportPortal launches after execution."""
+    # Group execute jobs by Jira ID
+    jira_execute_job_mapping = cast(
+        dict[str, list[ExecuteJob]],
+        _create_jira_job_mapping(list(ctx.load_execute_jobs(filter_actions=True))))
+
+    # Update launch descriptions for each Jira ID with TF request URLs if --no-wait
+    if ctx.no_wait:
+        for jira_id, execute_jobs in jira_execute_job_mapping.items():
+            if not execute_jobs[0].request.reportportal:
+                continue
+
+            launch_uuid = execute_jobs[0].request.reportportal.get('launch_uuid', '')
+            if not launch_uuid:
+                continue
+
+            # Prepare initial launch description
+            launch_description = _prepare_launch_description(
+                jira_id, execute_jobs, ctx.settings.jira_url)
+
+            # Add TF request URLs for this Jira ID's execute jobs
+            rp_chars_limit = (ctx.settings.rp_launch_descr_chars_limit or
+                              RP_LAUNCH_DESCR_CHARS_LIMIT)
+            rp_launch_descr_updated = launch_description + "\n"
+            rp_launch_descr_dots = True
+
+            for execute_job in execute_jobs:
+                req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
+                if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
+                    rp_launch_descr_updated += req_link
+                elif rp_launch_descr_dots:
+                    rp_launch_descr_updated += "\n..."
+                    rp_launch_descr_dots = False
+
+            rp.update_launch(launch_uuid, description=rp_launch_descr_updated)
+
+    ctx.logger.info('Finished execution')
+
+    # Finish all RP launches if not using --no-wait
+    if not ctx.no_wait:
+        for uuid in launch_list:
+            ctx.logger.info(f'Finishing launch {uuid}')
+            rp.finish_launch(uuid)
+            rp.check_for_empty_launch(uuid, logger=ctx.logger)
 
 
 @main.command(name='execute')
@@ -1822,218 +2125,62 @@ def cmd_execute(
         no_wait: bool,
         restart_request: list[str],
         restart_result: list[str]) -> None:
+    """
+    Execute scheduled test jobs.
+
+    This command processes scheduled jobs and executes them using Testing Farm or TMT.
+    It handles ReportPortal launch creation, Jira updates, and parallel execution.
+    """
     ctx.enter_command('execute')
 
-    # ensure state dir is present and initialized
+    # Initialize state directory
     initialize_state_dir(ctx)
 
-    ctx.continue_execution = _continue
+    # Set no_wait flag
     ctx.no_wait = no_wait
 
-    if restart_request:
-        ctx.restart_request = restart_request
-        ctx.continue_execution = True
+    # Validate parameters and configure execution mode
+    _validate_execute_parameters(ctx, _continue, restart_request, restart_result)
 
-    if restart_result:
-        ctx.restart_result = sanitize_restart_result(ctx, restart_result)
-        ctx.continue_execution = True
-
-    if ctx.continue_execution and ctx.new_state_dir:
-        ctx.logger.error(
-            'NEWA state-dir was not specified! Use --state-dir or similar option.')
-        sys.exit(1)
-
+    # Handle --clear option
     if ctx.settings.newa_clear_on_subcommand:
         ctx.remove_job_files(EXECUTE_FILE_PREFIX)
 
-    if test_file_presence(ctx.state_dirpath, EXECUTE_FILE_PREFIX) and \
-            not ctx.continue_execution and \
-            not ctx.force:
-        ctx.logger.error(
-            f'"{EXECUTE_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
-            'use --force to override')
-        sys.exit(1)
+    # Check for execute file conflicts
+    _check_execute_file_conflicts(ctx)
 
-    # check if we have sufficient TF CLI version
+    # Verify TF CLI version
     check_tf_cli_version(ctx)
 
-    # read a list of files to be scheduled just to check there are any
+    # Load schedule jobs and validate there are jobs to execute
     schedule_job_list = list(ctx.load_schedule_jobs(filter_actions=True))
     if not schedule_job_list:
         ctx.logger.warning('Warning: There are no previously scheduled jobs to execute')
         return
 
-    # initialize RP connection
+    # Initialize ReportPortal connection
     rp = initialize_rp_connection(ctx)
 
-    # initialize ET connection
-    if ctx.settings.et_enable_comments:
-        et = initialize_et_connection(ctx)
+    # Initialize Errata Tool connection if needed
+    et = initialize_et_connection(ctx) if ctx.settings.et_enable_comments else None
 
-    # store timestamp of this execution
-    ctx.timestamp = str(datetime.datetime.now(datetime.timezone.utc).timestamp())
-    tf_token = ctx.settings.tf_token
-    if not tf_token:
-        raise ValueError("TESTING_FARM_API_TOKEN not set!")
-    # make TESTING_FARM_API_TOKEN available to workers as envvar if it has been
-    # defined only though the settings file
-    os.environ["TESTING_FARM_API_TOKEN"] = tf_token
+    # Initialize environment (timestamp and TF token)
+    _initialize_execute_environment(ctx)
 
-    # before actual scheduling prepare RP launches and store their ids
-    # we will create one launch per Jira issue so we need to sort out
-    # schedule_jobs per Jira id
-    jira_schedule_job_mapping = {}
-    # load all jobs at first as we would be rewriting them later
-    for schedule_job in schedule_job_list:
-        jira_id = schedule_job.jira.id
-        if jira_id not in jira_schedule_job_mapping:
-            jira_schedule_job_mapping[jira_id] = [schedule_job]
-        else:
-            jira_schedule_job_mapping[jira_id].append(schedule_job)
-    # store all launch uuids for later finishing
-    launch_list = []
-    # now we process jobs for each jira_id
-    jira_url = ctx.settings.jira_url
-    for jira_id, schedule_jobs in jira_schedule_job_mapping.items():
+    # Group schedule jobs by Jira ID
+    jira_schedule_job_mapping = cast(
+        dict[str, list[ScheduleJob]],
+        _create_jira_job_mapping(schedule_job_list))
 
-        job = schedule_jobs[0]
+    # Process RP launches and update Jira issues
+    launch_list = _process_rp_launches_and_jira_updates(
+        ctx, rp, et, jira_schedule_job_mapping)
 
-        # now we create or reuse RP launch
-        if schedule_jobs[0].request.reportportal:
-            # when --continue the launch was probably already created
-            # check the 1st job for launch_uuid
-            launch_uuid = job.request.reportportal.get('launch_uuid', None)
-            launch_description = job.request.reportportal.get('launch_description', '')
-            if launch_description:
-                launch_description += '<br><br>'
-            # add the number of jobs
-            if not jira_id.startswith(JIRA_NONE_ID):
-                issue_url = urllib.parse.urljoin(
-                    jira_url,
-                    f"/browse/{jira_id}")
-                launch_description += f'[{jira_id}]({issue_url}): '
-            launch_description += (f'{len(schedule_jobs)} '
-                                   'request(s) in total')
-            # at this point we have the beginning of launch description
-            # we will eventually (re)use it when restarting requests
-            if launch_uuid:
-                ctx.logger.debug(
-                    f'Skipping RP launch creation for {jira_id} as {launch_uuid} already exists.')
-                launch_list.append(launch_uuid)
-                continue
+    # Execute worker pool to process all schedule jobs
+    _execute_worker_pool(ctx, schedule_job_list, workers)
 
-            # otherwise we proceed with launch creation
-            # get additional launch details from the first schedule job
-            launch_name = schedule_jobs[0].request.reportportal['launch_name'].strip()
-            if not launch_name:
-                raise Exception("RP launch name is not configured")
-            launch_attrs = schedule_jobs[0].request.reportportal.get(
-                'launch_attributes', {})
-            launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
-            # we store CLI --context definitions as well but not overriding
-            # existing launch_attributes
-            for (k, v) in ctx.cli_context.items():
-                if k in launch_attrs:
-                    ctx.logger.debug(
-                        f'Not storing context {k} as launch attribute due to a collision')
-                else:
-                    launch_attrs[k] = v
-            # when testing erratum, add special context erratum=XXXX
-            if schedule_jobs[0].erratum and 'erratum' not in launch_attrs:
-                launch_attrs['erratum'] = str(schedule_jobs[0].erratum.id)
-            # create the actual launch
-            launch_uuid = rp.create_launch(launch_name,
-                                           launch_description,
-                                           attributes=launch_attrs)
-            if not launch_uuid:
-                raise Exception('Failed to create RP launch')
-            launch_list.append(launch_uuid)
-            # save each schedule job with launch_uuid and launch_url
-            ctx.logger.info(f'Created RP launch {launch_uuid} for issue {jira_id}')
-            launch_url = rp.get_launch_url(launch_uuid)
-            for job in jira_schedule_job_mapping[jira_id]:
-                job.request.reportportal['launch_uuid'] = launch_uuid
-                job.request.reportportal['launch_url'] = launch_url
-                ctx.save_schedule_job(job)
-
-        # update Jira issue with a note about the execution
-        if not jira_id.startswith(JIRA_NONE_ID):
-            jira_connection = initialize_jira_connection(ctx)
-            if schedule_jobs[0].request.reportportal:
-                comment = ("NEWA has scheduled automated test recipe for this issue, test "
-                           f"results will be uploaded to ReportPortal launch\n{launch_url}")
-            else:
-                comment = "NEWA has scheduled automated test recipe for this issue"
-            # check if we have a comment footer defined in envvar
-            footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
-            if footer:
-                comment += f'\n{footer}'
-            try:
-                jira_connection.add_comment(
-                    jira_id,
-                    comment,
-                    visibility={
-                        'type': 'group',
-                        'value': job.jira.group}
-                    if job.jira.group else None)
-                ctx.logger.info(
-                    f'Jira issue {jira_id} was updated with a comment '
-                    'about initiated test execution')
-            except jira.JIRAError as e:
-                raise Exception(f"Unable to add a comment to issue {jira_id}!") from e
-
-            # update Errata Tool with a comment when required
-            if (ctx.settings.et_enable_comments and
-                    ErratumCommentTrigger.EXECUTE in job.jira.erratum_comment_triggers and
-                    job.erratum):
-                issue_summary = jira_connection.issue(jira_id).fields.summary
-                issue_url = urllib.parse.urljoin(ctx.settings.jira_url, f"/browse/{jira_id}")
-                et.add_comment(
-                    job.erratum.id,
-                    'The New Errata Workflow Automation (NEWA) has initiated test execution '
-                    'for this advisory.\n'
-                    f'{jira_id} - {issue_summary}\n'
-                    f'{issue_url}\n'
-                    f'{launch_url}')
-                ctx.logger.info(
-                    f"Erratum {job.erratum.id} was updated with a comment about {jira_id}")
-
-    # prepare a list of yaml files for workers to process
-    schedule_list = [(ctx, ctx.get_schedule_job_filepath(job))
-                     for job in schedule_job_list]
-    worker_pool = multiprocessing.Pool(workers if workers > 0 else len(schedule_list))
-    for _ in worker_pool.starmap(worker, schedule_list):
-        # small sleep to avoid race conditions inside tmt code
-        time.sleep(0.1)
-
-    # do some final RP launch updates
-    if schedule_jobs[0].request.reportportal:
-        # for ctx.no_wait update launch description at least with TF requests API URLs
-        if ctx.no_wait:
-            rp_chars_limit = ctx.settings.rp_launch_descr_chars_limit \
-                or RP_LAUNCH_DESCR_CHARS_LIMIT
-            rp_launch_descr_updated = launch_description + "\n"
-            rp_launch_descr_dots = True
-            for execute_job in ctx.load_execute_jobs(filter_actions=True):
-                req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
-                if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
-                    rp_launch_descr_updated += req_link
-                elif rp_launch_descr_dots:
-                    rp_launch_descr_updated += "\n..."
-                    rp_launch_descr_dots = False
-            rp.update_launch(launch_uuid, description=rp_launch_descr_updated)
-
-        ctx.logger.info('Finished execution')
-
-        # let's keep the RP lauch unfinished when using --no-wait
-        if not ctx.no_wait:
-            # finish all RP launches so that they won't remain unfinished
-            # in the report step we will update description with additional
-            # details about the result
-            for launch_uuid in launch_list:
-                ctx.logger.info(f'Finishing launch {launch_uuid}')
-                rp.finish_launch(launch_uuid)
-                rp.check_for_empty_launch(launch_uuid, logger=ctx.logger)
+    # Finalize RP launches after execution
+    _finalize_rp_launches(ctx, rp, launch_list)
 
 
 def test_patterns_match(s: str, patterns: list[str]) -> tuple[bool, str]:
@@ -2156,7 +2303,8 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
     if not tf_request.details:
         raise Exception(f"Failed to read details of TF request {tf_request.uuid}")
     result = tf_request.details['result']['overall'] if (
-        tf_request.details['result'] and tf_request.details['state'] != 'error') else 'error'
+        tf_request.details['result'] and tf_request.details['state'] not in [
+            'error', 'canceled']) else 'error'
     log(f'finished with result: {result}')
     # now write execution details once more
     execute_job.execution.artifacts_url = tf_request.details['run']['artifacts']
