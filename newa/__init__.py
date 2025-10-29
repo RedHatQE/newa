@@ -1671,6 +1671,9 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
                 locations = data['include']
                 # drop 'include' so it won't be processed again
                 del data['include']
+                # if 'include' list is empty, return data
+                if not locations:
+                    return data
                 # processing files in reversed order so that later definition takes priority
                 for loc in reversed(locations):
                     included_data = load_data_from_location(loc, stack)
