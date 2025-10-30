@@ -1,5 +1,45 @@
 # newa
 
+[About](#about)
+
+[NEWA based workflow](#newa-based-workflow)
+
+[NEWA configuration](#newa-configuration)
+
+- [NEWA configuration file](#newa-configuration-file)
+
+- [Jira issue configuration file](#jira-issue-configuration-file)
+  - [board and fields.Sprint](#board-and-fields-sprint)
+  - [environment](#environment)
+  - [context](#context)
+  - [include](#include)
+  - [iterate](#iterate)
+  - [project and group](#project-and-group)
+  - [transitions](#transitions)
+  - [defaults](#defaults)
+  - [issues](#issues)
+  - [ NEWA_COMMENT_FOOTER environment variable](#newa_comment_footer-environment-variable)
+- [Recipe config file](#recipe-config-file)
+  - [environment](#environment-1)
+  - [context](#context-1)
+  - [how](#how)
+  - [tmt](#tmt)
+  - [testingfarm](#testingfarm)
+  - [reportportal](#reportportal)
+  - [when](#when)
+
+- [In config tests](#in-config-tests)
+
+[Quick demo](#quick-demo)
+
+[NEWA options and subcommands](#newa-options-and-subcommands)
+
+- [NEWA options](#newa-options)
+
+- [Subcommand event](#subcommand-event)
+
+[Contribute](#contribute)
+
 ## About
 
 The New Errata Workflow Automation (NEWA) is an attempt to replace legacy testing workflow with a new one based on the use of `tmt` (Test Management Tool), Testing Farm, Jira and ReportPortal. It ensures transparency and consistency by “standardizing” the errata testing.
