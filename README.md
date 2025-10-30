@@ -4,6 +4,68 @@
 
 The New Errata Workflow Automation (NEWA) is an attempt to replace legacy testing workflow with a new one based on the use of `tmt` (Test Management Tool), Testing Farm, Jira and ReportPortal. It ensures transparency and consistency by “standardizing” the errata testing.
 
+```mermaid
+graph TB
+
+  subgraph ErrataTool
+    Node10[Event ER#123456]
+  end
+
+  subgraph Jira
+    Node20[epic - Errata ER#123456]-->Node22[task - Regression testing]
+    Node20-->Node23[task - EW checklist]
+    Node23-->Node24[subtask - Verifications]
+    Node23-->Node25[subtask - ...]
+    Node23-->Node26[subtask - Docs]
+  end
+
+  subgraph TestingFarm
+    Node30[request UUID1]
+    Node31[request UUID2]
+  end
+
+  subgraph ReportPortal
+    Node40[launch UUID1]
+  end
+
+  ErrataTool==>Jira
+  TestingFarm==>ReportPortal
+  Node22==>TestingFarm
+  ReportPortal==>Node22
+
+
+  %% Color definitions
+  classDef blue_color fill:#d9ffff,color:#000000
+  classDef bluedark_color fill:#00a4ff,color:#ffffff
+  classDef yellow_color fill:#fff180,color:#000000
+  classDef yellowdark_color fill:#ffd000,color:#000000
+  classDef green_color fill:#98ff99,color:#000000
+  classDef greendark_color fill:#27c329,color:#000000
+  classDef red_color fill:#ffbfca,color:#000000
+  classDef reddark_color fill:#dd2b4a,color:#ffffff
+
+  %% Colors to node mapping
+  class ErrataTool blue_color;
+  class Node10 bluedark_color;
+
+  class Jira yellow_color;
+  class Node20 yellowdark_color;
+  class Node21 yellowdark_color;
+  class Node22 yellowdark_color;
+  class Node23 yellowdark_color;
+  class Node24 yellowdark_color;
+  class Node25 yellowdark_color;
+  class Node26 yellowdark_color;
+
+  class TestingFarm green_color;
+  class Node30 greendark_color;
+  class Node31 greendark_color;
+
+  class ReportPortal red_color;
+  class Node40 reddark_color;
+```
+
+
 ## NEWA based workflow
 
 This is the assumed workflow utilizing NEWA in short:
