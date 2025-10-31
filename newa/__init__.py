@@ -302,6 +302,7 @@ def get_request(
         krb: bool = False,
         attempts: int = 5,
         delay: int = 5,
+        ctx: Optional[CLIContext] = None,
         response_content: Literal[ResponseContentType.TEXT]) -> str:
     pass
 
@@ -313,6 +314,7 @@ def get_request(
         krb: bool = False,
         attempts: int = 5,
         delay: int = 5,
+        ctx: Optional[CLIContext] = None,
         response_content: Literal[ResponseContentType.BINARY]) -> bytes:
     pass
 
@@ -324,6 +326,7 @@ def get_request(
         krb: bool = False,
         attempts: int = 5,
         delay: int = 5,
+        ctx: Optional[CLIContext] = None,
         response_content: Literal[ResponseContentType.JSON]) -> JSON:
     pass
 
@@ -335,6 +338,7 @@ def get_request(
         krb: bool = False,
         attempts: int = 5,
         delay: int = 5,
+        ctx: Optional[CLIContext] = None,
         response_content: Literal[ResponseContentType.RAW]) -> urllib3.response.HTTPResponse:
     pass
 
@@ -344,14 +348,18 @@ def get_request(
         krb: bool = False,
         attempts: int = 5,
         delay: int = 5,
+        ctx: Optional[CLIContext] = None,
         response_content: ResponseContentType = ResponseContentType.TEXT) -> Any:
     """ Generic GET request, optionally using Kerberos authentication """
+    headers = {}
+    if url.startswith('https://gitlab.com/api/') and ctx and ctx.settings.rog_token:
+        headers['PRIVATE-TOKEN'] = ctx.settings.rog_token
     while attempts:
         try:
             r = requests.get(
                 url,
                 auth=HTTPKerberosAuth(delegate=True),
-                ) if krb else requests.get(url)
+                ) if krb else requests.get(url, headers=headers)
             if r.status_code in HTTP_STATUS_CODES_OK:
                 response = getattr(r, response_content.value)
                 if callable(response):
@@ -580,8 +588,8 @@ class Serializable:
         return cls.from_yaml(filepath.read_text())
 
     @classmethod
-    def from_yaml_url(cls: type[SerializableT], url: str) -> SerializableT:
-        r = get_request(url=url, response_content=ResponseContentType.TEXT)
+    def from_yaml_url(cls: type[SerializableT], url: str, ctx: CLIContext) -> SerializableT:
+        r = get_request(url=url, response_content=ResponseContentType.TEXT, ctx=ctx)
         return cls.from_yaml(r)
 
 
@@ -995,8 +1003,9 @@ class RecipeConfig(Cloneable, Serializable):
     def from_yaml_with_includes(
             cls: type[RecipeConfig],
             location: str,
+            ctx: CLIContext,
             stack: Optional[list[str]] = None) -> RecipeConfig:
-        base_config = cls.from_yaml_url(location) if \
+        base_config = cls.from_yaml_url(location, ctx) if \
             re.search('^https?://', location) else cls.from_yaml_file(Path(location))
         # process each include
         fixtures_combination = []
@@ -1009,7 +1018,7 @@ class RecipeConfig(Cloneable, Serializable):
                 stack.append(location)
             else:
                 stack = [location]
-            source_config = cls.from_yaml_with_includes(source, stack=stack)
+            source_config = cls.from_yaml_with_includes(source, ctx, stack=stack)
             if source_config.fixtures:
                 fixtures_combination.append(source_config.fixtures)
             if source_config.adjustments:
@@ -1659,7 +1668,10 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
     board: Optional[Union[str, int]] = field(default=None)
 
     @classmethod
-    def from_yaml_with_include(cls: type[IssueConfig], location: str) -> IssueConfig:
+    def from_yaml_with_include(
+            cls: type[IssueConfig],
+            location: str,
+            ctx: CLIContext) -> IssueConfig:
 
         def load_data_from_location(location: str,
                                     stack: Optional[list[str]] = None) -> dict[str, Any]:
@@ -1729,9 +1741,9 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
         return cls(**data)
 
     @classmethod
-    def read_file(cls: type[IssueConfig], location: str) -> IssueConfig:
+    def read_file(cls: type[IssueConfig], location: str, ctx: CLIContext) -> IssueConfig:
 
-        config = cls.from_yaml_with_include(location)
+        config = cls.from_yaml_with_include(location, ctx)
 
         for action in config.issues:
             if config.defaults:
