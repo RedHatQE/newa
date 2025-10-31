@@ -133,10 +133,11 @@ def render_template(
     :param variables: variables to pass to the template.
     """
 
+    limit = 50
     environment = environment or default_template_environment()
     old = template
     try:
-        while True:
+        for _ in range(limit):
             new = environment.from_string(old).render(**variables).strip()
             if old == new:
                 return new
@@ -148,6 +149,8 @@ def render_template(
 
     except jinja2.exceptions.TemplateError as exc:
         raise Exception("Could not render template.") from exc
+
+    raise Exception(f"Jinja2 template recursion limit {limit} reached for template: '{template}'")
 
 
 def global_request_counter() -> Iterator[int]:
