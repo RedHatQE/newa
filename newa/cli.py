@@ -1421,7 +1421,7 @@ def cmd_jira(
             # Mode 1: Using issue-config file
             # we are reading the issue config again for each artifact
             # because later we modify some objects
-            config = IssueConfig.read_file(os.path.expandvars(issue_config))
+            config = IssueConfig.read_file(os.path.expandvars(issue_config), ctx=ctx)
             issue_mapping = _parse_issue_mapping(map_issue, config)
 
             # Initialize Jira handler
@@ -1612,7 +1612,7 @@ def _process_jira_job(
     _process_fixtures(ctx, fixtures, cli_config)
 
     # Load and configure recipe
-    config = RecipeConfig.from_yaml_with_includes(jira_job.recipe.url)
+    config = RecipeConfig.from_yaml_with_includes(jira_job.recipe.url, ctx)
     _configure_recipe(ctx, config, architectures, jira_job.recipe.url)
 
     # Build requests
