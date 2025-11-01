@@ -333,13 +333,16 @@ class CLIContext:  # type: ignore[no-untyped-def]
             self.logger.debug(f'Removing existing file {filepath}')
             filepath.unlink()
 
-    def skip_action(self, action_id: Optional[str], log_message: bool = True) -> bool:
-        # check if action_id matches filtered items
-        if self.action_id_filter_pattern and not (
-                action_id and self.action_id_filter_pattern.fullmatch(action_id)):
-            if log_message:
-                self.logger.info(
-                    f"Skipping action {action_id} as it doesn't match "
-                    "the --action-id-filter regular expression.")
-            return True
-        return False
+    def skip_action(self,
+                    action_id: Optional[str],
+                    filtered_id_list: Optional[list[str]] = None,
+                    log_message: bool = True) -> bool:
+        if filtered_id_list is None:
+            return False
+        if action_id and action_id in filtered_id_list:
+            return False
+        if log_message:
+            self.logger.info(
+                f"Skipping action {action_id} as it doesn't match "
+                "the --action-id-filter regular expression.")
+        return True

@@ -4,6 +4,7 @@ import copy
 import re
 import urllib.parse
 from collections.abc import Generator
+from re import Pattern
 from typing import Any, Optional
 
 from newa import (
@@ -488,6 +489,27 @@ def _process_issue_action(
     return new_issue, old_issues
 
 
+def _build_action_id_filtered_list(
+        issue_actions: list[IssueAction],
+        pattern: Pattern[str]) -> list[str]:
+    """ Using the given action.id RegExp Pattern and IssueAction list build a list
+    of action IDs matching the pattern and their parent action IDs"""
+    # initially populated ids_filtered with action ids matching pattern
+    ids_filtered = {
+        action.id for action in issue_actions if action.id and pattern.fullmatch(
+            action.id)}
+    prev_filtered_list_len = -1
+    # repeat while filtered list grows
+    while len(ids_filtered) > prev_filtered_list_len:
+        prev_filtered_list_len = len(ids_filtered)
+        # convert actions_filtered to a list and iterate through actions
+        # if action has a parent_id, add parent_id to actions_filtered set
+        for action in issue_actions:
+            if action.id in ids_filtered and action.parent_id:
+                ids_filtered.add(action.parent_id)
+    return list(ids_filtered)
+
+
 def _process_issue_config(
         ctx: CLIContext,
         artifact_job: ArtifactJob,
@@ -502,6 +524,15 @@ def _process_issue_config(
     """Process issue configuration and create/update Jira issues."""
     # All issue actions from the configuration
     issue_actions = config.issues[:]
+
+    action_id_filtered_list: Optional[list[str]] = None
+    if ctx.action_id_filter_pattern:
+        # only for the issue config processing case we are going to include
+        # also parents of actions matching the given id regexp pattern
+        action_id_filtered_list = _build_action_id_filtered_list(
+            issue_actions, ctx.action_id_filter_pattern)
+        ctx.logger.debug(
+            f"Filtered action id list including parent ids: {action_id_filtered_list}")
 
     # Processed actions (action.id : issue)
     processed_actions: dict[str, Issue] = {}
@@ -527,7 +558,7 @@ def _process_issue_config(
             continue
 
         # Check if action.id matches filtered items
-        if ctx.skip_action(action.id):
+        if ctx.skip_action(action.id, action_id_filtered_list):
             continue
 
         # Update context and environment
