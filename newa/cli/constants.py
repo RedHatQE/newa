@@ -1,0 +1,6 @@
+"""Constants used throughout the NEWA CLI."""
+
+JIRA_NONE_ID = '_NO_ISSUE'
+STATEDIR_NAME_PATTERN = r'^run-([0-9]+)$'
+RP_LAUNCH_DESCR_CHARS_LIMIT = 1024
+NEWA_DEFAULT_CONFIG = '$HOME/.newa'
