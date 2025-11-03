@@ -50,7 +50,7 @@ dependencies = [
 [project.optional-dependencies]
 
 [project.scripts]
-newa = "newa.cli:main"
+newa = "newa.cli.main:main"
 
 [project.urls]
 # TODO: provide URL
