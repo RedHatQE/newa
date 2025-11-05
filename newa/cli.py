@@ -2349,13 +2349,18 @@ def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) 
 def execute_jobs_summary(ctx: CLIContext,
                          jira_id: str,
                          execute_jobs: list[ExecuteJob],
-                         target: str = 'Jira') -> str:
+                         target: str = 'Jira',
+                         length_limit: int = 0) -> list[str]:
     """
     Prepares a string with a summary of executed jobs.
     Parameter 'target' could be either 'Jira' or 'ReportPortal'.
     """
     separator = '<br>' if target == 'ReportPortal' else '\n'
+    # an actual list we are going to return
+    summaries = []
     summary = ''
+    msg_next_comment = 'TBC in the next comment...'
+    magic_number = len(separator + msg_next_comment)
     # add configured RP description if available
     if execute_jobs[0].request.reportportal:
         launch_description = execute_jobs[0].request.reportportal.get(
@@ -2389,15 +2394,25 @@ def execute_jobs_summary(ctx: CLIContext,
     for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
         # it would be nice to use hyperlinks in launch description however we
         # would hit launch description length limit. Therefore using plain text
-        summary += separator
         if target == 'ReportPortal':
-            summary += "{id}: {state}, {result}".format(**results[req])
+            new_line = "{id}: {state}, {result}".format(**results[req])
         else:
-            summary += (
+            new_line = (
                 "| [{id}|{url}] | {state} | {result} | {plan} | {suite_desc} |".format(
                     **results[req])
                 )
-    return summary
+        if length_limit > 0 and len(
+                summary +
+                separator +
+                new_line) > (
+                length_limit -
+                magic_number):
+            summaries.append(summary + separator + msg_next_comment)
+            summary = ''
+        summary += separator + new_line
+    summaries.append(summary)
+
+    return summaries
 
 
 def _update_tf_request_status(
@@ -2489,17 +2504,21 @@ def _finalize_rp_launch(
 def _build_jira_comment(
         launch_uuid: Optional[str],
         launch_url: Optional[str],
-        jira_description: str) -> str:
+        jira_description: str,
+        first: bool = True) -> str:
     """Build Jira comment text with optional RP launch details."""
     if launch_uuid:
-        comment = ("NEWA has finished test execution and imported test results "
-                   f"to RP launch\n{launch_url}\n\n{jira_description}")
+        if first:
+            comment = ("NEWA has finished test execution and imported test results "
+                       f"to RP launch\n{launch_url}\n\n{jira_description}")
+        else:
+            comment = f"Continuation of the previous comment...\n\n{jira_description}"
     else:
         comment = f"NEWA has finished test execution\n\n{jira_description}"
 
     # Add comment footer if configured
     footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
-    if footer:
+    if footer and first:
         comment += f'\n{footer}'
 
     return comment
@@ -2594,8 +2613,9 @@ def _process_jira_id_reports(
     all_tests_passed, all_tests_finished = _check_test_status(execute_jobs)
 
     # Generate summaries
-    jira_description = execute_jobs_summary(ctx, jira_id, execute_jobs, target='Jira')
-    launch_description = execute_jobs_summary(ctx, jira_id, execute_jobs, target='ReportPortal')
+    jira_descriptions = execute_jobs_summary(
+        ctx, jira_id, execute_jobs, target='Jira', length_limit=65000)
+    launch_description = execute_jobs_summary(ctx, jira_id, execute_jobs, target='ReportPortal')[0]
 
     # Finalize RP launch if needed
     if launch_uuid and rp:
@@ -2603,10 +2623,16 @@ def _process_jira_id_reports(
 
     # Report to Jira (skip if JIRA_NONE_ID)
     if not jira_id.startswith(JIRA_NONE_ID):
-        # Add Jira comment
-        comment = _build_jira_comment(launch_uuid, launch_url, jira_description)
-        _add_jira_comment_for_report(
-            ctx, jira_connection, jira_id, execute_jobs[0], comment)
+        # Add Jira comments - more might be needed if we have exceeded comment length limit
+        for jira_description in jira_descriptions:
+            comment = _build_jira_comment(
+                launch_uuid,
+                launch_url,
+                jira_description,
+                first=jira_description == jira_descriptions[0])
+            _add_jira_comment_for_report(
+                ctx, jira_connection, jira_id, execute_jobs[0], comment)
+            short_sleep()
 
         # Transition Jira issue if needed
         _transition_jira_issue_based_on_results(
