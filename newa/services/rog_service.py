@@ -78,7 +78,12 @@ class RoGTool:
         # get job log
         job = self.get_mr_build_rpm_pipeline_job(url)
         log = job.trace().decode("utf-8")
-        r = re.search(r'Created task: ([0-9]+)', log)
+        konflux_build = bool(re.search(
+            'Preparing Konflux build \\(click to expand\\)', log))
+        if konflux_build:
+            r = re.search(r'Build imported as https://.*taskID=([0-9]+)', log)
+        else:
+            r = re.search(r'Created task: ([0-9]+)', log)
         # parse task id
         if not r:
             raise Exception(f'Failed to parse build Task ID from "build_rpm" job "{job.web_url}"')
@@ -89,21 +94,41 @@ class RoGTool:
             raise Exception(f'Failed to parse build target from "build_rpm" job "{job.web_url}"')
         target = r.group(1)
         # parse architectures
-        build_reqs = re.findall(
-            r'buildArch \((.*?.src.rpm), (.*?)\): open.*-> closed', log)
+        if konflux_build:
+            build_reqs = re.findall(
+                r'(rpmbuild)-(\S+).*Succeeded', log)
+        else:
+            # try Brew build approach
+            build_reqs = re.findall(
+                r'buildArch \((.*?.src.rpm), (.*?)\): open.*-> closed', log)
         if not build_reqs:
             raise Exception(
                 r'Failed to parse SRPM and build tasks from "build_rpm" job "{job.web_url}"')
         archs = []
+        srpm = ''
+        build = ''
         for r in build_reqs:
             if r:
-                archs.append(Arch(r[1]))
-                srpm = r[0]
+                # replace x86-64 with x86_64
+                archs.append(Arch(r[1].replace('-', '_')))
+                # for Brew build read SRPM right away
+                if not konflux_build:
+                    srpm = r[0]
         if not archs:
             raise Exception(
-                r'Failed to parse SRPM and build tasks from "build_rpm" job "{job.web_url}"')
-        # parse NVR and component from SRPM
-        build = srpm.replace('.src.rpm', '')
+                r'Failed to parse architectures from "build_rpm" job "{job.web_url}"')
+        if konflux_build:
+            # parse NVR from the pipeline log
+            # it is mentioned multiple times in the log and we need its last occurence
+            nvr_matches = re.findall(r'DRAFT_BUILD_NVR=(\S+)', log)
+            if nvr_matches:
+                build = nvr_matches[-1]
+        else:
+            # parse NVR and component from SRPM
+            build = srpm.replace('.src.rpm', '')
+        if not build:
+            raise Exception(
+                r'Failed to parse build NVR from "build_rpm" job "{job.web_url}"')
         nvr = NVRParser(build)
         builds = [build]
         components = [nvr.name]
