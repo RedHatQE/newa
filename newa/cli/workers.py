@@ -53,7 +53,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
             execute_job = ExecuteJob.from_yaml_file(execute_job_file)
             if execute_job.execution.result in ctx.restart_result:
                 log(f'Restarting request {execute_job.request.id}'
-                    f' with result {execute_job.execution.result}')
+                    f' with result {execute_job.execution.result.value}')
             elif ctx.restart_request:
                 (match, pattern) = test_patterns_match(execute_job.request.id, ctx.restart_request)
                 if match:

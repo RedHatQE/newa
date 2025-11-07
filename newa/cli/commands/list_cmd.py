@@ -105,7 +105,8 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                                     execute_job.execution, "result", RequestResult.NONE)
                                 url = getattr(
                                     execute_job.execution, "artifacts_url", "not available")
-                                print(f' - state: {state}, result: {result}, artifacts: {url}')
+                                print(
+                                    f' - state: {state}, result: {result.value}, artifacts: {url}')
                     else:
                         print(' - not executed')
         print()
