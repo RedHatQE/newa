@@ -456,8 +456,6 @@ def _process_issue_action(
     # Validate action
     if not action.summary:
         raise Exception(f"Action {action} does not have a 'summary' defined.")
-    if not action.description:
-        raise Exception(f"Action {action} does not have a 'description' defined.")
 
     # Render all fields
     (rendered_summary, rendered_description, rendered_assignee,
