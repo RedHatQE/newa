@@ -12,6 +12,7 @@ except ModuleNotFoundError:
 from newa.models.artifacts import Erratum, ErratumContentType
 from newa.models.base import Arch
 from newa.models.events import Event, EventType
+from newa.utils.helpers import els_release_check
 from newa.utils.http import ResponseContentType, get_request, post_request
 from newa.utils.parsers import NSVCParser, NVRParser
 
@@ -98,7 +99,6 @@ class ErrataTool:
         On the other hand an errata with ASYNC release might result into one
         or more instances of erratum.
         """
-
         errata = []
 
         # In QE state there is are zero or more builds in an erratum, each
@@ -168,6 +168,7 @@ class ErrataTool:
                             info_json["revision"]),
                         summary=info_json["synopsis"],
                         release=release,
+                        is_els_release=els_release_check(release),
                         builds=builds,
                         blocking_builds=blocking_builds,
                         blocking_errata=[e.id for e in blocking_errata],
