@@ -1,6 +1,7 @@
 """Helper utility functions."""
 
 import os
+import re
 import time
 import urllib
 
@@ -14,3 +15,8 @@ def short_sleep() -> None:
 
 def get_url_basename(url: str) -> str:
     return os.path.basename(urllib.parse.urlparse(url).path)
+
+
+def els_release_check(release: str) -> bool:
+    """Returns True if the release is ELS release"""
+    return bool(re.search(r'(RHEL-7-ELS|\.Z\..*(AUS|TUS|E.S))', release))

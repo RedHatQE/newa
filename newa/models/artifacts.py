@@ -90,6 +90,7 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     blocking_builds: list[str] = field(factory=list)
     blocking_errata: list['ErratumId'] = field(factory=list)
     components: list[str] = field(factory=list)
+    is_els_release: bool = field(default=False)
     people_assigned_to: Optional[str] = None
     people_package_owner: Optional[str] = None
     people_qe_group: Optional[str] = None
