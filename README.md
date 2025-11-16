@@ -185,6 +185,15 @@ issues:
      "is blocked by":
        - ABC-1234
        - ABC-3456
+
+ - summary: "ER#{{ ERRATUM.id }} - Performance testing {{ ERRATUM.builds|join(' ') }}"
+   description: "Run performance benchmarks (triggered on-demand only)"
+   type: task
+   id: task_performance
+   parent_id: errata_epic
+   on_respin: close
+   job_recipe: https://path/to/my/NEWA/recipe/performance.yaml
+   schedule: false
 ```
 
 Individual settings are described below.
@@ -321,6 +330,7 @@ The following options are available:
  - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
  - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are `close` (i.e. create a new issue) and `keep` (i.e. reuse existing issue).
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
+ - `schedule`: Controls whether a job should be automatically scheduled for this action (default: `True`). When set to `False`, NEWA will create or update the Jira issue but will not schedule any associated job (even if `job_recipe` is defined), unless the action is explicitly selected using the `--action-id-filter` option. This is useful for creating tracking issues that don't require automated testing or for actions that should only be triggered on-demand.
  - `erratum_comment_triggers` - For specified triggers, provides an update in an erratum through a comment. This functionality needs to be enabled also in the `newa` configuration file through `enable_comments = 1`. The following triggers are currently supported:
    - `jira` - Adds a comment when a Jira issue is initially 'adopted' by NEWA (either created or taken over due to `jira --map-issue` parameter).
    - `execute` - Adds a comment when automated tests are initiated by NEWA.
@@ -674,11 +684,19 @@ $ newa event --prev-event jira ...
 
 Instructs NEWA to process only a subset of issue-config actions, depending on whether the issue-config action id matches the provided regular expression.
 This option has an effect across all NEWA subcommands so users can use this option to limit requests that would be cancelled, executed, reported etc.
+
+Note: When using `--action-id-filter`, actions with `schedule: false` will have their jobs scheduled if they match the filter pattern. This allows on-demand triggering of actions that are normally not scheduled automatically.
+
 Use with caution.
 
 Example:
 ```
 $ newa --action-id-filter '(epic|tier1).*' event --compose CentOS-Stream-10 jira --issue-config all-tier-config.yaml schedule execute report
+```
+
+Example (triggering performance tests that have `schedule: false`):
+```
+$ newa --action-id-filter 'task_performance' event --erratum 12345 jira --issue-config errata-config.yaml schedule execute report
 ```
 
 #### Option `--jira-issue`

@@ -480,8 +480,14 @@ def _process_issue_action(
             rendered_summary, trigger_erratum_comment)
 
     # Create jira job if needed
-    _create_jira_job_from_action(
-        ctx, action, artifact_job, jira_event_fields, new_issue)
+    # Job is not created for actions with schedule == False, unless
+    # we are using action_id_filter_pattern. In such a case, the action
+    # is matching a filter, otherwise it would be skipped already
+    if action.schedule or ctx.action_id_filter_pattern:
+        _create_jira_job_from_action(
+            ctx, action, artifact_job, jira_event_fields, new_issue)
+    else:
+        ctx.logger.info(f"Not scheduling action '{action.id}' as requested.")
 
     # Return issue and old_issues for further processing
     return new_issue, old_issues
