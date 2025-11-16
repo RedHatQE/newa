@@ -92,6 +92,7 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
     context: Optional[RecipeContext] = None
     environment: Optional[RecipeEnvironment] = None
     links: Optional[dict[str, list[str]]] = None
+    schedule: bool = True
 
     # function to handle issue-config file defaults
 

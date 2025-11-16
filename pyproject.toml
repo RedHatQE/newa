@@ -134,6 +134,7 @@ module = [
     "requests_kerberos.*",
     "jira.*",
     "gitlab",
+    "ruamel.*",
 ]
 ignore_missing_imports = true
 
