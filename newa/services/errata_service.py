@@ -2,7 +2,7 @@
 
 import urllib.parse
 from functools import reduce
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 try:
     from attrs import field, frozen, validators
@@ -18,12 +18,83 @@ from newa.utils.parsers import NSVCParser, NVRParser
 
 if TYPE_CHECKING:
     import logging
-    from typing import Any
 
     from typing_extensions import TypeAlias
 
     ErratumId: TypeAlias = str
     JSON: TypeAlias = Any
+
+
+def _deduplicate_errata_by_compose(
+        candidate_errata: list[dict[str, Any]],
+        logger: 'logging.Logger | None' = None) -> list[dict[str, Any]]:
+    """
+    Deduplicate errata releases that map to the same TF compose.
+
+    Groups errata by their derived compose, sorts by number of architectures and builds
+    (descending), and filters out releases with identical builds and same/subset architectures.
+
+    Args:
+        candidate_errata: List of dicts containing release metadata
+        logger: Optional logger for debugging
+
+    Returns:
+        Filtered list of candidate errata without duplicates
+    """
+    from collections import defaultdict
+
+    from newa.cli.utils import derive_compose
+
+    # Group candidates by their derived compose
+    compose_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    for candidate in candidate_errata:
+        compose = derive_compose(candidate['release'])
+        candidate['compose'] = compose
+        compose_groups[compose].append(candidate)
+
+    # Process each compose group and collect deduplicated results
+    deduplicated = []
+
+    for compose, candidates in compose_groups.items():
+        # Sort by number of architectures (desc), then number of builds (desc)
+        # This ensures we keep the most comprehensive release first
+        candidates.sort(
+            key=lambda x: (len(x['archs']), len(x['builds'])),
+            reverse=True,
+            )
+
+        # Track seen combinations of builds+archs for this compose
+        seen_combinations: list[tuple[set[str], set[str], str]] = []
+
+        for candidate in candidates:
+            builds_set = set(candidate['builds'])
+            archs_set = set(candidate['archs'])
+
+            # Check if this combination is a duplicate or subset
+            is_duplicate = False
+            for seen_builds, seen_archs, seen_release in seen_combinations:
+                # Skip if builds are subset/identical and archs are same or subset
+                if builds_set <= seen_builds and archs_set <= seen_archs:
+                    if logger:
+                        logger.info(
+                            f"Skipping duplicate release {candidate['release']} "
+                            f"(compose: {compose}, builds: {len(builds_set)}, "
+                            f"archs: {archs_set}) - duplicate of {seen_release}")
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                # This is a unique combination, add it to results
+                seen_combinations.append((builds_set, archs_set, candidate['release']))
+                deduplicated.append(candidate)
+                if logger:
+                    logger.debug(
+                        f"Keeping release {candidate['release']} "
+                        f"(compose: {compose}, builds: {len(builds_set)}, "
+                        f"archs: {archs_set})")
+
+    return deduplicated
 
 
 @frozen
@@ -88,7 +159,8 @@ class ErrataTool:
         except Exception as e:
             raise Exception(f"ErrataTool is not available at {et_url}.") from e
 
-    def get_errata(self, event: Event, process_blocking_errata: bool = True) -> list[Erratum]:
+    def get_errata(self, event: Event, process_blocking_errata: bool = True,
+                   logger: 'logging.Logger | None' = None) -> list[Erratum]:
         """
         Creates a list of Erratum instances based on given errata ID.
 
@@ -129,10 +201,11 @@ class ErrataTool:
 
         info_json = self.fetch_info(event.id)
         releases_json = self.fetch_releases(event.id)
+
+        # Build a list of candidate errata with their metadata
+        candidate_errata = []
+
         for release in releases_json:
-            # ignore EUS.EXTENSION releases
-            if release.endswith('EUS.EXTENSION'):
-                continue
             builds = []
             builds_json = releases_json[release]
             blocking_builds = []
@@ -157,31 +230,44 @@ class ErrataTool:
                         if release == e.release:
                             blocking_builds.extend(e.builds)
 
-                errata.append(
-                    Erratum(
-                        # on purpose not using event.id since it could look like '2024:0770'
-                        id=str(info_json['id']),
-                        content_type=content_type,
-                        respin_count=int(
-                            info_json["respin_count"]),
-                        revision=int(
-                            info_json["revision"]),
-                        summary=info_json["synopsis"],
-                        release=release,
-                        is_els_release=els_release_check(release),
-                        builds=builds,
-                        blocking_builds=blocking_builds,
-                        blocking_errata=[e.id for e in blocking_errata],
-                        archs=Arch.architectures(list(archs)),
-                        components=components,
-                        url=urllib.parse.urljoin(self.url, f"/advisory/{event.id}"),
-                        people_assigned_to=info_json["people"]["assigned_to"],
-                        people_package_owner=info_json["people"]["package_owner"],
-                        people_qe_group=info_json["people"]["qe_group"],
-                        people_devel_group=info_json["people"]["devel_group"]))
+                # Store candidate erratum with metadata for deduplication
+                candidate_errata.append({
+                    'release': release,
+                    'builds': sorted(builds),  # Sort for consistent comparison
+                    'archs': sorted([a.value for a in archs]),  # Sort for consistent comparison
+                    'blocking_builds': blocking_builds,
+                    'components': components,
+                    'content_type': content_type,
+                    })
 
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
+
+        # Deduplicate errata that map to the same TF compose
+        deduplicated_candidates = _deduplicate_errata_by_compose(candidate_errata, logger)
+
+        # Create Erratum objects from deduplicated candidates
+        for candidate in deduplicated_candidates:
+            errata.append(
+                Erratum(
+                    # on purpose not using event.id since it could look like '2024:0770'
+                    id=str(info_json['id']),
+                    content_type=candidate['content_type'],
+                    respin_count=int(info_json["respin_count"]),
+                    revision=int(info_json["revision"]),
+                    summary=info_json["synopsis"],
+                    release=candidate['release'],
+                    is_els_release=els_release_check(candidate['release']),
+                    builds=candidate['builds'],
+                    blocking_builds=candidate['blocking_builds'],
+                    blocking_errata=[e.id for e in blocking_errata],
+                    archs=Arch.architectures([Arch(a) for a in candidate['archs']]),
+                    components=candidate['components'],
+                    url=urllib.parse.urljoin(self.url, f"/advisory/{event.id}"),
+                    people_assigned_to=info_json["people"]["assigned_to"],
+                    people_package_owner=info_json["people"]["package_owner"],
+                    people_qe_group=info_json["people"]["qe_group"],
+                    people_devel_group=info_json["people"]["devel_group"]))
 
         return errata
 

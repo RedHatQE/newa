@@ -76,7 +76,7 @@ def process_event_errata(
 
     for erratum_id in errata_ids:
         event = Event(type_=EventType.ERRATUM, id=erratum_id)
-        errata = et.get_errata(event)
+        errata = et.get_errata(event, logger=ctx.logger)
 
         for erratum in errata:
             release = erratum.release.strip()
