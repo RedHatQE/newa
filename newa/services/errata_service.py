@@ -160,7 +160,8 @@ class ErrataTool:
             raise Exception(f"ErrataTool is not available at {et_url}.") from e
 
     def get_errata(self, event: Event, process_blocking_errata: bool = True,
-                   logger: 'logging.Logger | None' = None) -> list[Erratum]:
+                   logger: 'logging.Logger | None' = None,
+                   deduplicate_releases: bool = False) -> list[Erratum]:
         """
         Creates a list of Erratum instances based on given errata ID.
 
@@ -243,8 +244,11 @@ class ErrataTool:
             else:
                 raise Exception(f"No builds found in ER#{event.id}")
 
-        # Deduplicate errata that map to the same TF compose
-        deduplicated_candidates = _deduplicate_errata_by_compose(candidate_errata, logger)
+        # Deduplicate errata that map to the same TF compose (if enabled)
+        if deduplicate_releases:
+            deduplicated_candidates = _deduplicate_errata_by_compose(candidate_errata, logger)
+        else:
+            deduplicated_candidates = candidate_errata
 
         # Create Erratum objects from deduplicated candidates
         for candidate in deduplicated_candidates:

@@ -2,6 +2,7 @@
 
 import copy
 import sys
+from typing import Optional
 
 import click
 
@@ -67,7 +68,8 @@ def load_event_ids_from_init_files(
 def process_event_errata(
         ctx: CLIContext,
         errata_ids: list[str],
-        compose_mapping: list[str]) -> None:
+        compose_mapping: list[str],
+        deduplicate_releases: bool) -> None:
     """Process erratum IDs and create corresponding artifact jobs."""
     if not errata_ids:
         return
@@ -76,7 +78,7 @@ def process_event_errata(
 
     for erratum_id in errata_ids:
         event = Event(type_=EventType.ERRATUM, id=erratum_id)
-        errata = et.get_errata(event, logger=ctx.logger)
+        errata = et.get_errata(event, logger=ctx.logger, deduplicate_releases=deduplicate_releases)
 
         for erratum in errata:
             release = erratum.release.strip()
@@ -197,6 +199,12 @@ def process_event_jira_keys(ctx: CLIContext, jira_keys: list[str]) -> None:
           ),
     )
 @click.option(
+    '--deduplicate-releases',
+    is_flag=True,
+    default=False,
+    help='Deduplicate erratum releases that map to the same Testing Farm compose',
+    )
+@click.option(
     '--prev-event',
     is_flag=True,
     default=False,
@@ -210,6 +218,7 @@ def cmd_event(
         jira_keys: list[str],
         rog_urls: list[str],
         compose_mapping: list[str],
+        deduplicate_releases: Optional[bool],
         prev_event: bool) -> None:
     """Process events and create artifact jobs."""
     ctx.enter_command('event')
@@ -238,8 +247,13 @@ def cmd_event(
     if not errata_ids and not compose_ids and not rog_urls and not jira_keys and not prev_event:
         raise Exception('Missing event IDs!')
 
+    # Determine deduplicate_releases setting: CLI option overrides config file
+    deduplicate = (deduplicate_releases
+                   if deduplicate_releases is not None
+                   else ctx.settings.et_deduplicate_releases)
+
     # Process different event types
-    process_event_errata(ctx, errata_ids, compose_mapping)
+    process_event_errata(ctx, errata_ids, compose_mapping, deduplicate)
     process_event_composes(ctx, compose_ids)
     process_event_rog_urls(ctx, rog_urls, compose_mapping)
     process_event_jira_keys(ctx, jira_keys)
