@@ -41,6 +41,7 @@ class Settings:  # type: ignore[no-untyped-def]
     newa_clear_on_subcommand: bool = False
     et_url: str = ''
     et_enable_comments: bool = False
+    et_deduplicate_releases: bool = False
     rp_url: str = ''
     rp_token: str = ''
     rp_project: str = ''
@@ -94,6 +95,11 @@ class Settings:  # type: ignore[no-untyped-def]
                     cp,
                     'erratatool/enable_comments',
                     'NEWA_ET_ENABLE_COMMENTS')),
+            et_deduplicate_releases=_str_to_bool(
+                _get(
+                    cp,
+                    'erratatool/deduplicate_releases',
+                    'NEWA_ET_DEDUPLICATE_RELEASES')),
             rp_url=_get(
                 cp,
                 'reportportal/url',

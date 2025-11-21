@@ -269,3 +269,27 @@ def test_deduplicate_sorting_by_build_count():
     assert len(result) == 1
     assert result[0]['release'] == 'RHEL-9.5.0.Z.MAIN'
     assert len(result[0]['builds']) == 2
+
+
+def test_deduplicate_overlapping_builds_different_architectures():
+    """Test that releases with overlapping builds but different architectures are both kept."""
+    candidates = [
+        {
+            'release': 'RHEL-9.5.0.Z.MAIN',
+            'builds': ['build-1.el9', 'build-2.el9'],
+            'archs': ['x86_64', 'aarch64'],
+            },
+        {
+            'release': 'RHEL-9.5.0.Z.EUS',
+            'builds': ['build-1.el9', 'build-3.el9'],
+            'archs': ['ppc64le', 's390x'],
+            },
+        ]
+
+    result = _deduplicate_errata_by_compose(candidates)
+
+    # Both should be kept as they have different builds and different architectures
+    # Neither is a subset of the other
+    assert len(result) == 2
+    releases = {r['release'] for r in result}
+    assert releases == {'RHEL-9.5.0.Z.MAIN', 'RHEL-9.5.0.Z.EUS'}
