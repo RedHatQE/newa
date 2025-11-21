@@ -95,6 +95,7 @@ statedir_topdir=/var/tmp/newa
 [erratatool]
 url = https://..
 enable_comments = 1
+deduplicate_releases = 1
 [jira]
 url = https://...
 token = *JIRATOKEN*
@@ -114,6 +115,7 @@ This settings can be overridden by environment variables that take precedence.
 NEWA_STATEDIR_TOPDIR
 NEWA_ET_URL
 NEWA_ET_ENABLE_COMMENTS
+NEWA_ET_DEDUPLICATE_RELEASES
 NEWA_JIRA_URL
 NEWA_JIRA_TOKEN
 NEWA_JIRA_PROJECT
@@ -668,6 +670,35 @@ Instructs NEWA how to map erratum release to a TF compose. Use in case the defau
 Example:
 ```
 $ newa event --erratum 12345 --compose-mapping RHEL-9.4.0.Z.MAIN+EUS=RHEL-9.4.0-Nightly
+```
+
+#### Option `--deduplicate-releases`
+
+Enables deduplication of erratum releases that map to the same Testing Farm compose. When multiple releases in an advisory target the same compose (e.g., RHEL-9.5.0.Z.MAIN and RHEL-9.5.0.Z.EUS both mapping to RHEL-9.5.0-Nightly), NEWA will automatically filter out redundant releases, keeping only the one with the most comprehensive architecture and build coverage.
+
+This option is useful for reducing the number of duplicate test runs when multiple support extensions (MAIN, EUS, E4S, ELS, etc.) ship identical builds for the same compose.
+
+The deduplication logic works as follows:
+- Releases are grouped by their target Testing Farm compose
+- Within each compose group, releases are compared by builds and architectures
+- A release is considered redundant if another release in the same group has identical or superset builds AND identical or superset architectures
+- The release with the most architectures (and most builds as a tiebreaker) is kept
+
+This option can be set in three ways (in order of precedence):
+1. Command-line flag: `--deduplicate-releases`
+2. Environment variable: `NEWA_ET_DEDUPLICATE_RELEASES=1`
+3. Configuration file: `deduplicate_releases = 1` in the `[erratatool]` section
+
+Example:
+```
+$ newa event --erratum 12345 --deduplicate-releases jira --issue-config config.yaml schedule execute report
+```
+
+Example with configuration file:
+```
+[erratatool]
+url = https://errata.example.com
+deduplicate_releases = 1
 ```
 
 #### Option `--prev-event`
