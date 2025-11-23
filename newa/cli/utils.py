@@ -75,7 +75,7 @@ def apply_release_mapping(string: str,
     if not mapping:
         mapping = [
             r'\.GA$=',
-            r'\.Z\.?(MAIN)?(\+)?(AUS|E.S|TUS)?$=',
+            r'\.Z\.?(MAIN)?(\+)?(AUS|E.S|TUS)?(\.EXTENSION)?$=',
             r'^rhel-=RHEL-',
             r'RHEL-10\.0\.BETA=RHEL-10-Beta',
             r'-candidate$=',
