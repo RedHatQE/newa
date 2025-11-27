@@ -19,4 +19,6 @@ def get_url_basename(url: str) -> str:
 
 def els_release_check(release: str) -> bool:
     """Returns True if the release is ELS release"""
+    if '.Z.MAIN' in release:
+        return False
     return bool(re.search(r'(RHEL-7-ELS|\.Z\..*(AUS|TUS|E.S))', release))

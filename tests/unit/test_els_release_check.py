@@ -9,7 +9,7 @@ def test_els_release_check():
         ('RHEL-10.1.Z', False),
         ('RHEL-9.2.0.Z.EUS', True),
         ('RHEL-9.0.0.Z.E4S', True),
-        ('RHEL-8.10.0.Z.MAIN+EUS', True),
+        ('RHEL-8.10.0.Z.MAIN+EUS', False),
         ('RHEL-8.6.0.Z.AUS', True),
         ('RHEL-7-ELS', True),
         ]
