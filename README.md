@@ -108,9 +108,13 @@ token = *TESTING_FARM_API_TOKEN*
 recheck_delay = 120
 [rog]
 token = *GITLAB_COM_TOKEN*
+[ai]
+api_url = https://...
+api_token = *AI_API_TOKEN*
+api_model = gemini-2.0-flash-exp
 ```
 
-This settings can be overridden by environment variables that take precedence.
+These settings can be overridden by environment variables that take precedence.
 ```
 NEWA_STATEDIR_TOPDIR
 NEWA_ET_URL
@@ -125,6 +129,9 @@ NEWA_REPORTPORTAL_PROJECT
 TESTING_FARM_API_TOKEN
 NEWA_TF_RECHECK_DELAY
 NEWA_ROG_TOKEN
+NEWA_AI_API_URL
+NEWA_AI_API_TOKEN
+NEWA_AI_API_MODEL
 ```
 
 ### Jira issue configuration file
@@ -284,7 +291,7 @@ group: "Company users"
 
 #### transitions
 
-This is a mapping which tells NEWA which particular issue states (and resolutions) it should be using. This settings depends on a particular Jira project. It is also possible to specify resolution separated by a dot, e.g. `Closed.Obsolete`.
+This is a mapping which tells NEWA which particular issue states (and resolutions) it should be using. These settings depend on a particular Jira project. It is also possible to specify resolution separated by a dot, e.g. `Closed.Obsolete`.
 
 The following transitions can be defined:
 
@@ -309,7 +316,7 @@ transitions:
 
 #### defaults
 
-Defines the default settings for individual records in the `issues` list. This settings can be overridden by a value defined in a particular issue.
+Defines the default settings for individual records in the `issues` list. These settings can be overridden by a value defined in a particular issue.
 
 Example:
 ```
@@ -1071,11 +1078,89 @@ This option can be used to reschedule NEWA request that have ended with a partic
 
 This subcommand updates RP launch with recipe status and updates the respective Jira issue with a comment and a link to RP launch containing all test results.
 
-It processes multiple files having `execute-` prefix,
+It processes multiple files with the `execute-` prefix,
 reads RP launch details and searches for all the relevant launches, subsequently
 merging them into a single launch. Later, it updates the respective Jira issue
-with a note about test results availalability and a link to ReportPortal launch.
+with a note about test results availability and a link to ReportPortal launch.
 This subcommand doesn't produce any files.
+
+### Subcommand `summarize`
+
+This subcommand generates AI-powered summaries of ReportPortal launch test results and updates the corresponding Jira issues with these summaries as comments.
+
+It processes multiple files with the `execute-` prefix from the state directory. For each execute job that contains ReportPortal launch metadata:
+1. Collects test execution data from ReportPortal including test statistics, failure categories, and Jira issue details
+2. Sends the collected data to an AI model to generate a comprehensive summary
+3. Updates the corresponding Jira issue with the AI-generated summary as a comment
+
+The AI service configuration must be provided in the `newa.conf` file under the `[ai]` section or via environment variables `NEWA_AI_API_URL`, `NEWA_AI_API_TOKEN`, and `NEWA_AI_API_MODEL`.
+
+The summarize command supports both OpenAI-compatible APIs and Google Gemini APIs. The API type is automatically detected based on the URL.
+
+#### AI Configuration
+
+**Configuration parameters:**
+- `api_url`: API endpoint URL
+- `api_token`: API authentication token or key
+- `api_model`: Model name to use (default: `gemini-2.0-flash-exp`)
+
+**Google Gemini API Configuration:**
+
+For Gemini, you can configure the URL in two ways:
+
+1. **Base URL approach** (recommended): Provide the base URL and let NEWA construct the full endpoint using the `api_model` setting:
+```
+[ai]
+api_url = https://generativelanguage.googleapis.com/v1beta
+api_token = YOUR_GEMINI_API_KEY
+api_model = gemini-2.0-flash-exp
+```
+
+2. **Full URL approach**: Provide the complete endpoint URL (the `api_model` setting will be ignored):
+```
+[ai]
+api_url = https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent
+api_token = YOUR_GEMINI_API_KEY
+```
+
+**OpenAI-compatible API Configuration:**
+
+For OpenAI and OpenAI-compatible APIs (e.g., Azure OpenAI, local LLM servers):
+```
+[ai]
+api_url = https://api.openai.com/v1/chat/completions
+api_token = sk-your-api-token-here
+api_model = gpt-4o-mini
+```
+
+Or for a local LLM server:
+```
+[ai]
+api_url = http://localhost:1234/v1/chat/completions
+api_token = not-needed
+api_model = local-model-name
+```
+
+**Environment Variable Configuration:**
+
+All settings can be overridden via environment variables:
+```bash
+export NEWA_AI_API_URL="https://generativelanguage.googleapis.com/v1beta"
+export NEWA_AI_API_TOKEN="YOUR_API_KEY"
+export NEWA_AI_API_MODEL="gemini-2.0-flash-exp"
+```
+
+#### Usage Examples
+
+Process previous state directory:
+```
+$ newa --prev-state-dir summarize
+```
+
+As part of a complete workflow:
+```
+$ newa event --compose CentOS-Stream-9 jira --issue-config config.yaml schedule execute report summarize
+```
 
 ### Subcommand `list`
 
