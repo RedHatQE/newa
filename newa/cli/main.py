@@ -16,6 +16,7 @@ from newa.cli.commands.jira_cmd import cmd_jira
 from newa.cli.commands.list_cmd import cmd_list
 from newa.cli.commands.report_cmd import cmd_report
 from newa.cli.commands.schedule_cmd import cmd_schedule
+from newa.cli.commands.summarize_cmd import cmd_summarize
 from newa.cli.constants import NEWA_DEFAULT_CONFIG
 from newa.cli.utils import get_state_dir
 
@@ -205,3 +206,4 @@ main.add_command(cmd_schedule)
 main.add_command(cmd_execute)
 main.add_command(cmd_report)
 main.add_command(cmd_cancel)
+main.add_command(cmd_summarize)

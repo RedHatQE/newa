@@ -53,6 +53,9 @@ class Settings:  # type: ignore[no-untyped-def]
     tf_token: str = ''
     tf_recheck_delay: str = ''
     rog_token: str = ''
+    ai_api_url: str = ''
+    ai_api_token: str = ''
+    ai_api_model: str = ''
 
     def get(self, key: str, default: str = '') -> str:
         return str(getattr(self, key, default))
@@ -145,6 +148,19 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'rog/token',
                 'NEWA_ROG_TOKEN'),
+            ai_api_url=_get(
+                cp,
+                'ai/api_url',
+                'NEWA_AI_API_URL'),
+            ai_api_token=_get(
+                cp,
+                'ai/api_token',
+                'NEWA_AI_API_TOKEN'),
+            ai_api_model=_get(
+                cp,
+                'ai/api_model',
+                'NEWA_AI_API_MODEL',
+                'gemini-2.0-flash-exp'),
             )
 
 
