@@ -56,6 +56,7 @@ from newa.models import (
 
 # Import all services
 from newa.services import (
+    AIService,
     ErrataTool,
     IssueHandler,
     JiraField,
@@ -88,6 +89,8 @@ __all__ = [
     'STATEDIR_TOPDIR',
     'TF_REQUEST_FINISHED_STATES',
     'UNDEFINED_COMPOSE',
+    # Services
+    'AIService',
     # Models - base
     'Arch',
     # Models - jobs
@@ -97,7 +100,6 @@ __all__ = [
     'Cloneable',
     # Models - artifacts
     'Compose',
-    # Services
     'ErrataTool',
     'Erratum',
     'ErratumCommentTrigger',

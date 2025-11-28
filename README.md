@@ -108,6 +108,9 @@ token = *TESTING_FARM_API_TOKEN*
 recheck_delay = 120
 [rog]
 token = *GITLAB_COM_TOKEN*
+[ai]
+api_url = https://...
+api_token = *AI_API_TOKEN*
 ```
 
 This settings can be overridden by environment variables that take precedence.
@@ -125,6 +128,8 @@ NEWA_REPORTPORTAL_PROJECT
 TESTING_FARM_API_TOKEN
 NEWA_TF_RECHECK_DELAY
 NEWA_ROG_TOKEN
+NEWA_AI_API_URL
+NEWA_AI_API_TOKEN
 ```
 
 ### Jira issue configuration file
@@ -1076,6 +1081,31 @@ reads RP launch details and searches for all the relevant launches, subsequently
 merging them into a single launch. Later, it updates the respective Jira issue
 with a note about test results availalability and a link to ReportPortal launch.
 This subcommand doesn't produce any files.
+
+### Subcommand `summarize`
+
+This subcommand generates AI-powered summaries of ReportPortal launch test results and updates the corresponding Jira issues with these summaries as comments.
+
+It processes multiple files having `execute-` prefix from the state directory. For each execute job that contains ReportPortal launch metadata:
+1. Collects test execution data from ReportPortal including test statistics, failure categories, and Jira issue details
+2. Sends the collected data to an AI model to generate a comprehensive summary
+3. Updates the corresponding Jira issue with the AI-generated summary as a comment
+
+The AI service configuration must be provided in the `newa.conf` file under the `[ai]` section or via environment variables `NEWA_AI_API_URL` and `NEWA_AI_API_TOKEN`.
+
+The summarize command supports both OpenAI-compatible APIs and Google Gemini APIs. The API type is automatically detected based on the URL.
+
+Example:
+
+```
+$ newa --prev-state-dir summarize
+```
+
+Or as part of a complete workflow:
+
+```
+$ newa event --compose CentOS-Stream-9 jira --issue-config config.yaml schedule execute report summarize
+```
 
 ### Subcommand `list`
 
