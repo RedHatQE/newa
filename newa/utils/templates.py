@@ -28,6 +28,8 @@ def default_template_environment() -> jinja2.Environment:
 def render_template(
         template: str,
         environment: Optional[jinja2.Environment] = None,
+        iterations: Optional[int] = None,
+        limit: int = 50,
         **variables: Any,
         ) -> str:
     """
@@ -35,14 +37,19 @@ def render_template(
 
     :param template: template to render.
     :param environment: Jinja2 environment to use.
+    :param iterations: if set, do exactly this many iterations and return (no exception).
+    :param limit: if iterations not set, maximum iterations before raising exception (default 50).
     :param variables: variables to pass to the template.
     """
-
-    limit = 50
     environment = environment or default_template_environment()
     old = template
+
+    # Determine max iterations: use iterations if set, otherwise limit
+    max_iterations = iterations or limit
+    use_limit_mode = iterations is None
+
     try:
-        for _ in range(limit):
+        for _ in range(max_iterations):
             new = environment.from_string(old).render(**variables).strip()
             if old == new:
                 return new
@@ -55,7 +62,13 @@ def render_template(
     except jinja2.exceptions.TemplateError as exc:
         raise Exception("Could not render template.") from exc
 
-    raise Exception(f"Jinja2 template recursion limit {limit} reached for template: '{template}'")
+    # If using limit mode and we didn't converge, raise exception
+    if use_limit_mode:
+        raise Exception(
+            f"Jinja2 template recursion limit {limit} reached for template: '{template}'")
+
+    # If using iterations mode, return the result even if not converged
+    return new
 
 
 def eval_test(
