@@ -401,6 +401,84 @@ PLANET=Earth, STATE=India, CITY=Delhi, STREET="Chandni Chowk"
 
 Individual dimension values may also contain additional keys like `context`, `reportportal` etc. Individual options are described below.
 
+#### Jinja2 Template Support in Recipes
+
+Recipe files support Jinja2 template strings at multiple levels, allowing for dynamic recipe generation and improved reusability. Templates can be used in three ways:
+
+1. **Individual dimension items** - A single item within a dimension list can be a Jinja2 template string
+2. **Entire dimension lists** - An entire dimension list can be a Jinja2 template string that renders to a YAML list
+3. **Fixtures and adjustments** - These sections can also use Jinja2 template strings
+
+Templates can access `ENVIRONMENT` and `CONTEXT` objects that are defined in the `fixtures` section, making it possible to dynamically generate dimension values based on configuration.
+
+**Example 1: Dynamic dimension list generation using ENVIRONMENT**
+
+This example shows how to generate dimension items dynamically using a Jinja2 loop with an ENVIRONMENT variable defined in fixtures:
+
+```yaml
+fixtures:
+    tmt:
+        url: https://github.com/example/tests.git
+        ref: main
+        path: tests
+    context:
+        tier: 1
+    environment:
+        ARCHITECTURES: "x86_64,s390x,ppc64le,aarch64"
+
+dimensions:
+    arch: |
+       {% for arch in ENVIRONMENT.ARCHITECTURES.split(',') %}
+       - context:
+             arch: {{ arch }}
+         environment:
+             ARCH_NAME: {{ arch }}
+       {% endfor %}
+```
+
+This generates 4 dimension items (one for each architecture), with both `context.arch` and `environment.ARCH_NAME` set appropriately for each.
+
+**Example 2: Conditional dimension generation using CONTEXT**
+
+This example demonstrates using templates for conditional logic based on CONTEXT values:
+
+```yaml
+fixtures:
+    tmt:
+        url: https://github.com/example/tests.git
+        ref: main
+    context:
+        test_mode: regression
+        tier: 1
+
+dimensions:
+    test_suite: |
+       {% if CONTEXT.test_mode == 'regression' %}
+       - context:
+             suite: full_regression
+         environment:
+             TEST_ARGS: --comprehensive
+       - context:
+             suite: smoke
+         environment:
+             TEST_ARGS: --quick
+       {% else %}
+       - context:
+             suite: custom
+         environment:
+             TEST_ARGS: --mode={{ CONTEXT.test_mode }}
+       {% endif %}
+```
+
+This dynamically generates different test suites based on the `test_mode` defined in the fixtures context.
+
+**Benefits:**
+- Reduce duplication in recipe files
+- Generate test matrices programmatically based on environment or context variables
+- Share common recipe patterns with different configurations
+- Enable conditional recipe generation based on runtime settings
+- Leverage existing NEWA ENVIRONMENT and CONTEXT mechanisms
+
 #### environment
 
 Defines environment varibles to use. See the example above.
