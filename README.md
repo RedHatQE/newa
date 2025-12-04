@@ -414,6 +414,129 @@ PLANET=Earth, STATE=India, CITY=Delhi, STREET="Chandni Chowk"
 
 Individual dimension values may also contain additional keys like `context`, `reportportal` etc. Individual options are described below.
 
+#### Jinja2 Template Support in Recipes
+
+Recipe files support Jinja2 template strings at multiple levels, allowing for dynamic recipe generation and improved reusability. Templates can be used in four ways:
+
+1. **Template variables within field values** - Jinja2 variables used within regular YAML values (e.g., `"{{ CONTEXT.color }}"`)
+2. **Individual dimension items** - A single item within a dimension list can be a Jinja2 template string
+3. **Entire dimension lists** - An entire dimension list can be a Jinja2 template string that renders to a YAML list
+4. **Fixtures and adjustments** - These sections can also use Jinja2 template strings
+
+Templates can access `ENVIRONMENT` and `CONTEXT` objects that are defined in the `fixtures` section, making it possible to dynamically generate values and configuration based on the recipe context.
+
+**Important:** There are fundamental differences in when and how these templates are rendered:
+
+**Timing:**
+- **Early rendering** (use cases 2-4): Templates that represent entire structures (dimensions, fixtures, adjustments) are rendered during YAML processing, before dimension combinations are generated.
+- **Late rendering** (use case 1): Template variables within field values are rendered much later, after all dimension combinations have been generated and individual schedule YAML files are being created. This allows them to reference the specific `CONTEXT` and `ENVIRONMENT` values for each dimension combination.
+
+**Rendering iterations:**
+- **Early rendering** (use cases 2-4): Templates are rendered with a **single iteration only**. This means Jinja2 template expansion happens once, and nested template variables are not recursively expanded. This is intentional to avoid side effects during dimension generation.
+- **Late rendering** (use case 1): Templates are rendered **recursively** (up to 50 iterations by default). This allows nested template variables like `{{ "{{ CONTEXT.value }}" }}` to be fully expanded through multiple rendering passes until no more changes occur or the iteration limit is reached.
+
+**Example 1: Template variables within field values (late rendering)**
+
+This is the most common use case. Jinja2 variables can be used directly within any string value in the recipe file. These are rendered after dimension combinations are generated, so they can reference the specific values from each combination:
+
+```yaml
+fixtures:
+  environment:
+    PLANET: Earth
+  reportportal:
+    launch_name: "my_project_tests"
+    launch_description: "Testing project on {{ ENVIRONMENT.PLANET }}"
+    suite_description: "tier {{ CONTEXT.tier }} tests in {{ ENVIRONMENT.CITY }}"
+    launch_attributes:
+      city: "{{ ENVIRONMENT.CITY }}"
+      tier: "{{ CONTEXT.tier }}"
+
+dimensions:
+  cities:
+    - environment:
+        CITY: Brno
+      context:
+        tier: 1
+    - environment:
+        CITY: Boston
+      context:
+        tier: 2
+```
+
+In this example, the ReportPortal suite description will be different for each dimension combination:
+- First combination: `"tier 1 tests in Brno"`
+- Second combination: `"tier 2 tests in Boston"`
+
+The template variables are rendered when schedule YAML files are created, allowing each request to have its own customized values based on its specific dimension combination.
+
+**Example 2: Dynamic dimension list generation using ENVIRONMENT (early rendering)**
+
+This example shows how to generate dimension items dynamically using a Jinja2 loop with an ENVIRONMENT variable defined in fixtures:
+
+```yaml
+fixtures:
+    tmt:
+        url: https://github.com/example/tests.git
+        ref: main
+        path: tests
+    context:
+        tier: 1
+    environment:
+        ARCHITECTURES: "x86_64,s390x,ppc64le,aarch64"
+
+dimensions:
+    arch: |
+       {% for arch in ENVIRONMENT.ARCHITECTURES.split(',') %}
+       - context:
+             arch: {{ arch }}
+         environment:
+             ARCH_NAME: {{ arch }}
+       {% endfor %}
+```
+
+This generates 4 dimension items (one for each architecture), with both `context.arch` and `environment.ARCH_NAME` set appropriately for each.
+
+**Example 3: Conditional dimension generation using CONTEXT (early rendering)**
+
+This example demonstrates using templates for conditional logic based on CONTEXT values. The template is rendered during YAML processing to generate the dimension structure:
+
+```yaml
+fixtures:
+    tmt:
+        url: https://github.com/example/tests.git
+        ref: main
+    context:
+        test_mode: regression
+        tier: 1
+
+dimensions:
+    test_suite: |
+       {% if CONTEXT.test_mode == 'regression' %}
+       - context:
+             suite: full_regression
+         environment:
+             TEST_ARGS: --comprehensive
+       - context:
+             suite: smoke
+         environment:
+             TEST_ARGS: --quick
+       {% else %}
+       - context:
+             suite: custom
+         environment:
+             TEST_ARGS: --mode={{ CONTEXT.test_mode }}
+       {% endif %}
+```
+
+This dynamically generates different test suites based on the `test_mode` defined in the fixtures context.
+
+**Benefits:**
+- Reduce duplication in recipe files
+- Generate test matrices programmatically based on environment or context variables
+- Share common recipe patterns with different configurations
+- Enable conditional recipe generation based on runtime settings
+- Leverage existing NEWA ENVIRONMENT and CONTEXT mechanisms
+
 #### environment
 
 Defines environment varibles to use. See the example above.

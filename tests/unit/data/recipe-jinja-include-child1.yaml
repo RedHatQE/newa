@@ -1,0 +1,12 @@
+fixtures: |
+    context:
+        tier: {{ default_tier }}
+        from: child1
+        child1_only: {{ child1_value }}
+    environment:
+        CHILD1_VAR: child1_value
+adjustments:
+  - |
+    context:
+        adjustment: {{ adjustment_value }}
+    when: CONTEXT.tier == 1

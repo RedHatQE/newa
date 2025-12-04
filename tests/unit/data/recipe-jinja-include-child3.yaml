@@ -1,0 +1,10 @@
+fixtures:
+    context:
+        from: child3
+    environment:
+        TEST_ARCH: x86_64
+adjustments:
+  - |
+    context:
+        adj_from_fixture: {{ ENVIRONMENT.TEST_ARCH }}
+    when: "True"
