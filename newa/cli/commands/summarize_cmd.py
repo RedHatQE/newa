@@ -124,7 +124,9 @@ def process_execute_job_for_summary(
     # Query AI model
     ctx.logger.info(f'Querying AI model for summary of RP launch {launch_uuid}')
     try:
-        ai_summary = ai_service.query_ai_model(user_message)
+        # Use custom system prompt from config if provided, otherwise use default
+        system_prompt = ctx.settings.ai_system_prompt or None
+        ai_summary = ai_service.query_ai_model(user_message, system_prompt=system_prompt)
     except Exception as e:
         ctx.logger.error(f'Error querying AI model: {e}')
         return
