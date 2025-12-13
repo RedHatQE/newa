@@ -56,6 +56,7 @@ class Settings:  # type: ignore[no-untyped-def]
     ai_api_url: str = ''
     ai_api_token: str = ''
     ai_api_model: str = ''
+    ai_system_prompt: str = ''
 
     def get(self, key: str, default: str = '') -> str:
         return str(getattr(self, key, default))
@@ -161,6 +162,10 @@ class Settings:  # type: ignore[no-untyped-def]
                 'ai/api_model',
                 'NEWA_AI_API_MODEL',
                 'gemini-2.0-flash-exp'),
+            ai_system_prompt=_get(
+                cp,
+                'ai/system_prompt',
+                'NEWA_AI_SYSTEM_PROMPT'),
             )
 
 

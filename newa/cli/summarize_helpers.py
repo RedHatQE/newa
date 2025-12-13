@@ -239,15 +239,14 @@ def collect_launch_details(
 
     # Print launch header
     attrs = ", ".join([f'{a["key"]}={a["value"]}' for a in launch_details["attributes"]])
-    # Extract first line of description
     description = launch_details.get('description', '') or ''
-    description_first_line = description.replace('<br>', '\n').split('\n')[0]
+    description = description.replace('<br>', '\n')
 
     output.extend([
         f'Launch name: {launch_details["name"]}',
         f'URL: {rp_url}/ui/#{rp_project}/launches/all/{launch_id}',
         f'Attributes:  {attrs}',
-        f'Description: {textwrap.indent(description_first_line, 2 * " ")}',
+        f'Description: {textwrap.indent(description, 2 * " ")}',
         format_statistics(launch_details, all_data),
         '',
         ])

@@ -132,6 +132,7 @@ NEWA_ROG_TOKEN
 NEWA_AI_API_URL
 NEWA_AI_API_TOKEN
 NEWA_AI_API_MODEL
+NEWA_AI_SYSTEM_PROMPT
 ```
 
 ### Jira issue configuration file
@@ -1103,6 +1104,9 @@ The summarize command supports both OpenAI-compatible APIs and Google Gemini API
 - `api_url`: API endpoint URL
 - `api_token`: API authentication token or key
 - `api_model`: Model name to use (default: `gemini-2.0-flash-exp`)
+- `system_prompt`: Custom system prompt for AI model (optional, uses default prompt if not specified)
+
+**Note:** The `system_prompt` parameter allows you to customize how the AI analyzes and summarizes test results. When not specified, NEWA uses a built-in prompt optimized for ReportPortal launch summaries in Jira format. You might want to customize this if you need different formatting, additional analysis criteria, or organization-specific requirements.
 
 **Google Gemini API Configuration:**
 
@@ -1148,6 +1152,7 @@ All settings can be overridden via environment variables:
 export NEWA_AI_API_URL="https://generativelanguage.googleapis.com/v1beta"
 export NEWA_AI_API_TOKEN="YOUR_API_KEY"
 export NEWA_AI_API_MODEL="gemini-2.0-flash-exp"
+export NEWA_AI_SYSTEM_PROMPT="Your custom system prompt here..."
 ```
 
 #### Usage Examples
