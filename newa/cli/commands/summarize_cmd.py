@@ -81,6 +81,19 @@ def process_execute_job_for_summary(
     """
     jira_id = execute_job.jira.id
 
+    # Check issue status - skip if Done or Closed
+    try:
+        issue = jira_client.issue(jira_id)
+        issue_status = issue.fields.status.name
+
+        if issue_status in ['Done', 'Closed']:
+            ctx.logger.info(
+                f'Skipping {jira_id}: Issue status is {issue_status}')
+            return
+    except Exception as e:
+        ctx.logger.error(f'Error fetching Jira issue {jira_id} status: {e}')
+        return
+
     # Check if the execute job has ReportPortal launch metadata
     if not execute_job.request.reportportal:
         ctx.logger.debug(
