@@ -45,7 +45,7 @@ REPORT GENERATION RULES:
 
         State clearly if all failed tests have been reviewed.
 
-        Check the "REQ-X.Y.Z" request statuses in the original description. Request statuses 'passed' and 'failed' mean that the request is complete. If there is any other status, explicitly state that testing job requests are possibly incomplete and explain why.
+        Check the "REQ-X.Y.Z" request statuses in the original description. IMPORTANT: Request statuses 'passed' and 'failed' both indicate COMPLETE test execution - do NOT mark these as incomplete. Only mark testing job requests as incomplete if there are request statuses OTHER than 'passed' or 'failed' (e.g., 'pending', 'running', 'error', etc.).
 
         If any tests are 'skipped' or 'error', explicitly state that results are possibly incomplete and why.
 
