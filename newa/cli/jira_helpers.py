@@ -95,7 +95,8 @@ def _render_action_fields(
         artifact_job: ArtifactJob,
         jira_event_fields: dict[str, Any],
         assignee: Optional[str],
-        unassigned: bool) -> tuple[str, str, Optional[str], dict[str, Any], dict[str, list[str]]]:
+        unassigned: bool) -> tuple[str, str, Optional[str], dict[str, Any],
+                                   dict[str, list[str]], bool]:
     """Render all action fields using Jinja templates."""
     rendered_summary = _render_action_value(
         action.summary or '', artifact_job, action, jira_event_fields)
@@ -146,8 +147,21 @@ def _render_action_fields(
                     raise Exception(
                         f"Linked issue key '{linked_key}' must be a string")
 
+    # Render schedule if it's a string
+    rendered_schedule: bool
+    if isinstance(action.schedule, str):
+        rendered_schedule_str = _render_action_value(
+            action.schedule, artifact_job, action, jira_event_fields)
+        # Convert rendered string to boolean (strip whitespace before comparing)
+        rendered_schedule = rendered_schedule_str.strip().lower() in ('true', '1', 'yes')
+    elif action.schedule is None:
+        # Treat None as True (default behavior)
+        rendered_schedule = True
+    else:
+        rendered_schedule = action.schedule
+
     return (rendered_summary, rendered_description, rendered_assignee,
-            rendered_fields, rendered_links)
+            rendered_fields, rendered_links, rendered_schedule)
 
 
 def _find_or_create_issue(
@@ -459,7 +473,7 @@ def _process_issue_action(
 
     # Render all fields
     (rendered_summary, rendered_description, rendered_assignee,
-     rendered_fields, rendered_links) = _render_action_fields(
+     rendered_fields, rendered_links, rendered_schedule) = _render_action_fields(
         action, artifact_job, jira_event_fields, assignee, unassigned)
 
     # Find or create issue
@@ -483,7 +497,7 @@ def _process_issue_action(
     # Job is not created for actions with schedule == False, unless
     # we are using action_id_filter_pattern. In such a case, the action
     # is matching a filter, otherwise it would be skipped already
-    if action.schedule or ctx.action_id_filter_pattern:
+    if rendered_schedule or ctx.action_id_filter_pattern:
         _create_jira_job_from_action(
             ctx, action, artifact_job, jira_event_fields, new_issue)
     else:

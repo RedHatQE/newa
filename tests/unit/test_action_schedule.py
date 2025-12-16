@@ -102,7 +102,7 @@ class TestActionScheduleAttribute:
                 mock.patch('newa.cli.jira_helpers._create_jira_job_from_action') as \
                 mock_create_job:
 
-            mock_render.return_value = ('summary', 'description', None, {}, {})
+            mock_render.return_value = ('summary', 'description', None, {}, {}, False)
             mock_find_create.return_value = (mock_issue, [], False)
 
             # Process the action
@@ -151,7 +151,7 @@ class TestActionScheduleAttribute:
                 mock.patch('newa.cli.jira_helpers._create_jira_job_from_action') as \
                 mock_create_job:
 
-            mock_render.return_value = ('summary', 'description', None, {}, {})
+            mock_render.return_value = ('summary', 'description', None, {}, {}, True)
             mock_find_create.return_value = (mock_issue, [], False)
 
             # Process the action
@@ -198,7 +198,7 @@ class TestActionScheduleAttribute:
                 mock.patch('newa.cli.jira_helpers._create_jira_job_from_action') as \
                 mock_create_job:
 
-            mock_render.return_value = ('summary', 'description', None, {}, {})
+            mock_render.return_value = ('summary', 'description', None, {}, {}, False)
             mock_find_create.return_value = (mock_issue, [], False)
 
             # Process the action
@@ -276,3 +276,88 @@ issues:
         assert config.issues[0].schedule is False
         assert config.issues[1].schedule is True
         assert config.issues[2].schedule is True  # Default
+
+    def test_schedule_null_treated_as_true(self, tmp_path):
+        """Test that schedule: null in YAML is treated as True (default)."""
+        config_content = """
+project: TEST
+transitions:
+  closed: [Closed]
+  dropped: [Dropped]
+  processed: [In Progress]
+  passed: [Verified]
+issues:
+  - id: action_with_null_schedule
+    summary: Test Action
+    schedule: null
+"""
+        config_file = tmp_path / 'test-config.yaml'
+        config_file.write_text(config_content)
+
+        config = IssueConfig.read_file(str(config_file))
+
+        # None should be present in the raw config
+        assert config.issues[0].schedule is None
+
+        # But when rendered, it should be treated as True
+        from newa.cli.jira_helpers import _render_action_fields
+        artifact_job = ArtifactJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=None,
+            rog=None,
+            )
+        _, _, _, _, _, rendered_schedule = _render_action_fields(
+            config.issues[0], artifact_job, {}, None, False)
+        assert rendered_schedule is True
+
+    def test_schedule_string_whitespace_handling(self):
+        """Test that schedule strings with whitespace are handled correctly."""
+        from newa.cli.jira_helpers import _render_action_fields
+
+        artifact_job = ArtifactJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=None,
+            rog=None,
+            )
+
+        # Test with leading/trailing whitespace
+        action = IssueAction(
+            id='test_action',
+            summary='Test Action',
+            schedule=' true ',
+            )
+        _, _, _, _, _, rendered_schedule = _render_action_fields(
+            action, artifact_job, {}, None, False)
+        assert rendered_schedule is True
+
+        # Test with newline
+        action = IssueAction(
+            id='test_action',
+            summary='Test Action',
+            schedule='YES\n',
+            )
+        _, _, _, _, _, rendered_schedule = _render_action_fields(
+            action, artifact_job, {}, None, False)
+        assert rendered_schedule is True
+
+        # Test with tab and mixed case
+        action = IssueAction(
+            id='test_action',
+            summary='Test Action',
+            schedule='\tTrUe\t',
+            )
+        _, _, _, _, _, rendered_schedule = _render_action_fields(
+            action, artifact_job, {}, None, False)
+        assert rendered_schedule is True
+
+        # Test false value with whitespace
+        action = IssueAction(
+            id='test_action',
+            summary='Test Action',
+            schedule=' false ',
+            )
+        _, _, _, _, _, rendered_schedule = _render_action_fields(
+            action, artifact_job, {}, None, False)
+        assert rendered_schedule is False

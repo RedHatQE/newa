@@ -204,6 +204,15 @@ issues:
    on_respin: close
    job_recipe: https://path/to/my/NEWA/recipe/performance.yaml
    schedule: false
+
+ - summary: "ER#{{ ERRATUM.id }} - Security testing {{ ERRATUM.builds|join(' ') }}"
+   description: "Run security tests (scheduled only for RHSA advisories)"
+   type: task
+   id: task_security
+   parent_id: errata_epic
+   on_respin: close
+   job_recipe: https://path/to/my/NEWA/recipe/security.yaml
+   schedule: "{{ ERRATUM.id is match('RHSA-.*') }}"
 ```
 
 Individual settings are described below.
@@ -340,7 +349,10 @@ The following options are available:
  - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
  - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are `close` (i.e. create a new issue) and `keep` (i.e. reuse existing issue).
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
- - `schedule`: Controls whether a job should be automatically scheduled for this action (default: `True`). When set to `False`, NEWA will create or update the Jira issue but will not schedule any associated job (even if `job_recipe` is defined), unless the action is explicitly selected using the `--action-id-filter` option. This is useful for creating tracking issues that don't require automated testing or for actions that should only be triggered on-demand.
+ - `schedule`: Controls whether a job should be automatically scheduled for this action (default: `True`). Can be either a boolean value or a Jinja template string that evaluates to a boolean:
+   - **Boolean value**: When set to `False`, NEWA will create or update the Jira issue but will not schedule any associated job (even if `job_recipe` is defined), unless the action is explicitly selected using the `--action-id-filter` option.
+   - **Jinja template**: When set to a string template (e.g., `"{{ ERRATUM.id != 'RHBA-1234' }}"`), NEWA will render the template and evaluate it to a boolean. The template has access to the same variables as other fields: `EVENT`, `ERRATUM`, `COMPOSE`, `JIRA`, `ROG`, `CONTEXT`, and `ENVIRONMENT`. The rendered string is converted to boolean where 'true', '1', or 'yes' (case-insensitive) are considered `True`, and all other values are considered `False`.
+   - This is useful for creating tracking issues that don't require automated testing, for actions that should only be triggered on-demand, or for conditionally scheduling jobs based on event properties.
  - `erratum_comment_triggers` - For specified triggers, provides an update in an erratum through a comment. This functionality needs to be enabled also in the `newa` configuration file through `enable_comments = 1`. The following triggers are currently supported:
    - `jira` - Adds a comment when a Jira issue is initially 'adopted' by NEWA (either created or taken over due to `jira --map-issue` parameter).
    - `execute` - Adds a comment when automated tests are initiated by NEWA.
