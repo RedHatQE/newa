@@ -1,6 +1,6 @@
 import pytest
 
-from newa import render_template
+from newa import RecipeConfig, render_template
 
 
 @pytest.fixture
@@ -20,3 +20,389 @@ def test_render_template_bad():
         render_template(
             "{% if %} {% ednif %}",
             )
+
+
+def test_dimension_string_template():
+    """Test that dimension values can be Jinja2 template strings."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
+       - |
+         context:
+             arch: aarch64
+"""
+    config = RecipeConfig.from_yaml(yaml_content)
+    reqs = list(config.build_requests({}, {}))
+
+    # Should have 2 requests (one for each arch dimension)
+    assert len(reqs) == 2
+    assert reqs[0].context['arch'] == 'x86_64'
+    assert reqs[1].context['arch'] == 'aarch64'
+
+
+def test_dimension_template_with_variables():
+    """Test that Jinja2 templates can use variables."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+dimensions:
+    arch:
+       - |
+         context:
+             arch: {{ target_arch }}
+"""
+    config = RecipeConfig.from_yaml(yaml_content, jinja_vars={'target_arch': 's390x'})
+    reqs = list(config.build_requests({}, {}))
+
+    assert len(reqs) == 1
+    assert reqs[0].context['arch'] == 's390x'
+
+
+def test_adjustments_string_template():
+    """Test that adjustment values can be Jinja2 template strings."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+adjustments:
+  - context:
+        distro: fedora
+  - |
+    environment:
+        TEST_VAR: "test_value"
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
+"""
+    config = RecipeConfig.from_yaml(yaml_content)
+    reqs = list(config.build_requests({}, {}))
+
+    assert len(reqs) == 1
+    assert reqs[0].context['distro'] == 'fedora'
+    assert reqs[0].environment['TEST_VAR'] == 'test_value'
+
+
+def test_fixtures_string_template():
+    """Test that fixtures can be a Jinja2 template string."""
+    yaml_content = """
+fixtures: |
+    context:
+        tier: 1
+        env: {{ env_name }}
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
+"""
+    config = RecipeConfig.from_yaml(yaml_content, jinja_vars={'env_name': 'production'})
+    reqs = list(config.build_requests({}, {}))
+
+    assert len(reqs) == 1
+    assert reqs[0].context['tier'] == 1
+    assert reqs[0].context['env'] == 'production'
+
+
+def test_mixed_dict_and_string_dimensions():
+    """Test that dimensions can mix dict and string template formats."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
+       - |
+         context:
+             arch: {{ arch_name }}
+    fips:
+       - |
+         context:
+             fips: yes
+       - context:
+             fips: no
+"""
+    config = RecipeConfig.from_yaml(yaml_content, jinja_vars={'arch_name': 'aarch64'})
+    reqs = list(config.build_requests({}, {}))
+
+    # Should have 4 requests (2 arch x 2 fips)
+    assert len(reqs) == 4
+
+    # Check that we have both archs
+    archs = {req.context['arch'] for req in reqs}
+    assert archs == {'x86_64', 'aarch64'}
+
+    # Check that we have both fips values
+    fips_values = {req.context['fips'] for req in reqs}
+    assert fips_values == {'yes', 'no'}
+
+
+def test_dimension_list_as_template():
+    """Test that an entire dimension list can be a Jinja2 template string."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+dimensions:
+    arch: |
+       - context:
+             arch: x86_64
+       - context:
+             arch: aarch64
+"""
+    config = RecipeConfig.from_yaml(yaml_content)
+    reqs = list(config.build_requests({}, {}))
+
+    # Should have 2 requests (one for each arch)
+    assert len(reqs) == 2
+    archs = {req.context['arch'] for req in reqs}
+    assert archs == {'x86_64', 'aarch64'}
+
+
+def test_dimension_list_template_with_variables():
+    """Test that dimension list templates can use Jinja2 variables."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+dimensions:
+    arch: |
+       {% for arch in archs %}
+       - context:
+             arch: {{ arch }}
+       {% endfor %}
+"""
+    config = RecipeConfig.from_yaml(
+        yaml_content,
+        jinja_vars={'archs': ['x86_64', 's390x', 'ppc64le']},
+        )
+    reqs = list(config.build_requests({}, {}))
+
+    # Should have 3 requests (one for each arch in the list)
+    assert len(reqs) == 3
+    archs = {req.context['arch'] for req in reqs}
+    assert archs == {'x86_64', 's390x', 'ppc64le'}
+
+
+def test_mixed_dimension_list_formats():
+    """Test that different dimensions can use different formats."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+dimensions:
+    arch: |
+       - context:
+             arch: x86_64
+       - context:
+             arch: aarch64
+    fips:
+       - context:
+             fips: yes
+       - context:
+             fips: no
+"""
+    config = RecipeConfig.from_yaml(yaml_content)
+    reqs = list(config.build_requests({}, {}))
+
+    # Should have 4 requests (2 arch x 2 fips)
+    assert len(reqs) == 4
+
+    # Check that we have both archs
+    archs = {req.context['arch'] for req in reqs}
+    assert archs == {'x86_64', 'aarch64'}
+
+    # Check that we have both fips values
+    fips_values = {req.context['fips'] for req in reqs}
+    assert fips_values == {'yes', 'no'}
+
+
+def test_dimension_list_template_with_nested_strings():
+    """Test that dimension list template can contain individual item templates."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+dimensions:
+    arch: |
+       - context:
+             arch: x86_64
+       - |
+         context:
+             arch: {{ target_arch }}
+"""
+    config = RecipeConfig.from_yaml(
+        yaml_content,
+        jinja_vars={'target_arch': 'aarch64'},
+        )
+    reqs = list(config.build_requests({}, {}))
+
+    # Should have 2 requests
+    assert len(reqs) == 2
+    archs = {req.context['arch'] for req in reqs}
+    assert archs == {'x86_64', 'aarch64'}
+
+
+def test_dimension_template_with_environment_from_fixtures():
+    """Test that ENVIRONMENT defined in fixtures is available in dimension templates."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+    environment:
+        ARCHITECTURES: "x86_64,s390x,ppc64le,aarch64"
+
+dimensions:
+    arch: |
+       {% for arch in ENVIRONMENT.ARCHITECTURES.split(',') %}
+       - context:
+             arch: {{ arch }}
+         environment:
+             ARCH_NAME: {{ arch }}
+       {% endfor %}
+"""
+    config = RecipeConfig.from_yaml(yaml_content)
+    reqs = list(config.build_requests({}, {}))
+
+    # Should have 4 requests (one for each arch)
+    assert len(reqs) == 4
+
+    # Check that we have all 4 archs
+    archs = {req.context['arch'] for req in reqs}
+    assert archs == {'x86_64', 's390x', 'ppc64le', 'aarch64'}
+
+    # Check that ARCH_NAME matches arch in context
+    for req in reqs:
+        assert req.environment['ARCH_NAME'] == req.context['arch']
+
+
+def test_cli_environment_overrides_fixtures_in_dimension_templates():
+    """Test that CLI ENVIRONMENT overrides fixtures when rendering dimension templates."""
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+    environment:
+        ARCHITECTURES: "x86_64,s390x,ppc64le,aarch64"
+
+dimensions:
+    arch: |
+       {% for arch in ENVIRONMENT.ARCHITECTURES.split(',') %}
+       - context:
+             arch: {{ arch }}
+         environment:
+             ARCH_NAME: {{ arch }}
+       {% endfor %}
+"""
+    # CLI environment should override fixtures
+    cli_environment = {'ARCHITECTURES': 'i686,ppc64'}
+
+    config = RecipeConfig.from_yaml(
+        yaml_content,
+        jinja_vars={'ENVIRONMENT': cli_environment},
+        )
+    reqs = list(config.build_requests({}, {}))
+
+    # Should have 2 requests (from CLI archs, not the 4 from fixtures)
+    assert len(reqs) == 2
+
+    # Check that we have CLI archs, NOT fixture archs
+    archs = {req.context['arch'] for req in reqs}
+    assert archs == {'i686', 'ppc64'}
+
+    # Verify fixture archs are NOT present
+    assert 'x86_64' not in archs
+    assert 's390x' not in archs
+    assert 'ppc64le' not in archs
+    assert 'aarch64' not in archs
+
+    # Check that ARCH_NAME matches arch in context
+    for req in reqs:
+        assert req.environment['ARCH_NAME'] == req.context['arch']
+
+
+def test_environment_and_context_priority_across_sources():
+    """Test priority of ENVIRONMENT and CONTEXT values from CLI, fixtures, and dimensions."""
+    yaml_content = """
+fixtures:
+    context:
+        from_fixtures_only: fixture_ctx_value
+        overridden_by_dimension: fixture_ctx_value
+    environment:
+        FROM_FIXTURES_ONLY: fixture_env_value
+        OVERRIDDEN_BY_DIMENSION: fixture_env_value
+
+dimensions:
+    test:
+       - context:
+             from_dimension_only: dimension_ctx_value
+             overridden_by_dimension: dimension_ctx_value
+         environment:
+             FROM_DIMENSION_ONLY: dimension_env_value
+             OVERRIDDEN_BY_DIMENSION: dimension_env_value
+             OVERRIDDEN_BY_CLI: dimension_env_value
+"""
+    # CLI values for template rendering (used in from_yaml)
+    cli_jinja_vars = {
+        'ENVIRONMENT': {
+            'FROM_CLI_ONLY': 'cli_env_value',
+            'OVERRIDDEN_BY_CLI': 'cli_env_value',
+            },
+        'CONTEXT': {
+            'from_cli_only': 'cli_ctx_value',
+            },
+        }
+
+    # CLI values for request building (RawRecipeConfigDimension format)
+    cli_config = {
+        'environment': {
+            'FROM_CLI_ONLY': 'cli_env_value',
+            'OVERRIDDEN_BY_CLI': 'cli_env_value',
+            },
+        'context': {
+            'from_cli_only': 'cli_ctx_value',
+            },
+        }
+
+    config = RecipeConfig.from_yaml(yaml_content, jinja_vars=cli_jinja_vars)
+    reqs = list(config.build_requests({}, cli_config))
+
+    # Should have 1 request
+    assert len(reqs) == 1
+    req = reqs[0]
+
+    # ENVIRONMENT checks:
+    # 1. CLI only - should be present
+    assert req.environment['FROM_CLI_ONLY'] == 'cli_env_value'
+
+    # 2. Fixtures only - should be present
+    assert req.environment['FROM_FIXTURES_ONLY'] == 'fixture_env_value'
+
+    # 3. Dimension only - should be present
+    assert req.environment['FROM_DIMENSION_ONLY'] == 'dimension_env_value'
+
+    # 4. CLI + Dimension - CLI takes priority
+    assert req.environment['OVERRIDDEN_BY_CLI'] == 'cli_env_value'
+
+    # 5. Fixtures + Dimension - Dimension takes priority
+    assert req.environment['OVERRIDDEN_BY_DIMENSION'] == 'dimension_env_value'
+
+    # CONTEXT checks:
+    # 1. CLI only - should be present
+    assert req.context['from_cli_only'] == 'cli_ctx_value'
+
+    # 2. Fixtures only - should be present
+    assert req.context['from_fixtures_only'] == 'fixture_ctx_value'
+
+    # 3. Dimension only - should be present
+    assert req.context['from_dimension_only'] == 'dimension_ctx_value'
+
+    # 4. Fixtures + Dimension - Dimension takes priority
+    assert req.context['overridden_by_dimension'] == 'dimension_ctx_value'
