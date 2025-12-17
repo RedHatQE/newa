@@ -123,7 +123,14 @@ def main(click_context: click.Context,
     if prev_state_dir and state_dir:
         raise Exception('Use either --state-dir or --prev-state-dir')
     if prev_state_dir:
-        state_dir = str(get_state_dir(settings.newa_statedir_topdir, use_ppid=True))
+        try:
+            state_dir = str(get_state_dir(settings.newa_statedir_topdir, use_ppid=True))
+        except Exception as e:
+            raise click.ClickException(
+                'No previous state directory found for this shell session. '
+                'Run newa without -P first to create a state directory, '
+                'or use -D to specify an existing state directory.',
+                ) from e
     elif not state_dir:
         state_dir = str(get_state_dir(settings.newa_statedir_topdir))
 
