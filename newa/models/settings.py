@@ -248,8 +248,17 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 continue
 
             job = self.load_jira_job(child.resolve())
-            if filter_actions and self.skip_action(job.jira.action_id):
-                continue
+            if filter_actions and self.action_id_filter_pattern:
+                if not job.jira.action_id or not self.action_id_filter_pattern.fullmatch(
+                        job.jira.action_id):
+                    self.logger.info(
+                        f"Skipping action {job.jira.action_id} as it doesn't match "
+                        "the --action-id-filter regular expression.")
+                    continue
+                else:
+                    self.logger.debug(
+                        f"Action {job.jira.action_id} matches the --action-id-filter "
+                        "regular expression.")
             yield job
 
     def load_schedule_job(self, filepath: Path) -> 'ScheduleJob':
@@ -269,8 +278,17 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 continue
 
             job = self.load_schedule_job(child.resolve())
-            if filter_actions and self.skip_action(job.jira.action_id):
-                continue
+            if filter_actions and self.action_id_filter_pattern:
+                if not job.jira.action_id or not self.action_id_filter_pattern.fullmatch(
+                        job.jira.action_id):
+                    self.logger.info(
+                        f"Skipping action {job.jira.action_id} as it doesn't match "
+                        "the --action-id-filter regular expression.")
+                    continue
+                else:
+                    self.logger.debug(
+                        f"Action {job.jira.action_id} matches the --action-id-filter "
+                        "regular expression.")
             yield job
 
     def load_execute_job(self, filepath: Path) -> 'ExecuteJob':
@@ -290,8 +308,17 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 continue
 
             job = self.load_execute_job(child.resolve())
-            if filter_actions and self.skip_action(job.jira.action_id):
-                continue
+            if filter_actions and self.action_id_filter_pattern:
+                if not job.jira.action_id or not self.action_id_filter_pattern.fullmatch(
+                        job.jira.action_id):
+                    self.logger.info(
+                        f"Skipping action {job.jira.action_id} as it doesn't match "
+                        "the --action-id-filter regular expression.")
+                    continue
+                else:
+                    self.logger.debug(
+                        f"Action {job.jira.action_id} matches the --action-id-filter "
+                        "regular expression.")
             yield job
 
     def get_artifact_job_filepath(
@@ -367,9 +394,15 @@ class CLIContext:  # type: ignore[no-untyped-def]
         if filtered_id_list is None:
             return False
         if action_id and action_id in filtered_id_list:
+            self.logger.debug(
+                f"Action {action_id} matches the --action-id-filter regular expression.")
             return False
         if log_message:
             self.logger.info(
+                f"Skipping action {action_id} as it doesn't match "
+                "the --action-id-filter regular expression.")
+        else:
+            self.logger.debug(
                 f"Skipping action {action_id} as it doesn't match "
                 "the --action-id-filter regular expression.")
         return True
