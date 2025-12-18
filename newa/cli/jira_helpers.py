@@ -187,6 +187,7 @@ def _find_or_create_issue(
     """
     new_issues: list[Issue] = []
     old_issues: list[Issue] = []
+    create_new_issue = not ctx.issue_id_filter_pattern
 
     # Get transition settings
     transition_passed = None
@@ -267,42 +268,38 @@ def _find_or_create_issue(
         filtered_issues = [
             issue for issue in new_issues
             if not ctx._should_filter_by_issue_id(issue.id)]
-
-        if len(filtered_issues) != 1:
-            ctx.logger.info(
-                f"Expected exactly 1 issue matching --issue-id-filter for action {action.id}, "
-                f"found {len(filtered_issues)}")
-            return None, [], False  # Signal to skip this action
-
         new_issues = filtered_issues
 
     # Create new issue or reuse existing
     trigger_erratum_comment = False
     if not new_issues:
-        parent = None
-        if action.parent_id:
-            parent = processed_actions.get(action.parent_id)
+        if create_new_issue:
+            parent = None
+            if action.parent_id:
+                parent = processed_actions.get(action.parent_id)
 
-        short_sleep()
-        new_issue = jira_handler.create_issue(
-            action=action,
-            summary=rendered_summary,
-            description=rendered_description,
-            use_newa_id=not no_newa_id,
-            assignee_email=rendered_assignee,
-            parent=parent,
-            group=config.group,
-            transition_passed=transition_passed,
-            transition_processed=transition_processed,
-            fields=rendered_fields,
-            links=rendered_links)
+            short_sleep()
+            new_issue = jira_handler.create_issue(
+                action=action,
+                summary=rendered_summary,
+                description=rendered_description,
+                use_newa_id=not no_newa_id,
+                assignee_email=rendered_assignee,
+                parent=parent,
+                group=config.group,
+                transition_passed=transition_passed,
+                transition_processed=transition_processed,
+                fields=rendered_fields,
+                links=rendered_links)
 
-        # action.id is guaranteed to be non-None due to validation in _process_issue_config
-        assert action.id is not None
-        processed_actions[action.id] = new_issue
-        created_action_ids.append(action.id)
-        ctx.logger.info(f"New issue {new_issue.id} created")
-        trigger_erratum_comment = True
+            # action.id is guaranteed to be non-None due to validation in _process_issue_config
+            assert action.id is not None
+            processed_actions[action.id] = new_issue
+            created_action_ids.append(action.id)
+            ctx.logger.info(f"New issue {new_issue.id} created")
+            trigger_erratum_comment = True
+        else:
+            return None, [], False  # Signal to skip this action
 
     elif len(new_issues) == 1:
         new_issue = new_issues[0]
@@ -601,7 +598,9 @@ def _process_issue_config(
             continue
 
         # Check parent availability
-        if action.parent_id and action.parent_id not in processed_actions:
+        # unless we are using ctx.issue_id_filter_pattern
+        if ((not ctx.issue_id_filter_pattern) and action.parent_id
+                and action.parent_id not in processed_actions):
             queue_length = len(issue_actions)
             last_queue_length = endless_loop_check.get(action.id, 0)
             if last_queue_length == queue_length:
