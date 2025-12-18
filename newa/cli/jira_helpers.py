@@ -262,6 +262,20 @@ def _find_or_create_issue(
 
         new_issues = opened_issues
 
+    # Apply issue_id_filter if specified
+    if ctx.issue_id_filter_pattern and new_issues:
+        filtered_issues = [
+            issue for issue in new_issues
+            if not ctx._should_filter_by_issue_id(issue.id)]
+
+        if len(filtered_issues) != 1:
+            ctx.logger.info(
+                f"Expected exactly 1 issue matching --issue-id-filter for action {action.id}, "
+                f"found {len(filtered_issues)}")
+            return None, [], False  # Signal to skip this action
+
+        new_issues = filtered_issues
+
     # Create new issue or reuse existing
     trigger_erratum_comment = False
     if not new_issues:
