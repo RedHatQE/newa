@@ -750,6 +750,34 @@ Example (triggering performance tests that have `schedule: false`):
 $ newa --action-id-filter 'task_performance' event --erratum 12345 jira --issue-config errata-config.yaml schedule execute report
 ```
 
+#### Option `--issue-id-filter`
+
+Instructs NEWA to process only jobs associated with Jira issues whose key/ID matches the provided regular expression.
+This option has an effect across all NEWA subcommands, allowing users to limit which issues are processed.
+
+**Behavior across subcommands:**
+- For **schedule, execute, report, summarize, and list** subcommands: filters existing jobs where the Jira issue ID matches the pattern
+- For **jira** subcommand: only processes actions when exactly 1 existing Jira issue is found that matches the filter pattern. If no matching issue exists or multiple matching issues are found, the action is skipped. New issues are never created when using this option.
+
+This option can be combined with `--action-id-filter` for fine-grained control over which jobs are processed. When using `--issue-id-filter` with the jira subcommand, parent-child action dependencies are relaxed to allow processing actions whose parents may have been filtered out.
+
+Use with caution.
+
+Example (process only a specific Jira issue):
+```
+$ newa --issue-id-filter 'RHEL-12345' event --erratum 123456 jira --issue-config config.yaml schedule execute report
+```
+
+Example (process issues matching a pattern):
+```
+$ newa --issue-id-filter 'SECENGSP-816[0-5]' --prev-state-dir schedule execute report
+```
+
+Example (combine with --action-id-filter):
+```
+$ newa --action-id-filter 'tier.*' --issue-id-filter 'RHEL-.*' event --compose CentOS-Stream-10 jira --issue-config config.yaml schedule
+```
+
 #### Option `--jira-issue`
 
 Directs NEWA to the `JIRA`-type event it should use, in particular a Jira issue key. Option can be used multiple times but each event will be processed individually. This event is not that useful for test scheduling at the moment. But you can use NEWA to create a pre-configure set of associated Jira issues.

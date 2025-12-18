@@ -86,6 +86,11 @@ logging.basicConfig(
     default='',
     help='Regular expression matching issue-config action ids to process (only).',
     )
+@click.option(
+    '--issue-id-filter',
+    default='',
+    help='Regular expression matching Jira issue keys to process (only).',
+    )
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
@@ -97,7 +102,8 @@ def main(click_context: click.Context,
          contexts: list[str],
          extract_state_dir: str,
          force: bool,
-         action_id_filter: str) -> None:
+         action_id_filter: str,
+         issue_id_filter: str) -> None:
     """NEWA - New Errata Workflow Automation."""
     import io
     import tarfile
@@ -143,6 +149,12 @@ def main(click_context: click.Context,
         raise Exception(
             f'Cannot compile --action-id-filter regular expression. {e!r}') from e
 
+    try:
+        issue_pattern = re.compile(issue_id_filter) if issue_id_filter else None
+    except re.error as e:
+        raise Exception(
+            f'Cannot compile --issue-id-filter regular expression. {e!r}') from e
+
     ctx = CLIContext(
         settings=settings,
         logger=logging.getLogger(),
@@ -152,6 +164,7 @@ def main(click_context: click.Context,
         prev_state_dirpath=prev_state_dirpath,
         force=force,
         action_id_filter_pattern=pattern,
+        issue_id_filter_pattern=issue_pattern,
         )
     click_context.obj = ctx
 
