@@ -192,6 +192,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
     prev_state_dirpath: Optional[Path] = None
     force: bool = False
     action_id_filter_pattern: Optional[Pattern[str]] = None
+    issue_id_filter_pattern: Optional[Pattern[str]] = None
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(
@@ -248,8 +249,11 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 continue
 
             job = self.load_jira_job(child.resolve())
-            if filter_actions and self.skip_action(job.jira.action_id):
-                continue
+            if filter_actions:
+                if self._should_filter_by_action_id(job.jira.action_id):
+                    continue
+                if self._should_filter_by_issue_id(job.jira.id):
+                    continue
             yield job
 
     def load_schedule_job(self, filepath: Path) -> 'ScheduleJob':
@@ -269,8 +273,11 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 continue
 
             job = self.load_schedule_job(child.resolve())
-            if filter_actions and self.skip_action(job.jira.action_id):
-                continue
+            if filter_actions:
+                if self._should_filter_by_action_id(job.jira.action_id):
+                    continue
+                if self._should_filter_by_issue_id(job.jira.id):
+                    continue
             yield job
 
     def load_execute_job(self, filepath: Path) -> 'ExecuteJob':
@@ -290,8 +297,11 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 continue
 
             job = self.load_execute_job(child.resolve())
-            if filter_actions and self.skip_action(job.jira.action_id):
-                continue
+            if filter_actions:
+                if self._should_filter_by_action_id(job.jira.action_id):
+                    continue
+                if self._should_filter_by_issue_id(job.jira.id):
+                    continue
             yield job
 
     def get_artifact_job_filepath(
@@ -360,6 +370,60 @@ class CLIContext:  # type: ignore[no-untyped-def]
             self.logger.debug(f'Removing existing file {filepath}')
             filepath.unlink()
 
+    def _should_filter_by_action_id(
+            self,
+            action_id: Optional[str],
+            log_message: bool = True) -> bool:
+        """Check if job should be filtered out based on action_id pattern.
+
+        Returns True if the job should be skipped, False if it should be processed.
+        """
+        if not self.action_id_filter_pattern:
+            return False
+
+        if not action_id or not self.action_id_filter_pattern.fullmatch(action_id):
+            if log_message:
+                self.logger.info(
+                    f"Skipping action {action_id} as it doesn't match "
+                    "the --action-id-filter regular expression.")
+            else:
+                self.logger.debug(
+                    f"Skipping action {action_id} as it doesn't match "
+                    "the --action-id-filter regular expression.")
+            return True
+
+        self.logger.debug(
+            f"Action {action_id} matches the --action-id-filter "
+            "regular expression.")
+        return False
+
+    def _should_filter_by_issue_id(
+            self,
+            issue_id: Optional[str],
+            log_message: bool = True) -> bool:
+        """Check if job should be filtered out based on issue_id pattern.
+
+        Returns True if the job should be skipped, False if it should be processed.
+        """
+        if not self.issue_id_filter_pattern:
+            return False
+
+        if not issue_id or not self.issue_id_filter_pattern.fullmatch(issue_id):
+            if log_message:
+                self.logger.info(
+                    f"Skipping issue {issue_id} as it doesn't match "
+                    "the --issue-id-filter regular expression.")
+            else:
+                self.logger.debug(
+                    f"Skipping issue {issue_id} as it doesn't match "
+                    "the --issue-id-filter regular expression.")
+            return True
+
+        self.logger.debug(
+            f"Issue {issue_id} matches the --issue-id-filter "
+            "regular expression.")
+        return False
+
     def skip_action(self,
                     action_id: Optional[str],
                     filtered_id_list: Optional[list[str]] = None,
@@ -367,9 +431,15 @@ class CLIContext:  # type: ignore[no-untyped-def]
         if filtered_id_list is None:
             return False
         if action_id and action_id in filtered_id_list:
+            self.logger.debug(
+                f"Action {action_id} matches the --action-id-filter regular expression.")
             return False
         if log_message:
             self.logger.info(
+                f"Skipping action {action_id} as it doesn't match "
+                "the --action-id-filter regular expression.")
+        else:
+            self.logger.debug(
                 f"Skipping action {action_id} as it doesn't match "
                 "the --action-id-filter regular expression.")
         return True
