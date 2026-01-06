@@ -1,0 +1,9 @@
+fixtures:
+    context:
+        from: child2
+adjustments: |
+    {% for val in adjustment_list %}
+    - context:
+        adjustment{{ loop.index }}: {{ val }}
+      when: "True"
+    {% endfor %}

@@ -1,0 +1,11 @@
+includes:
+  - tests/unit/data/recipe-jinja-include-child1.yaml
+  - tests/unit/data/recipe-jinja-include-child2.yaml
+  - tests/unit/data/recipe-jinja-include-child3.yaml
+fixtures:
+    context:
+        from: parent
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
