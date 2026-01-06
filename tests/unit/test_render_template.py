@@ -346,6 +346,43 @@ dimensions:
     assert arch_name_matches, "ARCH_NAME should match arch in context for all requests"
 
 
+def test_jinja_templates_with_includes():
+    """Test that Jinja2 templates work correctly with includes."""
+    jinja_vars = {
+        'default_tier': 1,
+        'child1_value': 'from_child1',
+        'adjustment_value': 'test_adj',
+        'adjustment_list': ['val1', 'val2', 'val3'],
+        }
+
+    config = RecipeConfig.from_yaml_with_includes(
+        'tests/unit/data/recipe-jinja-include-parent.yaml',
+        jinja_vars=jinja_vars,
+        )
+
+    # Check that fixtures were merged correctly
+    assert config.fixtures['context']['tier'] == 1  # from child1 via jinja
+    assert config.fixtures['context']['from'] == 'parent'  # parent overrides children
+    # from child1, not overridden
+    assert config.fixtures['context']['child1_only'] == 'from_child1'
+    assert config.fixtures['environment']['CHILD1_VAR'] == 'child1_value'
+
+    # Check that adjustments were processed
+    assert len(config.adjustments) == 4  # 1 from child1 + 3 from child2
+
+    # Verify child1 adjustment (Jinja template)
+    assert config.adjustments[0]['context']['adjustment'] == 'test_adj'
+    assert config.adjustments[0]['when'] == 'CONTEXT.tier == 1'
+
+    # Verify child2 adjustments (Jinja template list)
+    assert config.adjustments[1]['context']['adjustment1'] == 'val1'
+    assert config.adjustments[1]['when'] == 'True'
+    assert config.adjustments[2]['context']['adjustment2'] == 'val2'
+    assert config.adjustments[2]['when'] == 'True'
+    assert config.adjustments[3]['context']['adjustment3'] == 'val3'
+    assert config.adjustments[3]['when'] == 'True'
+
+
 def test_environment_and_context_priority_across_sources():
     """Test priority of ENVIRONMENT and CONTEXT values from CLI, fixtures, and dimensions."""
     yaml_content = """

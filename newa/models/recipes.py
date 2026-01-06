@@ -195,11 +195,26 @@ def _process_recipe_data(
     if 'fixtures' in processed and isinstance(processed['fixtures'], str):
         processed['fixtures'] = _process_dimension_value(processed['fixtures'], jinja_vars)
 
-    # Process adjustments (list of RawRecipeConfigDimension)
-    if 'adjustments' in processed and isinstance(processed['adjustments'], list):
-        processed['adjustments'] = [
-            _process_dimension_value(item, jinja_vars) for item in processed['adjustments']
-            ]
+    # Process adjustments (list of RawRecipeConfigDimension or template string)
+    if 'adjustments' in processed:
+        if isinstance(processed['adjustments'], str):
+            # The entire adjustments is a Jinja2 template string
+            rendered = render_template(processed['adjustments'], **(jinja_vars or {}))
+            parsed = yaml_parser().load(rendered)
+            if not isinstance(parsed, list):
+                raise ValueError(
+                    f"Jinja2 template for adjustments must render to a YAML list, "
+                    f"got {type(parsed).__name__}",
+                    )
+            # Process each item in the parsed list
+            processed['adjustments'] = [
+                _process_dimension_value(item, jinja_vars) for item in parsed
+                ]
+        elif isinstance(processed['adjustments'], list):
+            # Process each item in the list (may contain dicts or strings)
+            processed['adjustments'] = [
+                _process_dimension_value(item, jinja_vars) for item in processed['adjustments']
+                ]
 
     # Prepare template variables for dimension rendering
     fixtures = processed.get('fixtures') if isinstance(processed.get('fixtures'), dict) else None
@@ -260,13 +275,54 @@ class RecipeConfig(Cloneable, Serializable):
         return cls(**processed_data)
 
     @classmethod
+    def from_yaml_file(
+            cls: type['RecipeConfig'],
+            filepath: Path,
+            jinja_vars: Optional[dict[str, Any]] = None) -> 'RecipeConfig':
+        """
+        Load RecipeConfig from YAML file, processing Jinja2 templates in dimension values.
+
+        :param filepath: Path to YAML file
+        :param jinja_vars: Variables to pass to Jinja2 templates
+        :returns: RecipeConfig instance
+        """
+        return cls.from_yaml(filepath.read_text(), jinja_vars)
+
+    @classmethod
+    def from_yaml_url(
+            cls: type['RecipeConfig'],
+            url: str,
+            jinja_vars: Optional[dict[str, Any]] = None) -> 'RecipeConfig':
+        """
+        Load RecipeConfig from YAML URL, processing Jinja2 templates in dimension values.
+
+        :param url: URL to fetch YAML from
+        :param jinja_vars: Variables to pass to Jinja2 templates
+        :returns: RecipeConfig instance
+        """
+        from newa.utils.http import ResponseContentType, get_request
+        content = get_request(url=url, response_content=ResponseContentType.TEXT)
+        return cls.from_yaml(content, jinja_vars)
+
+    @classmethod
     def from_yaml_with_includes(
             cls: type['RecipeConfig'],
             location: str,
-            stack: Optional[list[str]] = None) -> 'RecipeConfig':
+            stack: Optional[list[str]] = None,
+            jinja_vars: Optional[dict[str, Any]] = None) -> 'RecipeConfig':
+        """
+        Load RecipeConfig from YAML file or URL with include support.
+
+        Processes Jinja2 templates in dimension values across all included files.
+
+        :param location: File path or URL to YAML file
+        :param stack: Internal parameter for tracking include chain to detect cycles
+        :param jinja_vars: Variables to pass to Jinja2 templates
+        :returns: RecipeConfig instance with all includes merged
+        """
         import re
-        base_config = cls.from_yaml_url(location) if \
-            re.search('^https?://', location) else cls.from_yaml_file(Path(location))
+        base_config = cls.from_yaml_url(location, jinja_vars) if \
+            re.search('^https?://', location) else cls.from_yaml_file(Path(location), jinja_vars)
         # process each include
         fixtures_combination = []
         adjustments = []
@@ -278,7 +334,7 @@ class RecipeConfig(Cloneable, Serializable):
                 stack.append(location)
             else:
                 stack = [location]
-            source_config = cls.from_yaml_with_includes(source, stack=stack)
+            source_config = cls.from_yaml_with_includes(source, stack=stack, jinja_vars=jinja_vars)
             if source_config.fixtures:
                 fixtures_combination.append(source_config.fixtures)
             if source_config.adjustments:
