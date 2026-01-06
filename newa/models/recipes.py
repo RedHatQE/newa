@@ -195,11 +195,16 @@ def _process_recipe_data(
     if 'fixtures' in processed and isinstance(processed['fixtures'], str):
         processed['fixtures'] = _process_dimension_value(processed['fixtures'], jinja_vars)
 
+    # Prepare template variables for rendering adjustments and dimensions
+    # This allows both to reference ENVIRONMENT/CONTEXT from fixtures
+    fixtures = processed.get('fixtures') if isinstance(processed.get('fixtures'), dict) else None
+    template_vars = _prepare_template_vars(fixtures, jinja_vars)
+
     # Process adjustments (list of RawRecipeConfigDimension or template string)
     if 'adjustments' in processed:
         if isinstance(processed['adjustments'], str):
             # The entire adjustments is a Jinja2 template string
-            rendered = render_template(processed['adjustments'], **(jinja_vars or {}))
+            rendered = render_template(processed['adjustments'], **template_vars)
             parsed = yaml_parser().load(rendered)
             if not isinstance(parsed, list):
                 raise ValueError(
@@ -208,17 +213,13 @@ def _process_recipe_data(
                     )
             # Process each item in the parsed list
             processed['adjustments'] = [
-                _process_dimension_value(item, jinja_vars) for item in parsed
+                _process_dimension_value(item, template_vars) for item in parsed
                 ]
         elif isinstance(processed['adjustments'], list):
             # Process each item in the list (may contain dicts or strings)
             processed['adjustments'] = [
-                _process_dimension_value(item, jinja_vars) for item in processed['adjustments']
+                _process_dimension_value(item, template_vars) for item in processed['adjustments']
                 ]
-
-    # Prepare template variables for dimension rendering
-    fixtures = processed.get('fixtures') if isinstance(processed.get('fixtures'), dict) else None
-    template_vars = _prepare_template_vars(fixtures, jinja_vars)
 
     # Process dimensions (dict[str, list[RawRecipeConfigDimension]])
     if 'dimensions' in processed and isinstance(processed['dimensions'], dict):

@@ -368,7 +368,7 @@ def test_jinja_templates_with_includes():
     assert config.fixtures['environment']['CHILD1_VAR'] == 'child1_value'
 
     # Check that adjustments were processed
-    assert len(config.adjustments) == 4  # 1 from child1 + 3 from child2
+    assert len(config.adjustments) == 5  # 1 from child1 + 3 from child2 + 1 from child3
 
     # Verify child1 adjustment (Jinja template)
     assert config.adjustments[0]['context']['adjustment'] == 'test_adj'
@@ -381,6 +381,10 @@ def test_jinja_templates_with_includes():
     assert config.adjustments[2]['when'] == 'True'
     assert config.adjustments[3]['context']['adjustment3'] == 'val3'
     assert config.adjustments[3]['when'] == 'True'
+
+    # Verify child3 adjustment (uses fixture environment from same file)
+    assert config.adjustments[4]['context']['adj_from_fixture'] == 'x86_64'
+    assert config.adjustments[4]['when'] == 'True'
 
 
 def test_environment_and_context_priority_across_sources():
