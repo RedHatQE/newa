@@ -45,6 +45,24 @@ dimensions:
     assert reqs[1].context['arch'] == 'aarch64'
 
 
+def test_dimension_string_template_must_render_to_mapping():
+    """Dimension item templates that render to a non-dict should raise ValueError."""
+    # The second dimension item is a Jinja2 template that renders to a scalar ("1"),
+    # which should trigger the error path in `_process_dimension_value`.
+    yaml_content = """
+fixtures:
+    context:
+        tier: 1
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
+       - "{{ tier }}"
+"""
+    with pytest.raises(ValueError, match=r"Jinja2 template must render to a YAML dict"):
+        RecipeConfig.from_yaml(yaml_content)
+
+
 def test_dimension_template_with_variables():
     """Test that Jinja2 templates can use variables."""
     yaml_content = """
@@ -278,9 +296,9 @@ dimensions:
     archs = {req.context['arch'] for req in reqs}
     assert archs == {'x86_64', 's390x', 'ppc64le', 'aarch64'}
 
-    # Check that ARCH_NAME matches arch in context
-    for req in reqs:
-        assert req.environment['ARCH_NAME'] == req.context['arch']
+    # Check that ARCH_NAME matches arch in context for all requests
+    arch_name_matches = all(req.environment['ARCH_NAME'] == req.context['arch'] for req in reqs)
+    assert arch_name_matches, "ARCH_NAME should match arch in context for all requests"
 
 
 def test_cli_environment_overrides_fixtures_in_dimension_templates():
@@ -323,9 +341,9 @@ dimensions:
     assert 'ppc64le' not in archs
     assert 'aarch64' not in archs
 
-    # Check that ARCH_NAME matches arch in context
-    for req in reqs:
-        assert req.environment['ARCH_NAME'] == req.context['arch']
+    # Check that ARCH_NAME matches arch in context for all requests
+    arch_name_matches = all(req.environment['ARCH_NAME'] == req.context['arch'] for req in reqs)
+    assert arch_name_matches, "ARCH_NAME should match arch in context for all requests"
 
 
 def test_environment_and_context_priority_across_sources():

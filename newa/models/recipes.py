@@ -106,6 +106,79 @@ def _process_dimension_value(
         f"Dimension value must be a dict or string, got {type(value).__name__}")
 
 
+def _prepare_template_vars(
+        fixtures: Optional[RawRecipeConfigDimension],
+        jinja_vars: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Prepare template variables by merging fixtures with CLI jinja_vars.
+
+    CLI values take precedence over fixture values.
+
+    :param fixtures: Fixture data containing environment and context
+    :param jinja_vars: CLI-provided variables to override fixtures
+    :returns: Merged template variables
+    """
+    template_vars: dict[str, Any] = {}
+
+    # Start with fixture values
+    if fixtures:
+        if 'environment' in fixtures:
+            template_vars['ENVIRONMENT'] = dict(fixtures['environment'])
+        if 'context' in fixtures:
+            template_vars['CONTEXT'] = dict(fixtures['context'])
+
+    # Merge/override with CLI values
+    if jinja_vars:
+        if 'ENVIRONMENT' in jinja_vars:
+            if 'ENVIRONMENT' in template_vars:
+                template_vars['ENVIRONMENT'].update(jinja_vars['ENVIRONMENT'])
+            else:
+                template_vars['ENVIRONMENT'] = copy.deepcopy(jinja_vars['ENVIRONMENT'])
+        if 'CONTEXT' in jinja_vars:
+            if 'CONTEXT' in template_vars:
+                template_vars['CONTEXT'].update(jinja_vars['CONTEXT'])
+            else:
+                template_vars['CONTEXT'] = copy.deepcopy(jinja_vars['CONTEXT'])
+        # Add any other jinja_vars that are not ENVIRONMENT or CONTEXT
+        for key, value in jinja_vars.items():
+            if key not in ('ENVIRONMENT', 'CONTEXT'):
+                template_vars[key] = copy.deepcopy(value)
+
+    return template_vars
+
+
+def _process_dimension_list(
+        dimension_name: str,
+        dimension_list: Any,
+        template_vars: dict[str, Any]) -> list[RawRecipeConfigDimension]:
+    """
+    Process a dimension list, which can be a string template or a list of items.
+
+    :param dimension_name: Name of the dimension (for error messages)
+    :param dimension_list: Either a template string or list of dimension values
+    :param template_vars: Variables to use when rendering templates
+    :returns: Processed list of dimension values
+    """
+    if isinstance(dimension_list, str):
+        # The entire list is a Jinja2 template string
+        rendered = render_template(dimension_list, **template_vars)
+        parsed = yaml_parser().load(rendered)
+        if not isinstance(parsed, list):
+            raise ValueError(
+                f"Jinja2 template for dimension '{dimension_name}' "
+                f"must render to a YAML list, got {type(parsed).__name__}",
+                )
+        # Process each item in the parsed list
+        return [_process_dimension_value(item, template_vars) for item in parsed]
+    if isinstance(dimension_list, list):
+        # Process each item in the list (may contain dicts or strings)
+        return [_process_dimension_value(item, template_vars) for item in dimension_list]
+    raise ValueError(
+        f"Invalid dimensions configuration for '{dimension_name}': "
+        f"expected a list or a template string, got {type(dimension_list).__name__!r}",
+        )
+
+
 def _process_recipe_data(
         data: dict[str, Any],
         jinja_vars: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -128,61 +201,16 @@ def _process_recipe_data(
             _process_dimension_value(item, jinja_vars) for item in processed['adjustments']
             ]
 
-    # Prepare variables for dimension template rendering
-    # Merge ENVIRONMENT and CONTEXT from fixtures with CLI values (CLI takes precedence)
-    template_vars = {}
-
-    # Start with fixture values
-    if 'fixtures' in processed and isinstance(processed['fixtures'], dict):
-        if 'environment' in processed['fixtures']:
-            template_vars['ENVIRONMENT'] = dict(processed['fixtures']['environment'])
-        if 'context' in processed['fixtures']:
-            template_vars['CONTEXT'] = dict(processed['fixtures']['context'])
-
-    # Merge/override with CLI values (jinja_vars)
-    if jinja_vars:
-        if 'ENVIRONMENT' in jinja_vars:
-            if 'ENVIRONMENT' in template_vars:
-                template_vars['ENVIRONMENT'].update(jinja_vars['ENVIRONMENT'])
-            else:
-                template_vars['ENVIRONMENT'] = copy.deepcopy(jinja_vars['ENVIRONMENT'])
-        if 'CONTEXT' in jinja_vars:
-            if 'CONTEXT' in template_vars:
-                template_vars['CONTEXT'].update(jinja_vars['CONTEXT'])
-            else:
-                template_vars['CONTEXT'] = copy.deepcopy(jinja_vars['CONTEXT'])
-        # Add any other jinja_vars that are not ENVIRONMENT or CONTEXT
-        for key, value in jinja_vars.items():
-            if key not in ('ENVIRONMENT', 'CONTEXT'):
-                template_vars[key] = copy.deepcopy(value)
+    # Prepare template variables for dimension rendering
+    fixtures = processed.get('fixtures') if isinstance(processed.get('fixtures'), dict) else None
+    template_vars = _prepare_template_vars(fixtures, jinja_vars)
 
     # Process dimensions (dict[str, list[RawRecipeConfigDimension]])
     if 'dimensions' in processed and isinstance(processed['dimensions'], dict):
-        processed_dimensions = {}
-        for dimension_name, dimension_list in processed['dimensions'].items():
-            if isinstance(dimension_list, str):
-                # The entire list is a Jinja2 template string
-                rendered = render_template(
-                    dimension_list, **template_vars)  # type: ignore[arg-type]
-                parsed = yaml_parser().load(rendered)
-                if not isinstance(parsed, list):
-                    msg = (
-                        f"Jinja2 template for dimension '{dimension_name}' "
-                        f"must render to a YAML list, got {type(parsed).__name__}"
-                        )
-                    raise ValueError(msg)
-                # Process each item in the parsed list
-                processed_dimensions[dimension_name] = [
-                    _process_dimension_value(item, template_vars) for item in parsed
-                    ]
-            elif isinstance(dimension_list, list):
-                # Process each item in the list (may contain dicts or strings)
-                processed_dimensions[dimension_name] = [
-                    _process_dimension_value(item, template_vars) for item in dimension_list
-                    ]
-            else:
-                processed_dimensions[dimension_name] = dimension_list
-        processed['dimensions'] = processed_dimensions
+        processed['dimensions'] = {
+            name: _process_dimension_list(name, dim_list, template_vars)
+            for name, dim_list in processed['dimensions'].items()
+            }
 
     return processed
 
@@ -221,6 +249,13 @@ class RecipeConfig(Cloneable, Serializable):
         :returns: RecipeConfig instance
         """
         data = yaml_parser().load(serialized)
+
+        if not isinstance(data, dict):
+            raise ValueError(
+                "RecipeConfig.from_yaml expected a top-level mapping in the YAML "
+                f"document, but got {type(data).__name__!r} instead.",
+                )
+
         processed_data = _process_recipe_data(data, jinja_vars)
         return cls(**processed_data)
 
@@ -340,7 +375,7 @@ class RecipeConfig(Cloneable, Serializable):
                     ARCH=arch.value if arch else None,
                     ENVIRONMENT=combination.get('environment', None),
                     CONTEXT=combination.get('context', None),
-                    **(jinja_vars if jinja_vars else {}))
+                    **(jinja_vars or {}))
                 if not test_result:
                     continue
             filtered_combinations.append(combination)
