@@ -21,10 +21,25 @@ from newa import (
     help='Print details of recent newa executions.',
     show_default=True,
     )
+@click.option(
+    '--events',
+    is_flag=True,
+    default=False,
+    help='List details only up to the event level.',
+    )
+@click.option(
+    '--issues',
+    is_flag=True,
+    default=False,
+    help='List details only up to the Jira issue level.',
+    )
 @click.pass_obj
-def cmd_list(ctx: CLIContext, last: int) -> None:
+def cmd_list(ctx: CLIContext, last: int, events: bool, issues: bool) -> None:
     """List NEWA execution details from state directories."""
     ctx.enter_command('list')
+    # Ensure --events and --issues are not used together
+    if events and issues:
+        raise click.UsageError('--events and --issues cannot be used together')
     # save current logger level and statedir
     saved_logger_level = ctx.logger.level
     saved_state_dir = ctx.state_dirpath
@@ -59,6 +74,9 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                 _print(2, f'event {event_job.id} - {event_job.rog.title}')
             else:
                 _print(2, f'event {event_job.id}')
+            # Skip Jira issues and other details if --events flag is set
+            if events:
+                continue
             jira_file_prefix = f'{JIRA_FILE_PREFIX}{event_job.event.short_id}-{event_job.short_id}'
             jira_jobs = list(ctx.load_jira_jobs(jira_file_prefix, filter_actions=True))
             for jira_job in jira_jobs:
@@ -69,6 +87,9 @@ def cmd_list(ctx: CLIContext, last: int) -> None:
                     _print(4, jira_job.jira.url)
                 if jira_job.recipe.url:
                     _print(6, f'recipe: {jira_job.recipe.url}')
+                # Skip schedule/execute details if --issues flag is set
+                if issues:
+                    continue
                 schedule_file_prefix = (f'{SCHEDULE_FILE_PREFIX}{event_job.event.short_id}-'
                                         f'{event_job.short_id}-{jira_job.jira.id}')
                 schedule_jobs = list(
