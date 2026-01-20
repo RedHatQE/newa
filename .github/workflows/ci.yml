@@ -1,31 +1,49 @@
 name: CI
 on:
-  push:
   pull_request:
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # Do not test in 3.12, the setup-python action is still not stable for
-        # that version
-        python-version: ["3.9", "3.11"]
+        # Define which Fedora version maps to which Python version
+        include:
+          - python-version: "3.9"
+            fedora-image: "fedora:42"
+            python-pkg: "python3.9"
+          - python-version: "3.11"
+            fedora-image: "fedora:latest"
+            python-pkg: "python3.11"
+          - python-version: "3.12"
+            fedora-image: "fedora:latest"
+            python-pkg: "python3.12"
+          - python-version: "3.13"
+            fedora-image: "fedora:latest"
+            python-pkg: "python3.13"
+
     container:
-      image: "fedora:latest"
+      image: ${{ matrix.fedora-image }}
+
     steps:
-      - uses: actions/checkout@v3
-      - name: "Install python ${{ matrix.python-version }}"
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
+      - uses: actions/checkout@v4
+
+      - name: "Install Python ${{ matrix.python-version }} via DNF"
+        run: |
+          dnf install -y ${{ matrix.python-pkg }} ${{ matrix.python-pkg }}-devel gcc
+          ${{ matrix.python-pkg }} -m ensurepip --upgrade
+          # Link the versioned python to 'python' so hatch/scripts find it
+          ln -s /usr/bin/${{ matrix.python-pkg }} /usr/local/bin/python
+          ln -s /usr/bin/pip${{ matrix.python-version }} /usr/local/bin/pip || true
+
       - name: "Install dependencies"
         run: |
-          python -m pip install hatch
           dnf -y install make
+          python -m pip install hatch
           make system/fedora
+
       - name: Run unittests
         run: hatch run +py=${{ matrix.python-version }} test:unit
-        # https://projects.gentoo.org/python/guide/distutils.html#setuptools-scm-flit-scm-hatch-vcs-pdm-backend-and-snapshots
         env:
           SETUPTOOLS_SCM_PRETEND_VERSION: 0.1.0
