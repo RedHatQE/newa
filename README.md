@@ -722,18 +722,34 @@ Using --state-dir=/var/tmp/newa/run-123
 ...
 ```
 
-#### Option `--extract-state-dir`
+#### Option `--extract-state-dir`, `-E`
 
-Similar to `--state-dir`, however in this case the argument is URL of an archive containing NEWA YAML metadata files. For example, it could be used to follow up on a state-dir created and shared by an automation.
+Similar to `--state-dir`, however in this case the argument is the URL of an archive containing NEWA YAML metadata files. For example, it could be used to follow up on a state-dir created and shared by an automation.
 
 Example:
 ```
 $ newa --extract-state-dir https://path/to/some/newa-run-1234.tar.gz list
 ```
 
+#### Option `--copy-state-dir`, `-C`
+
+Copies YAML files from a specified state directory to a newly created state directory and continues with the new state-dir. This option is useful when you want to reuse state from an existing directory (e.g., from a different machine or a shared location) without modifying the original state-dir.
+
+This option cannot be used together with `--extract-state-dir`.
+
+Example:
+```
+$ newa --copy-state-dir /path/to/existing/run-123 list
+```
+
+Example (copying from a mounted network share):
+```
+$ newa --copy-state-dir /mnt/shared/newa-state-dir/run-456 jira --issue-config config.yaml schedule execute report
+```
+
 #### Option `--context, -c`
 
-Allows custom `tmt` context definition on a cmdline. Such a context can be used in issue-config YAML file through Jinja template through `CONTEXT.<name>`. Option can be used multiple times.
+Allows custom `tmt` context definition on the command line. Such a context can be used in an issue-config YAML file via a Jinja template using `CONTEXT.<name>`. Option can be used multiple times.
 Such a CLI definition has the highest priority and the value won't be overridden in NEWA issue-config or recipe file.
 
 Example:
