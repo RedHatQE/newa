@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from newa.cli.commands.report_cmd import cmd_report
 from newa.cli.commands.schedule_cmd import cmd_schedule
 from newa.cli.commands.summarize_cmd import cmd_summarize
 from newa.cli.constants import NEWA_DEFAULT_CONFIG
-from newa.cli.utils import get_state_dir
+from newa.cli.utils import get_state_dir, initialize_state_dir
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -76,6 +77,12 @@ logging.basicConfig(
     help='Extract YAML files from the specified archive to state-dir (implies --force).',
     )
 @click.option(
+    '--copy-state-dir',
+    '-C',
+    default='',
+    help='Copy YAML files from the specified state directory to a new state-dir.',
+    )
+@click.option(
     '--force',
     is_flag=True,
     default=False,
@@ -101,6 +108,7 @@ def main(click_context: click.Context,
          envvars: list[str],
          contexts: list[str],
          extract_state_dir: str,
+         copy_state_dir: str,
          force: bool,
          action_id_filter: str,
          issue_id_filter: str) -> None:
@@ -181,12 +189,15 @@ def main(click_context: click.Context,
     if ctx.settings.newa_clear_on_subcommand:
         ctx.logger.debug('NEWA subcommands will remove existing YAML files.')
 
+    # check mutual exclusivity of --extract-state-dir and --copy-state-dir
+    if extract_state_dir and copy_state_dir:
+        raise click.ClickException(
+            'Cannot use both --copy-state-dir and --extract-state-dir options.')
+
     # extract YAML files from the given archive to state-dir
     if extract_state_dir:
         from typing import Any
 
-        from newa.cli.utils import initialize_state_dir
-        ctx.new_state_dir = False
         # enforce --force
         ctx.force = True
         tar_open_kwargs: dict[str, Any] = {
@@ -203,6 +214,32 @@ def main(click_context: click.Context,
                     item.name = os.path.basename(item.name)
                     tf.extract(item, path=ctx.state_dirpath, filter='data')
         initialize_state_dir(ctx)
+
+    # copy YAML files from the given state directory to a new state-dir
+    if copy_state_dir:
+        source_dir = Path(os.path.expanduser(os.path.expandvars(copy_state_dir)))
+        if not source_dir.exists():
+            raise click.ClickException(
+                f'Source state directory {source_dir} does not exist.')
+        if not source_dir.is_dir():
+            raise click.ClickException(
+                f'Source state directory {source_dir} is not a directory.')
+
+        ctx.logger.info(f'Copying YAML files from {source_dir} to {ctx.state_dirpath}')
+
+        # Initialize the destination state directory first
+        initialize_state_dir(ctx)
+
+        # Copy all YAML files from source to destination
+        yaml_files = list(source_dir.glob('*.yaml'))
+        if not yaml_files:
+            ctx.logger.warning(f'No YAML files found in {source_dir}')
+        else:
+            for yaml_file in yaml_files:
+                dest_file = ctx.state_dirpath / yaml_file.name
+                shutil.copy2(yaml_file, dest_file)
+                ctx.logger.debug(f'Copied {yaml_file.name}')
+            ctx.logger.info(f'Copied {len(yaml_files)} YAML file(s)')
 
     def _split(s: str) -> tuple[str, str]:
         """Split key='some value' into a tuple (key, value)."""
