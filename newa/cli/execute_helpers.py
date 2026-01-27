@@ -19,7 +19,6 @@ from newa import (
     ScheduleJob,
     )
 from newa.cli.constants import JIRA_NONE_ID, RP_LAUNCH_DESCR_CHARS_LIMIT
-from newa.cli.initialization import initialize_jira_connection
 from newa.cli.utils import test_file_presence
 
 
@@ -282,7 +281,7 @@ def _process_rp_launches_and_jira_updates(
 
         # Update Jira issue if not using execute --continue
         if not (jira_id.startswith(JIRA_NONE_ID) or ctx.continue_execution):
-            jira_connection = initialize_jira_connection(ctx)
+            jira_connection = ctx.get_jira_connection().get_connection()
             _add_jira_comment_for_execution(
                 ctx, jira_connection, jira_id, job, launch_url)
 

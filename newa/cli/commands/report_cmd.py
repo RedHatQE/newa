@@ -8,7 +8,6 @@ from newa import CLIContext, ExecuteJob
 from newa.cli.execute_helpers import _create_jira_job_mapping
 from newa.cli.initialization import (
     initialize_et_connection,
-    initialize_jira_connection,
     initialize_rp_connection,
     )
 from newa.cli.report_helpers import (
@@ -44,7 +43,7 @@ def cmd_report(ctx: CLIContext) -> None:
 
     # Initialize connections
     rp = initialize_rp_connection(ctx) if ctx.settings.rp_url else None
-    jira_connection = initialize_jira_connection(ctx)
+    jira_connection = ctx.get_jira_connection().get_connection()
     et = initialize_et_connection(ctx) if ctx.settings.et_enable_comments else None
 
     # Update TF request statuses for all jobs

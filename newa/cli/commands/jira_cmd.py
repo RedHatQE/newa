@@ -10,7 +10,6 @@ from newa import (
     CLIContext,
     IssueConfig,
     IssueHandler,
-    short_sleep,
     )
 from newa.cli.initialization import initialize_et_connection
 from newa.cli.jira_helpers import (
@@ -107,15 +106,6 @@ def cmd_jira(
             'use --force to override')
         sys.exit(1)
 
-    # Validate Jira configuration
-    jira_url = ctx.settings.jira_url
-    if not jira_url:
-        raise Exception('Jira URL is not configured!')
-
-    jira_token = ctx.settings.jira_token
-    if not jira_token:
-        raise Exception('Jira token is not configured!')
-
     # Validate assignee options
     if assignee and unassigned:
         raise Exception('Options --assignee and --unassigned cannot be used together')
@@ -140,17 +130,21 @@ def cmd_jira(
             config = IssueConfig.read_file(os.path.expandvars(issue_config))
             issue_mapping = _parse_issue_mapping(map_issue, config)
 
+            # Get or create Jira connection
+            jira_connection = ctx.get_jira_connection()
+
+            # Load metadata (field_map, issue_link_types) needed for issue-config processing
+            jira_connection.ensure_metadata_loaded()
+
             # Initialize Jira handler
             jira_handler = IssueHandler(
                 artifact_job,
-                jira_url,
-                jira_token,
+                jira_connection,
                 config.project,
                 config.transitions,
-                board=config.board,
-                group=getattr(config, 'group', None))
+                group=getattr(config, 'group', None),
+                board=config.board)
             ctx.logger.info("Initialized Jira handler")
-            short_sleep()
 
             # Process all issue actions from config
             _process_issue_config(

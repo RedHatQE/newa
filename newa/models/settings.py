@@ -19,6 +19,7 @@ from newa.models.recipes import RecipeContext, RecipeEnvironment
 
 if TYPE_CHECKING:
     from newa.models.jobs import ArtifactJob, ExecuteJob, JiraJob, ScheduleJob
+    from newa.services.jira_connection import JiraConnection
 
 # File prefixes for different job types
 EVENT_FILE_PREFIX = 'event-'
@@ -193,6 +194,9 @@ class CLIContext:  # type: ignore[no-untyped-def]
     force: bool = False
     action_id_filter_pattern: Optional[Pattern[str]] = None
     issue_id_filter_pattern: Optional[Pattern[str]] = None
+
+    # Jira connection instance (lazy initialized)
+    jira_connection: Optional['JiraConnection'] = field(default=None, init=False, repr=False)
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(
@@ -443,3 +447,29 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 f"Skipping action {action_id} as it doesn't match "
                 "the --action-id-filter regular expression.")
         return True
+
+    def get_jira_connection(self) -> 'JiraConnection':
+        """
+        Get or create Jira connection with lazy initialization.
+
+        Returns:
+            JiraConnection: The initialized Jira connection
+
+        Raises:
+            Exception: If Jira is not configured or connection fails
+        """
+        if self.jira_connection is None:
+            # Import here to avoid circular dependency
+            from newa.services.jira_connection import JiraConnection
+
+            if not self.settings.jira_url:
+                raise Exception('Jira URL is not configured!')
+            if not self.settings.jira_token:
+                raise Exception('Jira token is not configured!')
+
+            self.jira_connection = JiraConnection(
+                url=self.settings.jira_url,
+                token=self.settings.jira_token,
+                )
+
+        return self.jira_connection
