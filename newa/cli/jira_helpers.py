@@ -656,8 +656,6 @@ def _create_simple_jira_job(
         job_recipe: str,
         jira_none_id: Generator[str, int, None]) -> None:
     """Create a simple JiraJob without using issue-config."""
-    from newa.cli.initialization import initialize_jira_connection
-
     if not job_recipe:
         raise Exception("Option --job-recipe is mandatory when --issue-config is not set")
 
@@ -667,8 +665,8 @@ def _create_simple_jira_job(
 
     # Handle issue option
     if issue:
-        jira_connection = initialize_jira_connection(ctx)
-        jira_issue = jira_connection.issue(issue)
+        jira_connection = ctx.get_jira_connection()
+        jira_issue = jira_connection.get_connection().issue(issue)
         ctx.logger.info(f"Using issue {issue}")
         new_issue = Issue(issue,
                           summary=jira_issue.fields.summary,

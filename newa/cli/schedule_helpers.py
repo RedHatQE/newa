@@ -18,7 +18,6 @@ from newa import (
     yaml_parser,
     )
 from newa.cli.constants import JIRA_NONE_ID
-from newa.cli.initialization import initialize_jira_connection
 
 
 def _determine_architectures(
@@ -155,8 +154,8 @@ def _get_issue_fields_for_jira(
         jira_job: JiraJob) -> Any:
     """Get Jira issue fields if available, otherwise return empty dict."""
     if jira_job.jira.id and (not jira_job.jira.id.startswith(JIRA_NONE_ID)):
-        jira_connection = initialize_jira_connection(ctx)
-        issue_fields = jira_connection.issue(jira_job.jira.id).fields
+        jira_connection = ctx.get_jira_connection()
+        issue_fields = jira_connection.get_connection().issue(jira_job.jira.id).fields
         issue_fields.id = jira_job.jira.id
         short_sleep()
         return issue_fields
