@@ -7,7 +7,7 @@ from jira import JIRA
 
 from newa import CLIContext, ExecuteJob
 from newa.cli.constants import JIRA_NONE_ID
-from newa.cli.initialization import initialize_jira_connection, initialize_rp_connection
+from newa.cli.initialization import initialize_rp_connection
 from newa.cli.summarize_helpers import (
     collect_launch_details,
     format_jira_issue_details,
@@ -210,7 +210,7 @@ def cmd_summarize(ctx: CLIContext, preview: bool) -> None:
         ctx.logger.error('ReportPortal URL must be configured to use summarize command')
         return
 
-    jira_connection = initialize_jira_connection(ctx)
+    jira_connection = ctx.get_jira_connection().get_connection()
 
     ai_service = AIService(
         api_url=ctx.settings.ai_api_url,

@@ -2,36 +2,23 @@
 
 import re
 import urllib.parse
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 import jira
 import jira.client
 
 try:
-    from attrs import define, field, frozen
+    from attrs import field, frozen
 except ModuleNotFoundError:
-    from attr import define, field, frozen
+    from attr import field, frozen
 
 from newa.models.events import EventType
 from newa.models.issues import Issue, IssueAction, IssueTransitions, IssueType
+from newa.services.jira_connection import JiraConnection, JiraField, JiraIssueLinkType
 from newa.utils.helpers import short_sleep
 
 if TYPE_CHECKING:
     from newa.models.jobs import ArtifactJob
-
-
-@define
-class JiraField:
-    id_: str
-    name: str
-    type_: Optional[str]
-    items: Optional[str]
-
-
-@define
-class JiraIssueLinkType:
-    name: str
-    inward: bool
 
 
 @frozen
@@ -39,83 +26,41 @@ class IssueHandler:  # type: ignore[no-untyped-def]
     """An interface to Jira instance handling a specific ArtifactJob."""
 
     artifact_job: 'ArtifactJob' = field()
-    url: str = field()
-    token: str = field()
+    jira_connection: JiraConnection = field()
     project: str = field()
 
     # Each project can have different semantics of issue status.
     transitions: IssueTransitions = field(  # type: ignore[var-annotated]
         converter=lambda x: x if isinstance(x, IssueTransitions) else IssueTransitions(**x))
 
-    # field name=>JiraField mapping will be obtained from Jira later
-    # see https://JIRASERVER/rest/api/2/field
-    field_map: ClassVar[dict[str, JiraField]] = {}
-
-    board: Optional[Union[str, int]] = field(default=None)
-    # Actual Jira connection.
-    connection: jira.JIRA = field(init=False)
-
     # Cache of Jira user names mapped to e-mail addresses.
     user_names: dict[str, str] = field(init=False, default={})
 
     # NEWA label
-    newa_label: ClassVar[str] = "NEWA"
-
-    # active and future sprint ids, will be obtained from Jira later
-    sprint_cache: ClassVar[dict[str, list[int]]] = {'active': [], 'future': []}
+    newa_label: str = "NEWA"
 
     group: Optional[str] = field(default=None)
+    board: Optional[Union[str, int]] = field(default=None)
 
-    issue_link_types_map: ClassVar[dict[str, JiraIssueLinkType]] = {}
+    @property
+    def connection(self) -> jira.JIRA:
+        """Get the underlying Jira connection."""
+        return self.jira_connection.get_connection()
 
-    @connection.default  # pyright: ignore [reportAttributeAccessIssue]
-    def connection_factory(self) -> jira.JIRA:
-        conn = jira.JIRA(self.url, token_auth=self.token)
-        # try connection first
-        try:
-            conn.myself()
-            short_sleep()
-            # read field map from Jira and store its simplified version
-            fields = conn.fields()
-            for f in fields:
-                self.field_map[f['name']] = JiraField(
-                    name=f['name'],
-                    id_=f['id'],
-                    type_=f['schema']['type'] if 'schema' in f else None,
-                    items=f['schema']['items']
-                    if ('schema' in f and 'items' in f['schema'])
-                    else None)
-            # read link issue types
-            issue_link_types = conn.issue_link_types()
-            # self.issue_link_types_map = {}
-            for link_type in issue_link_types:
-                self.issue_link_types_map[str(link_type.inward)] = JiraIssueLinkType(
-                    name=link_type.name, inward=True)
-                self.issue_link_types_map[str(link_type.outward)] = JiraIssueLinkType(
-                    name=link_type.name, inward=False)
-            # read the current and next sprint for the board
-            if self.board:
-                # if board is identified by name, find its id
-                if isinstance(self.board, str):
-                    boards = conn.boards(name=self.board)
-                    if len(boards) == 1:
-                        board_id = boards[0].id
-                    else:
-                        raise Exception(f"Could not find Jira board with name '{self.board}'")
-                    short_sleep()
-                else:
-                    board_id = self.board
-                # fetch both states at once
-                sprints = conn.sprints(board_id, state='active,future')
-                self.sprint_cache['active'] = [
-                    s.id for s in sprints if s.originBoardId == board_id and s.state == 'active']
-                self.sprint_cache['future'] = [
-                    s.id for s in sprints if s.originBoardId == board_id and s.state == 'future']
-                short_sleep()
+    @property
+    def field_map(self) -> dict[str, JiraField]:
+        """Get the field map from the Jira connection."""
+        return self.jira_connection.field_map
 
-        except jira.JIRAError as e:
-            raise Exception('Could not authenticate to Jira. Wrong token?') from e
-        return conn
+    @property
+    def issue_link_types_map(self) -> dict[str, JiraIssueLinkType]:
+        """Get the issue link types map from the Jira connection."""
+        return self.jira_connection.issue_link_types_map
+
+    @property
+    def sprint_cache(self) -> dict[str, list[int]]:
+        """Get the sprint cache from the Jira connection."""
+        return self.jira_connection.sprint_cache
 
     def newa_id(self, action: Optional[IssueAction] = None, partial: bool = False) -> str:
         """
@@ -127,11 +72,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         """
 
         if not action:
-            return f"::: {IssueHandler.newa_label}"
+            return f"::: {self.newa_label}"
 
         if action.newa_id:
-            return f"::: {IssueHandler.newa_label} {action.newa_id}"
-        newa_id = f"::: {IssueHandler.newa_label} {action.id}: {self.artifact_job.id}"
+            return f"::: {self.newa_label} {action.newa_id}"
+        newa_id = f"::: {self.newa_label} {action.id}: {self.artifact_job.id}"
         # for ERRATUM event type update ID with sorted builds
         if (not partial and
             self.artifact_job.event.type_ is EventType.ERRATUM and
@@ -202,12 +147,12 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         if closed:
             query = \
                 f"project = '{self.project}' AND " + \
-                f"labels in ({IssueHandler.newa_label}) AND " + \
+                f"labels in ({self.newa_label}) AND " + \
                 f"description ~ '{newa_description}'"
         else:
             query = \
                 f"project = '{self.project}' AND " + \
-                f"labels in ({IssueHandler.newa_label}) AND " + \
+                f"labels in ({self.newa_label}) AND " + \
                 f"description ~ '{newa_description}' AND " + \
                 f"status not in ({','.join(self.transitions.closed)})"
         search_result = self.connection.search_issues(query, fields=fields, json_result=True)
@@ -256,16 +201,16 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         if action.type == IssueType.EPIC:
             data |= {
                 "issuetype": {"name": "Epic"},
-                IssueHandler.field_map["Epic Name"].id_: data["summary"],
+                self.field_map["Epic Name"].id_: data["summary"],
                 }
         elif action.type == IssueType.STORY:
             data |= {"issuetype": {"name": "Story"}}
             if parent:
-                data |= {IssueHandler.field_map["Epic Link"].id_: parent.id}
+                data |= {self.field_map["Epic Link"].id_: parent.id}
         elif action.type == IssueType.TASK:
             data |= {"issuetype": {"name": "Task"}}
             if parent:
-                data |= {IssueHandler.field_map["Epic Link"].id_: parent.id}
+                data |= {self.field_map["Epic Link"].id_: parent.id}
         elif action.type == IssueType.SUBTASK:
             if not parent:
                 raise Exception("Missing task while creating sub-task!")
@@ -301,9 +246,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         # add NEWA label unless not using newa id
         if use_newa_id:
             if "Labels" in fields and isinstance(fields['Labels'], list):
-                fields['Labels'].append(IssueHandler.newa_label)
+                fields['Labels'].append(self.newa_label)
             else:
-                fields['Labels'] = [IssueHandler.newa_label]
+                fields['Labels'] = [self.newa_label]
         # populate fdata with configuration provided by the user
         fdata: dict[str, Union[str, float, list[Any], dict[str, Any]]] = {}
         transition_name: Optional[str] = None
@@ -313,11 +258,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             if field == 'Reporter':
                 continue
 
-            if field not in IssueHandler.field_map:
+            if field not in self.field_map:
                 raise Exception(f"Could not find field '{field}' in Jira.")
-            field_id = IssueHandler.field_map[field].id_
-            field_type = IssueHandler.field_map[field].type_
-            field_items = IssueHandler.field_map[field].items
+            field_id = self.field_map[field].id_
+            field_type = self.field_map[field].type_
+            field_items = self.field_map[field].items
             value = fields[field]
             # to ease processing set field_values to be always a list of strings
             if isinstance(value, (float, int, str)):
@@ -332,12 +277,26 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             if field == 'Sprint':
                 if not value:
                     continue
+                # Ensure sprint cache is loaded lazily when needed
+                if self.board:
+                    self.jira_connection.ensure_sprint_cache_loaded(self.board)
+                # Check if board is configured (not whether sprints exist)
                 if not self.board:
                     raise Exception(
                         "Jira 'board' is not configured in the issue-config file.")
+                # Check if sprints are available (distinct from board configuration)
+                if not self.sprint_cache['active'] and not self.sprint_cache['future']:
+                    raise Exception(
+                        f"No active or future sprints found on board '{self.board}'.")
                 if value == 'active':
+                    if not self.sprint_cache['active']:
+                        raise Exception(
+                            f"No active sprints found on board '{self.board}'.")
                     sprint_id = self.sprint_cache['active'][0]
                 elif value == 'future':
+                    if not self.sprint_cache['future']:
+                        raise Exception(
+                            f"No future sprints found on board '{self.board}'.")
                     sprint_id = self.sprint_cache['future'][0]
                 elif isinstance(value, (int, str)):
                     sprint_id = int(value)
@@ -398,7 +357,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             return Issue(jira_issue.key,
                          group=self.group,
                          summary=summary,
-                         url=urllib.parse.urljoin(self.url, f'/browse/{jira_issue.key}'),
+                         url=urllib.parse.urljoin(self.jira_connection.url,
+                                                  f'/browse/{jira_issue.key}'),
                          transition_passed=transition_passed,
                          transition_processed=transition_processed,
                          action_id=action.id)
