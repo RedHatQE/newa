@@ -6,6 +6,7 @@ import click
 from jira import JIRA
 
 from newa import CLIContext, ExecuteJob
+from newa.cli.constants import JIRA_NONE_ID
 from newa.cli.initialization import initialize_jira_connection, initialize_rp_connection
 from newa.cli.summarize_helpers import (
     collect_launch_details,
@@ -69,7 +70,8 @@ def process_execute_job_for_summary(
         execute_job: ExecuteJob,
         rp: Any,
         jira_client: JIRA,
-        ai_service: AIService) -> None:
+        ai_service: AIService,
+        preview: bool = False) -> None:
     """Process a single execute job and add AI summary to its Jira issue.
 
     Args:
@@ -81,18 +83,19 @@ def process_execute_job_for_summary(
     """
     jira_id = execute_job.jira.id
 
-    # Check issue status - skip if Done or Closed
-    try:
-        issue = jira_client.issue(jira_id)
-        issue_status = issue.fields.status.name
+    if not preview:
+        # Check issue status - skip if Done or Closed
+        try:
+            issue = jira_client.issue(jira_id)
+            issue_status = issue.fields.status.name
 
-        if issue_status in ['Done', 'Closed']:
-            ctx.logger.info(
-                f'Skipping {jira_id}: Issue status is {issue_status}')
+            if issue_status in ['Done', 'Closed']:
+                ctx.logger.info(
+                    f'Skipping {jira_id}: Issue status is {issue_status}')
+                return
+        except Exception as e:
+            ctx.logger.error(f'Error fetching Jira issue {jira_id} status: {e}')
             return
-    except Exception as e:
-        ctx.logger.error(f'Error fetching Jira issue {jira_id} status: {e}')
-        return
 
     # Check if the execute job has ReportPortal launch metadata
     if not execute_job.request.reportportal:
@@ -144,10 +147,14 @@ def process_execute_job_for_summary(
         ctx.logger.error(f'Error querying AI model: {e}')
         return
 
+    comment = f"NEWA AI-generated ReportPortal launch summary:\n\n{ai_summary}"
+    if preview:
+        click.echo(comment)
+        return
+
     # Add comment to Jira issue
     ctx.logger.info(f'Adding AI summary comment to {jira_id}')
     try:
-        comment = f"NEWA AI-generated ReportPortal launch summary:\n\n{ai_summary}"
         jira_client.add_comment(
             jira_id,
             comment,
@@ -161,8 +168,14 @@ def process_execute_job_for_summary(
 
 
 @click.command(name='summarize')
+@click.option(
+    '--preview',
+    is_flag=True,
+    default=False,
+    help='Prints summary to STDOUT instead of updating a Jira issue',
+    )
 @click.pass_obj
-def cmd_summarize(ctx: CLIContext) -> None:
+def cmd_summarize(ctx: CLIContext, preview: bool) -> None:
     """
     Generate AI summaries of ReportPortal launches and update Jira issues.
 
@@ -219,8 +232,12 @@ def cmd_summarize(ctx: CLIContext) -> None:
                         'already processed')
                     continue
 
+            # When we do not have an actual Jira issue do the preview only
+            if execute_job.jira.id.startswith(JIRA_NONE_ID):
+                preview = True
+
             process_execute_job_for_summary(
-                ctx, execute_job, rp, jira_connection, ai_service)
+                ctx, execute_job, rp, jira_connection, ai_service, preview)
 
             # Mark launch as processed
             if execute_job.request.reportportal:
