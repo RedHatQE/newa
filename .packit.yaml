@@ -25,6 +25,8 @@ jobs:
       - fedora-all-aarch64
       - epel-9-x86_64
       - epel-9-aarch64
+      - epel-10-x86_64
+      - epel-10-aarch64
     enable_net: false
     osh_diff_scan_after_copr_build: false
     actions:
