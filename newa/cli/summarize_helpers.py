@@ -26,7 +26,7 @@ def extract_jira_issues_from_comment(comment: str) -> list[str]:
     if not comment:
         return []
 
-    pattern = r'https://issues\.redhat\.com/browse/(RHEL-\d+)'
+    pattern = r'\b(RHEL-\d{4,8})\b'
     return re.findall(pattern, comment)
 
 
