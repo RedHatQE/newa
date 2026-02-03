@@ -112,3 +112,537 @@ def test_event_no_id(mock_clicontext):
     result = runner.invoke(cli.cmd_event, obj=ctx)
     assert result.exception
     assert len(list(Path(ctx.state_dirpath).glob('event-*'))) == 0
+
+
+def test_copy_state_dir_no_filters(tmp_path):
+    """Test copying state directory without any filters."""
+    runner = CliRunner()
+
+    # Create source directory with test YAML files
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    # Create sample YAML files
+    (source_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: action1
+""")
+    (source_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: PROJ-456
+  action_id: action2
+""")
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run copy command without filters
+    # We need to add a command (list) but the copy happens before command execution
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir), '--copy-state-dir', str(source_dir), 'list'])
+
+    assert result.exit_code == 0
+    # All files should be copied
+    assert len(list(dest_dir.glob('jira-*.yaml'))) == 2
+
+
+def test_copy_state_dir_action_id_filter(tmp_path):
+    """Test copying state directory with action-id-filter."""
+    runner = CliRunner()
+
+    # Create source directory with test YAML files
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    # Create sample YAML files with different action_ids
+    (source_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: test_action
+""")
+    (source_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: PROJ-456
+  action_id: other_action
+""")
+    (source_dir / "jira-issue3.yaml").write_text("""
+jira:
+  id: PROJ-789
+  action_id: test_action_2
+""")
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run copy command with action_id filter
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir),
+         '--copy-state-dir', str(source_dir),
+         '--action-id-filter', 'test_.*',
+         'list'])
+
+    assert result.exit_code == 0
+    # Only files matching action_id pattern should be copied
+    copied_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(copied_files) == 2
+
+    # Verify correct files were copied
+    from newa.utils.yaml_utils import yaml_parser
+    for yaml_file in copied_files:
+        yaml_data = yaml_parser().load(yaml_file.read_text())
+        action_id = yaml_data.get('jira', {}).get('action_id')
+        assert action_id.startswith('test_')
+
+
+def test_copy_state_dir_issue_id_filter(tmp_path):
+    """Test copying state directory with issue-id-filter."""
+    runner = CliRunner()
+
+    # Create source directory with test YAML files
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    # Create sample YAML files with different issue IDs
+    (source_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: action1
+""")
+    (source_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: OTHER-456
+  action_id: action2
+""")
+    (source_dir / "jira-issue3.yaml").write_text("""
+jira:
+  id: PROJ-789
+  action_id: action3
+""")
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run copy command with issue_id filter
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir),
+         '--copy-state-dir', str(source_dir),
+         '--issue-id-filter', 'PROJ-.*',
+         'list'])
+
+    assert result.exit_code == 0
+    # Only files matching issue_id pattern should be copied
+    copied_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(copied_files) == 2
+
+    # Verify correct files were copied
+    from newa.utils.yaml_utils import yaml_parser
+    for yaml_file in copied_files:
+        yaml_data = yaml_parser().load(yaml_file.read_text())
+        issue_id = yaml_data.get('jira', {}).get('id')
+        assert issue_id.startswith('PROJ-')
+
+
+def test_copy_state_dir_both_filters(tmp_path):
+    """Test copying state directory with both action-id-filter and issue-id-filter."""
+    runner = CliRunner()
+
+    # Create source directory with test YAML files
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    # Create sample YAML files with various combinations
+    (source_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: test_action
+""")
+    (source_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: PROJ-456
+  action_id: other_action
+""")
+    (source_dir / "jira-issue3.yaml").write_text("""
+jira:
+  id: OTHER-789
+  action_id: test_action_2
+""")
+    (source_dir / "jira-issue4.yaml").write_text("""
+jira:
+  id: PROJ-999
+  action_id: test_action_3
+""")
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run copy command with both filters
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir),
+         '--copy-state-dir', str(source_dir),
+         '--action-id-filter', 'test_.*',
+         '--issue-id-filter', 'PROJ-.*',
+         'list'])
+
+    assert result.exit_code == 0
+    # Only files matching both patterns should be copied
+    copied_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(copied_files) == 2
+
+    # Verify correct files were copied
+    from newa.utils.yaml_utils import yaml_parser
+    for yaml_file in copied_files:
+        yaml_data = yaml_parser().load(yaml_file.read_text())
+        issue_id = yaml_data.get('jira', {}).get('id')
+        action_id = yaml_data.get('jira', {}).get('action_id')
+        assert issue_id.startswith('PROJ-')
+        assert action_id.startswith('test_')
+
+
+def test_extract_state_dir_no_filters(tmp_path):
+    """Test extracting state directory without any filters."""
+    import tarfile
+    runner = CliRunner()
+
+    # Create source archive with test YAML files
+    source_archive = tmp_path / "source.tar.gz"
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+
+    # Create sample YAML files
+    (temp_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: action1
+""")
+    (temp_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: PROJ-456
+  action_id: action2
+""")
+
+    # Create archive
+    with tarfile.open(source_archive, 'w:gz') as tar:
+        for yaml_file in temp_dir.glob('*.yaml'):
+            tar.add(yaml_file, arcname=yaml_file.name)
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run extract command without filters
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir), '--extract-state-dir', str(source_archive), 'list'])
+
+    assert result.exit_code == 0
+    # All files should be extracted
+    assert len(list(dest_dir.glob('jira-*.yaml'))) == 2
+
+
+def test_extract_state_dir_action_id_filter(tmp_path):
+    """Test extracting state directory with action-id-filter."""
+    import tarfile
+    runner = CliRunner()
+
+    # Create source archive with test YAML files
+    source_archive = tmp_path / "source.tar.gz"
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+
+    # Create sample YAML files with different action_ids
+    (temp_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: test_action
+""")
+    (temp_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: PROJ-456
+  action_id: other_action
+""")
+    (temp_dir / "jira-issue3.yaml").write_text("""
+jira:
+  id: PROJ-789
+  action_id: test_action_2
+""")
+
+    # Create archive
+    with tarfile.open(source_archive, 'w:gz') as tar:
+        for yaml_file in temp_dir.glob('*.yaml'):
+            tar.add(yaml_file, arcname=yaml_file.name)
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run extract command with action_id filter
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir),
+         '--extract-state-dir', str(source_archive),
+         '--action-id-filter', 'test_.*',
+         'list'])
+
+    assert result.exit_code == 0
+    # Only files matching action_id pattern should be kept
+    extracted_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(extracted_files) == 2
+
+    # Verify correct files were kept
+    from newa.utils.yaml_utils import yaml_parser
+    for yaml_file in extracted_files:
+        yaml_data = yaml_parser().load(yaml_file.read_text())
+        action_id = yaml_data.get('jira', {}).get('action_id')
+        assert action_id.startswith('test_')
+
+
+def test_extract_state_dir_issue_id_filter(tmp_path):
+    """Test extracting state directory with issue-id-filter."""
+    import tarfile
+    runner = CliRunner()
+
+    # Create source archive with test YAML files
+    source_archive = tmp_path / "source.tar.gz"
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+
+    # Create sample YAML files with different issue IDs
+    (temp_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: action1
+""")
+    (temp_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: OTHER-456
+  action_id: action2
+""")
+    (temp_dir / "jira-issue3.yaml").write_text("""
+jira:
+  id: PROJ-789
+  action_id: action3
+""")
+
+    # Create archive
+    with tarfile.open(source_archive, 'w:gz') as tar:
+        for yaml_file in temp_dir.glob('*.yaml'):
+            tar.add(yaml_file, arcname=yaml_file.name)
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run extract command with issue_id filter
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir),
+         '--extract-state-dir', str(source_archive),
+         '--issue-id-filter', 'PROJ-.*',
+         'list'])
+
+    assert result.exit_code == 0
+    # Only files matching issue_id pattern should be kept
+    extracted_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(extracted_files) == 2
+
+    # Verify correct files were kept
+    from newa.utils.yaml_utils import yaml_parser
+    for yaml_file in extracted_files:
+        yaml_data = yaml_parser().load(yaml_file.read_text())
+        issue_id = yaml_data.get('jira', {}).get('id')
+        assert issue_id.startswith('PROJ-')
+
+
+def test_extract_state_dir_both_filters(tmp_path):
+    """Test extracting state directory with both action-id-filter and issue-id-filter."""
+    import tarfile
+    runner = CliRunner()
+
+    # Create source archive with test YAML files
+    source_archive = tmp_path / "source.tar.gz"
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+
+    # Create sample YAML files with various combinations
+    (temp_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: test_action
+""")
+    (temp_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: PROJ-456
+  action_id: other_action
+""")
+    (temp_dir / "jira-issue3.yaml").write_text("""
+jira:
+  id: OTHER-789
+  action_id: test_action_2
+""")
+    (temp_dir / "jira-issue4.yaml").write_text("""
+jira:
+  id: PROJ-999
+  action_id: test_action_3
+""")
+
+    # Create archive
+    with tarfile.open(source_archive, 'w:gz') as tar:
+        for yaml_file in temp_dir.glob('*.yaml'):
+            tar.add(yaml_file, arcname=yaml_file.name)
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run extract command with both filters
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir),
+         '--extract-state-dir', str(source_archive),
+         '--action-id-filter', 'test_.*',
+         '--issue-id-filter', 'PROJ-.*',
+         'list'])
+
+    assert result.exit_code == 0
+    # Only files matching both patterns should be kept
+    extracted_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(extracted_files) == 2
+
+    # Verify correct files were kept
+    from newa.utils.yaml_utils import yaml_parser
+    for yaml_file in extracted_files:
+        yaml_data = yaml_parser().load(yaml_file.read_text())
+        issue_id = yaml_data.get('jira', {}).get('id')
+        action_id = yaml_data.get('jira', {}).get('action_id')
+        assert issue_id.startswith('PROJ-')
+        assert action_id.startswith('test_')
+
+
+def test_copy_state_dir_preserves_event_files(tmp_path):
+    """Test that event- files without jira section are preserved when filtering."""
+    runner = CliRunner()
+
+    # Create source directory with test YAML files
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    # Create event file without jira section
+    (source_dir / "event-12345-RHEL-9.yaml").write_text("""
+event:
+  id: '12345'
+  type_: erratum
+erratum:
+  id: '12345'
+  content_type: rpm
+  respin_count: 1
+  summary: Test erratum
+  url: https://errata.example.com/12345
+  builds: []
+  release: RHEL-9.4.0
+compose:
+  id: RHEL-9.4.0-Nightly
+""")
+    # Create jira files with jira section
+    (source_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: test_action
+""")
+    (source_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: OTHER-456
+  action_id: other_action
+""")
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run copy command with filters
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir),
+         '--copy-state-dir', str(source_dir),
+         '--action-id-filter', 'test_.*',
+         'list'])
+
+    assert result.exit_code == 0
+
+    # Event file should be preserved
+    assert (dest_dir / "event-12345-RHEL-9.yaml").exists()
+
+    # Only matching jira file should be copied
+    jira_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(jira_files) == 1
+
+    from newa.utils.yaml_utils import yaml_parser
+    yaml_data = yaml_parser().load(jira_files[0].read_text())
+    assert yaml_data.get('jira', {}).get('action_id') == 'test_action'
+
+
+def test_extract_state_dir_preserves_event_files(tmp_path):
+    """Test that event- files without jira section are preserved when filtering."""
+    import tarfile
+    runner = CliRunner()
+
+    # Create source archive with test YAML files
+    source_archive = tmp_path / "source.tar.gz"
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+
+    # Create event file without jira section
+    (temp_dir / "event-12345-RHEL-9.yaml").write_text("""
+event:
+  id: '12345'
+  type_: erratum
+erratum:
+  id: '12345'
+  content_type: rpm
+  respin_count: 1
+  summary: Test erratum
+  url: https://errata.example.com/12345
+  builds: []
+  release: RHEL-9.4.0
+compose:
+  id: RHEL-9.4.0-Nightly
+""")
+    # Create jira files with jira section
+    (temp_dir / "jira-issue1.yaml").write_text("""
+jira:
+  id: PROJ-123
+  action_id: test_action
+""")
+    (temp_dir / "jira-issue2.yaml").write_text("""
+jira:
+  id: OTHER-456
+  action_id: other_action
+""")
+
+    # Create archive
+    with tarfile.open(source_archive, 'w:gz') as tar:
+        for yaml_file in temp_dir.glob('*.yaml'):
+            tar.add(yaml_file, arcname=yaml_file.name)
+
+    # Create destination directory
+    dest_dir = tmp_path / "dest"
+
+    # Run extract command with filters
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(dest_dir),
+         '--extract-state-dir', str(source_archive),
+         '--issue-id-filter', 'PROJ-.*',
+         'list'])
+
+    assert result.exit_code == 0
+
+    # Event file should be preserved
+    assert (dest_dir / "event-12345-RHEL-9.yaml").exists()
+
+    # Only matching jira file should be kept
+    jira_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(jira_files) == 1
+
+    from newa.utils.yaml_utils import yaml_parser
+    yaml_data = yaml_parser().load(jira_files[0].read_text())
+    assert yaml_data.get('jira', {}).get('id') == 'PROJ-123'

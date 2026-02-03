@@ -6,6 +6,8 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from re import Pattern
+from typing import Optional
 
 import click
 
@@ -25,6 +27,57 @@ logging.basicConfig(
     format='%(asctime)s %(message)s',
     datefmt='%m/%d/%Y %I:%M:%S %p',
     level=logging.INFO)
+
+
+def _should_filter_yaml_file(
+        yaml_file: Path,
+        action_id_pattern: Optional[Pattern[str]],
+        issue_id_pattern: Optional[Pattern[str]],
+        logger: logging.Logger) -> bool:
+    """
+    Check if a YAML file should be filtered out based on action_id and issue_id patterns.
+
+    Args:
+        yaml_file: Path to the YAML file to check
+        action_id_pattern: Compiled regex pattern for action_id filtering (or None)
+        issue_id_pattern: Compiled regex pattern for issue_id filtering (or None)
+        logger: Logger instance for debug messages
+
+    Returns:
+        True if the file should be filtered out (skipped), False if it should be kept
+    """
+    if not action_id_pattern and not issue_id_pattern:
+        return False  # No filters, keep the file
+
+    try:
+        from newa.utils.yaml_utils import yaml_parser
+
+        # Load the YAML file to check filters
+        yaml_data = yaml_parser().load(yaml_file.read_text())
+
+        # Check action_id_filter if specified
+        if action_id_pattern:
+            action_id = yaml_data.get('jira', {}).get('action_id')
+            if action_id and not action_id_pattern.fullmatch(action_id):
+                logger.debug(
+                    f'Filtering {yaml_file.name} (action_id "{action_id}" '
+                    f'does not match filter)')
+                return True
+
+        # Check issue_id_filter if specified
+        if issue_id_pattern:
+            issue_id = yaml_data.get('jira', {}).get('id')
+            if issue_id and not issue_id_pattern.fullmatch(issue_id):
+                logger.debug(
+                    f'Filtering {yaml_file.name} (issue_id "{issue_id}" '
+                    f'does not match filter)')
+                return True
+
+    except Exception as e:
+        logger.warning(f'Error reading {yaml_file.name}, filtering out: {e}')
+        return True
+
+    return False  # File matches all filters, keep it
 
 
 @click.group(chain=True)
@@ -215,6 +268,21 @@ def main(click_context: click.Context,
                     tf.extract(item, path=ctx.state_dirpath, filter='data')
         initialize_state_dir(ctx)
 
+        # Apply filters if specified - delete non-matching YAML files
+        if pattern or issue_pattern:
+            yaml_files = list(ctx.state_dirpath.glob('*.yaml'))
+            deleted_count = 0
+            kept_count = 0
+            for yaml_file in yaml_files:
+                if _should_filter_yaml_file(yaml_file, pattern, issue_pattern, ctx.logger):
+                    yaml_file.unlink()
+                    deleted_count += 1
+                else:
+                    kept_count += 1
+
+            ctx.logger.info(
+                f'Kept {kept_count} YAML file(s), deleted {deleted_count} non-matching')
+
     # copy YAML files from the given state directory to a new state-dir
     if copy_state_dir:
         source_dir = Path(os.path.expanduser(os.path.expandvars(copy_state_dir)))
@@ -235,11 +303,21 @@ def main(click_context: click.Context,
         if not yaml_files:
             ctx.logger.warning(f'No YAML files found in {source_dir}')
         else:
+            copied_count = 0
+            skipped_count = 0
             for yaml_file in yaml_files:
+                # Check if this file should be filtered out
+                if _should_filter_yaml_file(yaml_file, pattern, issue_pattern, ctx.logger):
+                    skipped_count += 1
+                    continue
+
                 dest_file = ctx.state_dirpath / yaml_file.name
                 shutil.copy2(yaml_file, dest_file)
                 ctx.logger.debug(f'Copied {yaml_file.name}')
-            ctx.logger.info(f'Copied {len(yaml_files)} YAML file(s)')
+                copied_count += 1
+
+            ctx.logger.info(
+                f'Copied {copied_count} YAML file(s), skipped {skipped_count}')
 
     def _split(s: str) -> tuple[str, str]:
         """Split key='some value' into a tuple (key, value)."""

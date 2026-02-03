@@ -724,20 +724,48 @@ Using --state-dir=/var/tmp/newa/run-123
 
 #### Option `--extract-state-dir`, `-E`
 
-Similar to `--state-dir`, however in this case the argument is the URL of an archive containing NEWA YAML metadata files. For example, it could be used to follow up on a state-dir created and shared by an automation.
+Similar to `--state-dir`, however in this case the argument is the URL or file path of an archive containing NEWA YAML metadata files. For example, it could be used to follow up on a state-dir created and shared by an automation.
 
-Example:
+This option can be combined with `--action-id-filter` and `--issue-id-filter` to extract and keep only specific YAML files that match the filter criteria. When filters are specified:
+- All files are first extracted from the archive
+- `--action-id-filter`: Only keeps YAML files where the `jira.action_id` field matches the provided regex pattern (deletes non-matching files)
+- `--issue-id-filter`: Only keeps YAML files where the `jira.id` field (Jira issue key) matches the provided regex pattern (deletes non-matching files)
+- Both filters can be used together (files must match both patterns to be kept)
+
+This option cannot be used together with `--copy-state-dir`.
+
+Example (basic extraction without filters):
 ```
 $ newa --extract-state-dir https://path/to/some/newa-run-1234.tar.gz list
+```
+
+Example (extract only files for specific action):
+```
+$ newa --extract-state-dir /path/to/archive.tar.gz --action-id-filter 'tier1_.*' schedule execute report
+```
+
+Example (extract only files for specific Jira issue):
+```
+$ newa --extract-state-dir https://server/newa-state.tar.gz --issue-id-filter 'RHEL-12345' schedule execute report
+```
+
+Example (extract files matching both action and issue filters):
+```
+$ newa --extract-state-dir /path/to/archive.tar.gz --action-id-filter 'regression_.*' --issue-id-filter 'PROJ-.*' schedule execute report
 ```
 
 #### Option `--copy-state-dir`, `-C`
 
 Copies YAML files from a specified state directory to a newly created state directory and continues with the new state-dir. This option is useful when you want to reuse state from an existing directory (e.g., from a different machine or a shared location) without modifying the original state-dir.
 
+This option can be combined with `--action-id-filter` and `--issue-id-filter` to copy only specific YAML files that match the filter criteria. When filters are specified:
+- `--action-id-filter`: Only copies YAML files where the `jira.action_id` field matches the provided regex pattern
+- `--issue-id-filter`: Only copies YAML files where the `jira.id` field (Jira issue key) matches the provided regex pattern
+- Both filters can be used together (files must match both patterns to be copied)
+
 This option cannot be used together with `--extract-state-dir`.
 
-Example:
+Example (basic copy without filters):
 ```
 $ newa --copy-state-dir /path/to/existing/run-123 list
 ```
@@ -745,6 +773,21 @@ $ newa --copy-state-dir /path/to/existing/run-123 list
 Example (copying from a mounted network share):
 ```
 $ newa --copy-state-dir /mnt/shared/newa-state-dir/run-456 jira --issue-config config.yaml schedule execute report
+```
+
+Example (copy only files for specific action):
+```
+$ newa --copy-state-dir /path/to/existing/run-123 --action-id-filter 'tier1_.*' schedule execute report
+```
+
+Example (copy only files for specific Jira issue):
+```
+$ newa --copy-state-dir /path/to/existing/run-123 --issue-id-filter 'RHEL-12345' schedule execute report
+```
+
+Example (copy files matching both action and issue filters):
+```
+$ newa --copy-state-dir /path/to/existing/run-123 --action-id-filter 'regression_.*' --issue-id-filter 'PROJ-.*' schedule execute report
 ```
 
 #### Option `--context, -c`
