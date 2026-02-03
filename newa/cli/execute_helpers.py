@@ -299,16 +299,43 @@ def _execute_worker_pool(
         workers: int) -> None:
     """Execute the worker pool for processing schedule jobs."""
     import multiprocessing
+    import signal
     import time
 
     from newa.cli.workers import worker
 
-    schedule_list = [(ctx, ctx.get_schedule_job_filepath(job))
-                     for job in schedule_job_list]
-    worker_pool = multiprocessing.Pool(workers if workers > 0 else len(schedule_list))
-    for _ in worker_pool.starmap(worker, schedule_list):
-        # small sleep to avoid race conditions inside tmt code
-        time.sleep(0.1)
+    # Initialize worker_pool to avoid UnboundLocalError during error handling
+    worker_pool = None
+
+    # Suppress worker process traceback output on termination
+    # Ensure SIGINT handler is always restored even if Pool creation fails
+    original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        schedule_list = [(ctx, ctx.get_schedule_job_filepath(job))
+                         for job in schedule_job_list]
+        worker_pool = multiprocessing.Pool(workers if workers > 0 else len(schedule_list))
+    finally:
+        signal.signal(signal.SIGINT, original_sigint_handler)
+
+    # Track whether pool was terminated to avoid invalid state transitions
+    pool_terminated = False
+    try:
+        for _ in worker_pool.starmap(worker, schedule_list):
+            # small sleep to avoid race conditions inside tmt code
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        ctx.logger.info('\nInterrupted by user, cleaning up...')
+        # Mark as terminated before calling terminate()/join() to avoid
+        # inconsistent state if those calls raise.
+        pool_terminated = True
+        worker_pool.terminate()
+        worker_pool.join()
+        raise
+    finally:
+        # Only close/join if pool wasn't already terminated
+        if not pool_terminated and worker_pool is not None:
+            worker_pool.close()
+            worker_pool.join()
 
 
 def _finalize_rp_launches(

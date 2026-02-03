@@ -114,7 +114,11 @@ def cmd_execute(
         ctx, rp, et, jira_schedule_job_mapping)
 
     # Execute worker pool to process all schedule jobs
-    _execute_worker_pool(ctx, schedule_job_list, workers)
+    try:
+        _execute_worker_pool(ctx, schedule_job_list, workers)
+    except KeyboardInterrupt:
+        # Let _execute_worker_pool handle user-facing logging; just translate to Click's Abort.
+        raise click.Abort from None
 
     # Finalize RP launches after execution
     _finalize_rp_launches(ctx, rp, launch_list)

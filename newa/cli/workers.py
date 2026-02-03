@@ -19,12 +19,16 @@ from newa.cli.utils import test_patterns_match
 
 def worker(ctx: CLIContext, schedule_file: Path) -> None:
     """Main worker function that delegates to TF or TMT worker."""
-    # read request details
-    schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
-    if schedule_job.request.how == ExecuteHow.TMT:
-        tmt_worker(ctx, schedule_file, schedule_job)
-    else:
-        tf_worker(ctx, schedule_file, schedule_job)
+    try:
+        # read request details
+        schedule_job = ScheduleJob.from_yaml_file(Path(schedule_file))
+        if schedule_job.request.how == ExecuteHow.TMT:
+            tmt_worker(ctx, schedule_file, schedule_job)
+        else:
+            tf_worker(ctx, schedule_file, schedule_job)
+    except KeyboardInterrupt:
+        # Silently exit on keyboard interrupt - cleanup is handled by parent
+        raise SystemExit(0) from None
 
 
 def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -> None:
