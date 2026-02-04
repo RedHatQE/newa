@@ -96,6 +96,7 @@ class Erratum(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     people_qe_group: Optional[str] = None
     people_devel_group: Optional[str] = None
     revision: Optional[int] = field(repr=False, default=0)
+    jira_issues: list[str] = field(factory=list)
 
 
 @define
