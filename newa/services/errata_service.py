@@ -150,6 +150,15 @@ class ErrataTool:
             # krb=True,
             response_content=ResponseContentType.JSON)
 
+    def fetch_jira_issues(self, erratum_id: str) -> 'JSON':
+        from urllib.parse import quote as Q  # noqa: N812
+        return get_request(
+            url=urllib.parse.urljoin(
+                self.url,
+                f"/advisory/{Q(erratum_id)}/jira_issues.json"),
+            krb=True,
+            response_content=ResponseContentType.JSON)
+
     def check_connection(self, et_url: str, logger: 'logging.Logger') -> None:
         try:
             et_system_info = self.fetch_system_info()
@@ -202,6 +211,8 @@ class ErrataTool:
 
         info_json = self.fetch_info(event.id)
         releases_json = self.fetch_releases(event.id)
+        jira_issues_json = self.fetch_jira_issues(event.id)
+        jira_issues = [issue['key'] for issue in jira_issues_json]
 
         # Build a list of candidate errata with their metadata
         candidate_errata = []
@@ -271,7 +282,8 @@ class ErrataTool:
                     people_assigned_to=info_json["people"]["assigned_to"],
                     people_package_owner=info_json["people"]["package_owner"],
                     people_qe_group=info_json["people"]["qe_group"],
-                    people_devel_group=info_json["people"]["devel_group"]))
+                    people_devel_group=info_json["people"]["devel_group"],
+                    jira_issues=jira_issues))
 
         return errata
 
