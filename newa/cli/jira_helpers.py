@@ -78,7 +78,17 @@ def _render_action_value(
         artifact_job: ArtifactJob,
         action: IssueAction,
         jira_event_fields: dict[str, Any]) -> str:
-    """Render a single value as Jinja template."""
+    """Render a single value as Jinja template.
+
+    Args:
+        value: Template string to render
+        artifact_job: Job context
+        action: Action context
+        jira_event_fields: Jira event fields
+
+    Returns:
+        Rendered value as string
+    """
     return render_template(
         value,
         EVENT=artifact_job.event,
@@ -137,15 +147,41 @@ def _render_action_fields(
     # Render links
     rendered_links: dict[str, list[str]] = {}
     if action.links:
+        from newa.utils.yaml_utils import yaml_parser
+
         for relation in action.links:
             rendered_links[relation] = []
-            for linked_key in action.links[relation]:
-                if isinstance(linked_key, str):
-                    rendered_links[relation].append(_render_action_value(
-                        linked_key, artifact_job, action, jira_event_fields))
-                else:
-                    raise Exception(
-                        f"Linked issue key '{linked_key}' must be a string")
+            link_values = action.links[relation]
+
+            # Handle case where links value is a template reference to a list
+            # e.g., "{{ ERRATUM.jira_issues }}" which should evaluate to a list
+            if isinstance(link_values, str):
+                rendered = _render_action_value(
+                    link_values, artifact_job, action, jira_event_fields)
+                try:
+                    # Parse rendered string as YAML to get native type (same as recipes.py)
+                    parsed = yaml_parser().load(rendered)
+                    if isinstance(parsed, list):
+                        # Validate and normalize each element to a string
+                        rendered_links[relation] = [str(v) for v in parsed]
+                    else:
+                        # Single value
+                        rendered_links[relation] = [str(parsed)]
+                except Exception:
+                    # If YAML parsing fails, treat as single string value
+                    rendered_links[relation] = [rendered]
+            elif isinstance(link_values, list):
+                # List of individual template strings
+                for linked_key in link_values:
+                    if isinstance(linked_key, str):
+                        rendered_links[relation].append(_render_action_value(
+                            linked_key, artifact_job, action, jira_event_fields))
+                    else:
+                        raise Exception(
+                            f"Linked issue key '{linked_key}' must be a string")
+            else:
+                raise Exception(
+                    f"Links value for '{relation}' must be a string or list")
 
     # Render schedule if it's a string
     rendered_schedule: bool
@@ -308,6 +344,9 @@ def _find_or_create_issue(
         short_sleep()
         trigger_erratum_comment = jira_handler.refresh_issue(action, new_issue)
         ctx.logger.info(f"Issue {new_issue} re-used")
+
+        # Add issue links from action configuration
+        jira_handler.add_issue_links(new_issue, rendered_links)
 
     else:
         raise Exception(f"More than one new {action.id} found ({new_issues})!")
