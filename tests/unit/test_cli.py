@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from unittest import mock
 
@@ -134,18 +135,30 @@ jira:
   action_id: action2
 """)
 
-    # Create destination directory
-    dest_dir = tmp_path / "dest"
+    # Create a topdir for new state directories
+    topdir = tmp_path / "topdir"
+    topdir.mkdir()
 
     # Run copy command without filters
-    # We need to add a command (list) but the copy happens before command execution
+    # --state-dir identifies the source, --copy-state-dir triggers the copy to a new state-dir
     result = runner.invoke(
         cli.main,
-        ['--state-dir', str(dest_dir), '--copy-state-dir', str(source_dir), 'list'])
+        ['--state-dir', str(source_dir), '--copy-state-dir', 'list'],
+        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
-    # All files should be copied
-    assert len(list(dest_dir.glob('jira-*.yaml'))) == 2
+
+    # Verify source files still exist (source is read-only)
+    assert len(list(source_dir.glob('jira-*.yaml'))) == 2
+
+    # Find the newly created state directory and verify files were copied
+    state_dirs = [d for d in topdir.iterdir() if d.is_dir() and d.name.startswith('run-')]
+    assert len(state_dirs) == 1
+    dest_dir = state_dirs[0]
+
+    # All files should be copied to the new state-dir
+    copied_files = list(dest_dir.glob('jira-*.yaml'))
+    assert len(copied_files) == 2
 
 
 def test_copy_state_dir_action_id_filter(tmp_path):
@@ -173,18 +186,26 @@ jira:
   action_id: test_action_2
 """)
 
-    # Create destination directory
-    dest_dir = tmp_path / "dest"
+    # Create a topdir for new state directories
+    topdir = tmp_path / "topdir"
+    topdir.mkdir()
 
     # Run copy command with action_id filter
     result = runner.invoke(
         cli.main,
-        ['--state-dir', str(dest_dir),
-         '--copy-state-dir', str(source_dir),
+        ['--state-dir', str(source_dir),
+         '--copy-state-dir',
          '--action-id-filter', 'test_.*',
-         'list'])
+         'list'],
+        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
+
+    # Find the newly created state directory
+    state_dirs = [d for d in topdir.iterdir() if d.is_dir() and d.name.startswith('run-')]
+    assert len(state_dirs) == 1
+    dest_dir = state_dirs[0]
+
     # Only files matching action_id pattern should be copied
     copied_files = list(dest_dir.glob('jira-*.yaml'))
     assert len(copied_files) == 2
@@ -222,18 +243,26 @@ jira:
   action_id: action3
 """)
 
-    # Create destination directory
-    dest_dir = tmp_path / "dest"
+    # Create a topdir for new state directories
+    topdir = tmp_path / "topdir"
+    topdir.mkdir()
 
     # Run copy command with issue_id filter
     result = runner.invoke(
         cli.main,
-        ['--state-dir', str(dest_dir),
-         '--copy-state-dir', str(source_dir),
+        ['--state-dir', str(source_dir),
+         '--copy-state-dir',
          '--issue-id-filter', 'PROJ-.*',
-         'list'])
+         'list'],
+        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
+
+    # Find the newly created state directory
+    state_dirs = [d for d in topdir.iterdir() if d.is_dir() and d.name.startswith('run-')]
+    assert len(state_dirs) == 1
+    dest_dir = state_dirs[0]
+
     # Only files matching issue_id pattern should be copied
     copied_files = list(dest_dir.glob('jira-*.yaml'))
     assert len(copied_files) == 2
@@ -276,19 +305,27 @@ jira:
   action_id: test_action_3
 """)
 
-    # Create destination directory
-    dest_dir = tmp_path / "dest"
+    # Create a topdir for new state directories
+    topdir = tmp_path / "topdir"
+    topdir.mkdir()
 
     # Run copy command with both filters
     result = runner.invoke(
         cli.main,
-        ['--state-dir', str(dest_dir),
-         '--copy-state-dir', str(source_dir),
+        ['--state-dir', str(source_dir),
+         '--copy-state-dir',
          '--action-id-filter', 'test_.*',
          '--issue-id-filter', 'PROJ-.*',
-         'list'])
+         'list'],
+        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
+
+    # Find the newly created state directory
+    state_dirs = [d for d in topdir.iterdir() if d.is_dir() and d.name.startswith('run-')]
+    assert len(state_dirs) == 1
+    dest_dir = state_dirs[0]
+
     # Only files matching both patterns should be copied
     copied_files = list(dest_dir.glob('jira-*.yaml'))
     assert len(copied_files) == 2
@@ -555,18 +592,25 @@ jira:
   action_id: other_action
 """)
 
-    # Create destination directory
-    dest_dir = tmp_path / "dest"
+    # Create a topdir for new state directories
+    topdir = tmp_path / "topdir"
+    topdir.mkdir()
 
     # Run copy command with filters
     result = runner.invoke(
         cli.main,
-        ['--state-dir', str(dest_dir),
-         '--copy-state-dir', str(source_dir),
+        ['--state-dir', str(source_dir),
+         '--copy-state-dir',
          '--action-id-filter', 'test_.*',
-         'list'])
+         'list'],
+        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
+
+    # Find the newly created state directory
+    state_dirs = [d for d in topdir.iterdir() if d.is_dir() and d.name.startswith('run-')]
+    assert len(state_dirs) == 1
+    dest_dir = state_dirs[0]
 
     # Event file should be preserved
     assert (dest_dir / "event-12345-RHEL-9.yaml").exists()

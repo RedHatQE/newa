@@ -756,7 +756,9 @@ $ newa --extract-state-dir /path/to/archive.tar.gz --action-id-filter 'regressio
 
 #### Option `--copy-state-dir`, `-C`
 
-Copies YAML files from a specified state directory to a newly created state directory and continues with the new state-dir. This option is useful when you want to reuse state from an existing directory (e.g., from a different machine or a shared location) without modifying the original state-dir.
+Copies YAML files from a state directory (identified by `--state-dir` or `--prev-state-dir`) to a newly created state directory and continues with the new state-dir. This option is useful when you want to reuse state from an existing directory (e.g., from a different machine or a shared location) without modifying the original state-dir.
+
+This option must be used together with either `--state-dir` or `--prev-state-dir` to identify the source directory. The source directory becomes read-only, and a new state-dir is automatically created as the target.
 
 This option can be combined with `--action-id-filter` and `--issue-id-filter` to copy only specific YAML files that match the filter criteria. When filters are specified:
 - `--action-id-filter`: Only copies YAML files where the `jira.action_id` field matches the provided regex pattern
@@ -767,27 +769,32 @@ This option cannot be used together with `--extract-state-dir`.
 
 Example (basic copy without filters):
 ```
-$ newa --copy-state-dir /path/to/existing/run-123 list
+$ newa --state-dir /path/to/existing/run-123 --copy-state-dir list
 ```
 
 Example (copying from a mounted network share):
 ```
-$ newa --copy-state-dir /mnt/shared/newa-state-dir/run-456 jira --issue-config config.yaml schedule execute report
+$ newa --state-dir /mnt/shared/newa-state-dir/run-456 --copy-state-dir jira --issue-config config.yaml schedule execute report
+```
+
+Example (copying from previous state-dir):
+```
+$ newa --prev-state-dir --copy-state-dir list
 ```
 
 Example (copy only files for specific action):
 ```
-$ newa --copy-state-dir /path/to/existing/run-123 --action-id-filter 'tier1_.*' schedule execute report
+$ newa --state-dir /path/to/existing/run-123 --copy-state-dir --action-id-filter 'tier1_.*' schedule execute report
 ```
 
 Example (copy only files for specific Jira issue):
 ```
-$ newa --copy-state-dir /path/to/existing/run-123 --issue-id-filter 'RHEL-12345' schedule execute report
+$ newa --state-dir /path/to/existing/run-123 --copy-state-dir --issue-id-filter 'RHEL-12345' schedule execute report
 ```
 
 Example (copy files matching both action and issue filters):
 ```
-$ newa --copy-state-dir /path/to/existing/run-123 --action-id-filter 'regression_.*' --issue-id-filter 'PROJ-.*' schedule execute report
+$ newa --state-dir /path/to/existing/run-123 --copy-state-dir --action-id-filter 'regression_.*' --issue-id-filter 'PROJ-.*' schedule execute report
 ```
 
 #### Option `--context, -c`

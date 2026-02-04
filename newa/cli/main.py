@@ -132,8 +132,10 @@ def _should_filter_yaml_file(
 @click.option(
     '--copy-state-dir',
     '-C',
-    default='',
-    help='Copy YAML files from the specified state directory to a new state-dir.',
+    is_flag=True,
+    default=False,
+    help='Copy YAML files from state-dir to a new state-dir '
+         '(requires --state-dir or --prev-state-dir).',
     )
 @click.option(
     '--force',
@@ -161,7 +163,7 @@ def main(click_context: click.Context,
          envvars: list[str],
          contexts: list[str],
          extract_state_dir: str,
-         copy_state_dir: str,
+         copy_state_dir: bool,
          force: bool,
          action_id_filter: str,
          issue_id_filter: str) -> None:
@@ -186,6 +188,12 @@ def main(click_context: click.Context,
     except Exception:
         prev_state_dirpath = None
 
+    # handle --copy-state-dir requirement
+    if copy_state_dir and not state_dir and not prev_state_dir:
+        raise click.ClickException(
+            '--copy-state-dir requires either --state-dir or --prev-state-dir '
+            'to identify the source directory.')
+
     # handle state_dir settings
     if prev_state_dir and state_dir:
         raise Exception('Use either --state-dir or --prev-state-dir')
@@ -198,7 +206,13 @@ def main(click_context: click.Context,
                 'Run newa without -P first to create a state directory, '
                 'or use -D to specify an existing state directory.',
                 ) from e
-    elif not state_dir:
+    elif not state_dir and not copy_state_dir:
+        state_dir = str(get_state_dir(settings.newa_statedir_topdir))
+
+    # When using --copy-state-dir, store the source and create a new target state-dir
+    source_state_dir = None
+    if copy_state_dir:
+        source_state_dir = state_dir
         state_dir = str(get_state_dir(settings.newa_statedir_topdir))
 
     # handle --clear param
@@ -285,7 +299,8 @@ def main(click_context: click.Context,
 
     # copy YAML files from the given state directory to a new state-dir
     if copy_state_dir:
-        source_dir = Path(os.path.expanduser(os.path.expandvars(copy_state_dir)))
+        assert source_state_dir is not None  # guaranteed by validation above
+        source_dir = Path(source_state_dir)
         if not source_dir.exists():
             raise click.ClickException(
                 f'Source state directory {source_dir} does not exist.')
