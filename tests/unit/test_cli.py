@@ -64,6 +64,10 @@ def _mock_errata_tool(monkeypatch):
         """ Return empty json for blocking errata """
         return {}
 
+    def mock_et_fetch_jira_issues(self, id: str):
+        """ Return a list of Jira issues for testing link rendering """
+        return [{"key": "JIRA-1"}, {"key": "JIRA-2"}]
+
     def mock_et_fetch_system_info(self):
         """ Return dictionary with information about ErrataTool system """
         return {
@@ -77,6 +81,7 @@ def _mock_errata_tool(monkeypatch):
     monkeypatch.setattr(newa.ErrataTool, 'fetch_info', mock_et_fetch_info)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_releases', mock_et_fetch_releases)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_blocking_errata', mock_et_fetch_blocking_errata)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_jira_issues', mock_et_fetch_jira_issues)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_system_info', mock_et_fetch_system_info)
 
 
@@ -690,3 +695,157 @@ jira:
     from newa.utils.yaml_utils import yaml_parser
     yaml_data = yaml_parser().load(jira_files[0].read_text())
     assert yaml_data.get('jira', {}).get('id') == 'PROJ-123'
+
+
+def test_link_rendering_template_to_list():
+    """Test that link templates resolving to a list are properly rendered."""
+    from newa import ArtifactJob, Erratum, Event, EventType, IssueAction
+    from newa.cli.jira_helpers import _render_action_value
+    from newa.utils.yaml_utils import yaml_parser
+
+    # Create test data with jira_issues list
+    erratum = Erratum(
+        id='12345',
+        content_type='rpm',
+        respin_count=1,
+        summary='Test erratum',
+        release='RHEL-9.0.0',
+        url='https://errata.example.com/12345',
+        builds=['build-1'],
+        jira_issues=['JIRA-1', 'JIRA-2'])
+    event = Event(id='12345', type_=EventType.ERRATUM)
+    artifact_job = ArtifactJob(event=event, erratum=erratum, compose=None)
+    action = IssueAction(
+        summary='Test action',
+        type='task',
+        id='test_action')
+
+    # Test rendering a template that resolves to a list
+    template = "{{ ERRATUM.jira_issues }}"
+    rendered = _render_action_value(
+        template,
+        artifact_job,
+        action,
+        jira_event_fields={})
+
+    # Parse the rendered string as YAML to get the native list type
+    parsed = yaml_parser().load(rendered)
+
+    # Should return the actual list, not a string representation
+    assert isinstance(parsed, list)
+    assert parsed == ['JIRA-1', 'JIRA-2']
+
+
+def test_link_rendering_list_of_templates():
+    """Test that a list of template strings is properly rendered."""
+    from newa import ArtifactJob, Erratum, Event, EventType, IssueAction
+    from newa.cli.jira_helpers import _render_action_fields
+
+    # Create test data
+    erratum = Erratum(
+        id='12345',
+        content_type='rpm',
+        respin_count=1,
+        summary='Test erratum',
+        release='RHEL-9.0.0',
+        url='https://errata.example.com/12345',
+        builds=['build-1'],
+        jira_issues=['JIRA-1', 'JIRA-2'])
+    event = Event(id='12345', type_=EventType.ERRATUM)
+    artifact_job = ArtifactJob(event=event, erratum=erratum, compose=None)
+    action = IssueAction(
+        summary='Test action',
+        type='task',
+        id='test_action',
+        links={
+            "is blocked by": [
+                "STATIC-123",
+                "{{ ERRATUM.id }}",
+                ],
+            })
+
+    # Render action fields
+    _, _, _, _, rendered_links, _ = _render_action_fields(
+        action,
+        artifact_job,
+        jira_event_fields={},
+        assignee=None,
+        unassigned=False)
+
+    # Verify links are properly rendered
+    assert "is blocked by" in rendered_links
+    assert rendered_links["is blocked by"] == ["STATIC-123", "12345"]
+
+
+def test_link_rendering_invalid_type():
+    """Test that invalid link configuration raises an exception."""
+    from newa import ArtifactJob, Event, EventType, IssueAction
+    from newa.cli.jira_helpers import _render_action_fields
+
+    # Create test data
+    event = Event(id='12345', type_=EventType.COMPOSE)
+    artifact_job = ArtifactJob(event=event, erratum=None, compose=None)
+    action = IssueAction(
+        summary='Test action',
+        type='task',
+        id='test_action',
+        links={
+            "is blocked by": 123,  # Invalid - should be string or list
+            })
+
+    # Should raise exception for invalid link type
+    with pytest.raises(Exception, match="must be a string or list"):
+        _render_action_fields(
+            action,
+            artifact_job,
+            jira_event_fields={},
+            assignee=None,
+            unassigned=False)
+
+
+def test_erratum_jira_issues_populated():
+    """Test that ERRATUM.jira_issues is correctly populated from ErrataTool."""
+    from pathlib import Path
+
+    from click.testing import CliRunner
+
+    from newa import cli
+
+    runner = CliRunner()
+    with runner.isolated_filesystem() as temp_dir:
+        # Test with _mock_errata_tool fixture which returns jira_issues
+        # This verifies the mock_et_fetch_jira_issues is working correctly
+        runner.invoke(
+            cli.main,
+            ['--state-dir', temp_dir, 'event', '--erratum', '12345'],
+            catch_exceptions=False)
+
+        # Verify event files were created
+        event_files = list(Path(temp_dir).glob('event-12345*'))
+        assert len(event_files) == 2
+
+        # Read event files and verify jira_issues is populated from ErrataTool
+        from newa.utils.yaml_utils import yaml_parser
+        for event_file in event_files:
+            yaml_data = yaml_parser().load(event_file.read_text())
+            erratum = yaml_data.get('erratum')
+            assert erratum is not None
+
+            # Verify jira_issues field exists and contains expected values
+            # from mock_et_fetch_jira_issues which returns [{"key": "JIRA-1"}, {"key": "JIRA-2"}]
+            jira_issues = erratum.get('jira_issues')
+            assert jira_issues is not None, \
+                "jira_issues field should be present in erratum YAML"
+            assert isinstance(jira_issues, list), \
+                "jira_issues should be a list"
+            assert len(jira_issues) == 2, \
+                f"Expected 2 jira issues from mock, got {len(jira_issues)}"
+            assert 'JIRA-1' in jira_issues, \
+                "JIRA-1 should be in jira_issues list"
+            assert 'JIRA-2' in jira_issues, \
+                "JIRA-2 should be in jira_issues list"
+
+
+# Mark the last test to use the mock fixture
+test_erratum_jira_issues_populated = pytest.mark.usefixtures('_mock_errata_tool')(
+    test_erratum_jira_issues_populated)

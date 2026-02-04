@@ -1,5 +1,6 @@
 """Jira service integration."""
 
+import logging
 import re
 import urllib.parse
 from typing import TYPE_CHECKING, Any, Optional, Union
@@ -41,6 +42,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
     group: Optional[str] = field(default=None)
     board: Optional[Union[str, int]] = field(default=None)
+    logger: Optional["logging.Logger"] = field(default=None)
 
     @property
     def connection(self) -> jira.JIRA:
@@ -332,36 +334,24 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             jira_issue.update(fields=fdata)
             short_sleep()
 
-            # add links
-            if links:
-                for relation in links:
-                    issue_link_type = self.issue_link_types_map.get(relation, None)
-                    if issue_link_type:
-                        for linked_key in links[relation]:
-                            # create issue link
-                            # might raise false warning, see
-                            # https://github.com/pycontribs/jira/issues/1875
-                            if issue_link_type.inward:
-                                self.connection.create_issue_link(
-                                    issue_link_type.name, linked_key, jira_issue.key)
-                            else:
-                                self.connection.create_issue_link(
-                                    issue_link_type.name, jira_issue.key, linked_key)
-                            short_sleep()
-                    else:
-                        raise Exception(f'Unknown issue link type "{relation}"')
-
             if transition_name:
                 self.connection.transition_issue(jira_issue.key, transition=transition_name)
                 short_sleep()
-            return Issue(jira_issue.key,
-                         group=self.group,
-                         summary=summary,
-                         url=urllib.parse.urljoin(self.jira_connection.url,
-                                                  f'/browse/{jira_issue.key}'),
-                         transition_passed=transition_passed,
-                         transition_processed=transition_processed,
-                         action_id=action.id)
+
+            new_issue = Issue(jira_issue.key,
+                              group=self.group,
+                              summary=summary,
+                              url=urllib.parse.urljoin(self.jira_connection.url,
+                                                       f'/browse/{jira_issue.key}'),
+                              transition_passed=transition_passed,
+                              transition_processed=transition_processed,
+                              action_id=action.id)
+
+            # Add links using the dedicated method
+            if links:
+                self.add_issue_links(new_issue, links)
+
+            return new_issue
         except jira.JIRAError as e:
             raise Exception(f"Unable to update issue {jira_issue.key}") from e
 
@@ -440,3 +430,82 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                                                  transition=self.transitions.dropped[0])
         except jira.JIRAError as e:
             raise Exception(f"Cannot close issue {issue}!") from e
+
+    def add_issue_links(
+            self,
+            issue: Issue,
+            links: dict[str, list[str]]) -> None:
+        """
+        Add issue links to a Jira issue.
+
+        Args:
+            issue: The issue to add links to
+            links: Dictionary mapping link relation types to lists of issue keys
+
+        For each link relation and target issue:
+        - Check if link already exists
+        - Verify the target issue exists in Jira
+        - Create the link if not already present
+        """
+        if not links:
+            return
+
+        # Fetch existing issue links once before the loop
+        issue_details = self.get_details(issue)
+        existing_links = getattr(issue_details.fields, "issuelinks", []) or []
+        short_sleep()
+
+        # Build set of already linked (relation_type, issue_key) tuples for fast lookup
+        # This allows the same issue to be linked with different relation types
+        existing_linked_pairs = set()
+        for link in existing_links:
+            link_type_name = link.type.name
+            if hasattr(link, 'inwardIssue'):
+                existing_linked_pairs.add((link_type_name, link.inwardIssue.key))
+            if hasattr(link, 'outwardIssue'):
+                existing_linked_pairs.add((link_type_name, link.outwardIssue.key))
+
+        for relation, target_keys in links.items():
+            issue_link_type = self.issue_link_types_map.get(relation, None)
+            if not issue_link_type:
+                raise Exception(f'Unknown issue link type "{relation}"')
+
+            for linked_key in target_keys:
+                # Check if link with this specific relation type already exists
+                if (issue_link_type.name, linked_key) in existing_linked_pairs:
+                    if self.logger:
+                        self.logger.debug(
+                            f"Issue {issue.id} is already linked to {linked_key} "
+                            f"with relation '{relation}'")
+                    continue
+
+                # Verify target issue exists before creating link
+                try:
+                    self.connection.issue(linked_key)
+                    short_sleep()
+                except jira.JIRAError:
+                    if self.logger:
+                        self.logger.debug(
+                            f"Target issue {linked_key} does not exist "
+                            "or is not accessible")
+                    continue
+
+                # Create the link
+                # might raise false warning, see
+                # https://github.com/pycontribs/jira/issues/1875
+                try:
+                    if issue_link_type.inward:
+                        self.connection.create_issue_link(
+                            issue_link_type.name, linked_key, issue.id)
+                    else:
+                        self.connection.create_issue_link(
+                            issue_link_type.name, issue.id, linked_key)
+                    short_sleep()
+                    if self.logger:
+                        self.logger.info(
+                            f"Linked issue {issue.id} to {linked_key} "
+                            f"with relation '{relation}'")
+                except jira.JIRAError as e:
+                    raise Exception(
+                        f"Unable to link issue {issue.id} "
+                        f"with issue {linked_key}") from e

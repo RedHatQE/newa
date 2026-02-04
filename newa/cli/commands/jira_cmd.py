@@ -143,7 +143,8 @@ def cmd_jira(
                 config.project,
                 config.transitions,
                 group=getattr(config, 'group', None),
-                board=config.board)
+                board=config.board,
+                logger=ctx.logger)
             ctx.logger.info("Initialized Jira handler")
 
             # Process all issue actions from config

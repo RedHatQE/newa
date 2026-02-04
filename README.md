@@ -192,9 +192,12 @@ issues:
    fields:
      Sprint: active
    links:
+     # Static list of issue keys
      "is blocked by":
        - ABC-1234
        - ABC-3456
+     # Dynamic reference to erratum's Jira issues (fetched from Errata Tool)
+     "is related to": "{{ ERRATUM.jira_issues }}"
 
  - summary: "ER#{{ ERRATUM.id }} - Performance testing {{ ERRATUM.builds|join(' ') }}"
    description: "Run performance benchmarks (triggered on-demand only)"
@@ -359,7 +362,37 @@ The following options are available:
    - `report` - Adds a comment when automated tests results are reported by NEWA.
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
  - `fields`: A dictionary identifying additional Jira issue fields that should be set for the issue. Currently, fields Reporter, Sprint, Status, Component/s and other fields having type "number", "string", "option", "list/select" and "version" should be supported.
- - `links`: A dictionary identifying required link relations to a list of other Jira issues.
+ - `links`: A dictionary identifying required link relations to a list of other Jira issues. The value can be either a list of issue keys or a Jinja2 template reference to a list variable. When using a template reference (e.g., `"{{ ERRATUM.jira_issues }}"`), NEWA will evaluate the template and use the resulting list to create links. This is particularly useful for dynamically linking to all Jira issues associated with an erratum. See examples below.
+
+#### Using links in issue configuration
+
+The `links` attribute supports multiple formats for specifying Jira issue links:
+
+**1. Static list of issue keys:**
+```yaml
+links:
+  "is blocked by":
+    - ABC-1234
+    - XYZ-5678
+```
+
+**2. List with template strings:**
+```yaml
+links:
+  "blocks":
+    - "{{ JIRA.id }}"
+    - "PROJECT-{{ CONTEXT.ticket_number }}"
+```
+
+**3. Template reference to a list variable (dynamic):**
+```yaml
+links:
+  "is related to": "{{ ERRATUM.jira_issues }}"
+```
+
+In the third format, NEWA evaluates the template expression and uses the resulting list directly. This is particularly useful when you want to link to all Jira issues associated with an erratum (which are fetched from the Errata Tool API). The template must reference a variable that contains a list of Jira issue keys.
+
+**Note:** When NEWA creates links, it automatically checks if each link already exists and if the target issue exists in Jira. Non-existent or already-linked issues are skipped with appropriate debug logging.
 
 ### `NEWA_COMMENT_FOOTER` environment variable
 
