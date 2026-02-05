@@ -24,8 +24,11 @@ def fetch_jira_issues_bulk(jira_client: JIRA, issue_keys: list[str]) -> dict[str
         issue_keys: List of Jira issue keys (e.g., ['RHEL-12345', 'RHEL-67890'])
 
     Returns:
-        Dictionary mapping issue key to issue details
+        Dictionary mapping issue key to issue details. For issues that don't exist
+        or are restricted, the value will be {'error': 'error message'}
     """
+    issue_not_found_error = "Issue either doesn't exist or the access to it is restricted"
+
     if not issue_keys:
         return {}
 
@@ -40,6 +43,8 @@ def fetch_jira_issues_bulk(jira_client: JIRA, issue_keys: list[str]) -> dict[str
         issues = jira_client.search_issues(jql, maxResults=len(valid_keys))
 
         result = {}
+        found_keys = set()
+
         for issue in issues:
             # Extract component names
             components = [
@@ -59,6 +64,12 @@ def fetch_jira_issues_bulk(jira_client: JIRA, issue_keys: list[str]) -> dict[str
                 'affects_versions': affects_versions,
                 'fix_versions': fix_versions,
                 }
+            found_keys.add(issue.key)
+
+        # Mark issues that weren't found as errors (non-existent or restricted)
+        for key in valid_keys:
+            if key not in found_keys:
+                result[key] = {'error': issue_not_found_error}
 
         return result
     except Exception as e:
