@@ -26,7 +26,7 @@ def extract_jira_issues_from_comment(comment: str) -> list[str]:
     if not comment:
         return []
 
-    pattern = r'\b(RHEL-\d{4,8})\b'
+    pattern = r'\b([A-Z]{2,20}-\d{4,8})\b'
     return re.findall(pattern, comment)
 
 
@@ -148,7 +148,8 @@ def format_jira_issue_details(jira_issues_data: dict[str, dict[str, Any]]) -> li
     """Format detailed information for Jira issues.
 
     Args:
-        jira_issues_data: Dictionary mapping issue key to issue details
+        jira_issues_data: Dictionary mapping issue key to issue details.
+                         For issues with errors, the dict will contain {'error': 'message'}
 
     Returns:
         List of formatted lines
@@ -165,18 +166,27 @@ def format_jira_issue_details(jira_issues_data: dict[str, dict[str, Any]]) -> li
 
     for issue_key in sorted(jira_issues_data.keys()):
         issue = jira_issues_data[issue_key]
-        components = ", ".join(issue["components"]) if issue["components"] else "None"
-        affects = ", ".join(issue["affects_versions"]) if issue["affects_versions"] else "None"
-        fix = ", ".join(issue["fix_versions"]) if issue["fix_versions"] else "None"
-        output.extend([
-            f'Issue: {issue["key"]}',
-            f'Summary: {issue["summary"]}',
-            f'Status: {issue["status"]}',
-            f'Component: {components}',
-            f'Affects Version/s: {affects}',
-            f'Fix Version/s: {fix}',
-            '',
-            ])
+
+        # Check if this is an error entry
+        if 'error' in issue:
+            output.extend([
+                f'Issue: {issue_key}',
+                f'Error: {issue["error"]}',
+                '',
+                ])
+        else:
+            components = ", ".join(issue["components"]) if issue["components"] else "None"
+            affects = ", ".join(issue["affects_versions"]) if issue["affects_versions"] else "None"
+            fix = ", ".join(issue["fix_versions"]) if issue["fix_versions"] else "None"
+            output.extend([
+                f'Issue: {issue["key"]}',
+                f'Summary: {issue["summary"]}',
+                f'Status: {issue["status"]}',
+                f'Component: {components}',
+                f'Affects Version/s: {affects}',
+                f'Fix Version/s: {fix}',
+                '',
+                ])
 
     return output
 
