@@ -65,6 +65,12 @@ class ErratumCommentTrigger(Enum):
     REPORT = 'report'
 
 
+class RoGCommentTrigger(Enum):
+    JIRA = 'jira'
+    EXECUTE = 'execute'
+    REPORT = 'report'
+
+
 class ExecuteHow(Enum):
     """Available system architectures"""
 

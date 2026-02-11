@@ -6,6 +6,7 @@ from newa.models.base import (
     Arch,
     Cloneable,
     ErratumCommentTrigger,
+    RoGCommentTrigger,
     Serializable,
     )
 from newa.models.events import Event, EventType, InitialErratum
@@ -93,6 +94,7 @@ __all__ = [
     'Request',
     'RequestResult',
     'RoG',
+    'RoGCommentTrigger',
     'ScheduleJob',
     'Serializable',
     'Settings',

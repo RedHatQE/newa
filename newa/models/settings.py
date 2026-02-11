@@ -43,6 +43,7 @@ class Settings:  # type: ignore[no-untyped-def]
     et_url: str = ''
     et_enable_comments: bool = False
     et_deduplicate_releases: bool = False
+    rog_enable_comments: bool = False
     rp_url: str = ''
     rp_token: str = ''
     rp_project: str = ''
@@ -105,6 +106,11 @@ class Settings:  # type: ignore[no-untyped-def]
                     cp,
                     'erratatool/deduplicate_releases',
                     'NEWA_ET_DEDUPLICATE_RELEASES')),
+            rog_enable_comments=_str_to_bool(
+                _get(
+                    cp,
+                    'rog/enable_comments',
+                    'NEWA_ROG_ENABLE_COMMENTS')),
             rp_url=_get(
                 cp,
                 'reportportal/url',
@@ -223,7 +229,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
         from newa.models.jobs import ArtifactJob
         job = ArtifactJob.from_yaml_file(filepath)
 
-        self.logger.info(f'Discovered erratum job {job.id} in {filepath}')
+        self.logger.info(f'Discovered event job {job.id} in {filepath}')
 
         return job
 

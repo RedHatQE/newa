@@ -108,6 +108,7 @@ token = *TESTING_FARM_API_TOKEN*
 recheck_delay = 120
 [rog]
 token = *GITLAB_COM_TOKEN*
+enable_comments = 1
 [ai]
 api_url = https://...
 api_token = *AI_API_TOKEN*
@@ -129,6 +130,7 @@ NEWA_REPORTPORTAL_PROJECT
 TESTING_FARM_API_TOKEN
 NEWA_TF_RECHECK_DELAY
 NEWA_ROG_TOKEN
+NEWA_ROG_ENABLE_COMMENTS
 NEWA_AI_API_URL
 NEWA_AI_API_TOKEN
 NEWA_AI_API_MODEL
@@ -359,7 +361,11 @@ The following options are available:
  - `erratum_comment_triggers` - For specified triggers, provides an update in an erratum through a comment. This functionality needs to be enabled also in the `newa` configuration file through `enable_comments = 1`. The following triggers are currently supported:
    - `jira` - Adds a comment when a Jira issue is initially 'adopted' by NEWA (either created or taken over due to `jira --map-issue` parameter).
    - `execute` - Adds a comment when automated tests are initiated by NEWA.
-   - `report` - Adds a comment when automated tests results are reported by NEWA.
+   - `report` - Adds a comment when automated test results are reported by NEWA.
+ - `rog_comment_triggers` - For specified triggers, provides an update in a RoG (GitLab) merge request through a comment. This functionality needs to be enabled also in the `newa` configuration file through `[rog] enable_comments = 1`. The following triggers are currently supported:
+   - `jira` - Adds a comment when a Jira issue is initially 'adopted' by NEWA (either created or taken over due to `jira --map-issue` parameter).
+   - `execute` - Adds a comment when automated tests are initiated by NEWA.
+   - `report` - Adds a comment when automated test results are reported by NEWA.
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
  - `fields`: A dictionary identifying additional Jira issue fields that should be set for the issue. Currently, fields Reporter, Sprint, Status, Component/s and other fields having type "number", "string", "option", "list/select" and "version" should be supported.
  - `links`: A dictionary identifying required link relations to a list of other Jira issues. The value can be either a list of issue keys or a Jinja2 template reference to a list variable. When using a template reference (e.g., `"{{ ERRATUM.jira_issues }}"`), NEWA will evaluate the template and use the resulting list to create links. This is particularly useful for dynamically linking to all Jira issues associated with an erratum. See examples below.

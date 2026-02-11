@@ -4,7 +4,7 @@ from typing import cast
 
 import click
 
-from newa import CLIContext, ExecuteJob
+from newa import CLIContext, ExecuteJob, RoGTool
 from newa.cli.execute_helpers import _create_jira_job_mapping
 from newa.cli.initialization import (
     initialize_et_connection,
@@ -45,6 +45,9 @@ def cmd_report(ctx: CLIContext) -> None:
     rp = initialize_rp_connection(ctx) if ctx.settings.rp_url else None
     jira_connection = ctx.get_jira_connection().get_connection()
     et = initialize_et_connection(ctx) if ctx.settings.et_enable_comments else None
+    rog = (RoGTool(token=ctx.settings.rog_token)
+           if ctx.settings.rog_enable_comments and ctx.settings.rog_token
+           else None)
 
     # Update TF request statuses for all jobs
     _update_all_tf_request_statuses(ctx, all_execute_jobs)
@@ -57,4 +60,4 @@ def cmd_report(ctx: CLIContext) -> None:
     # Process reports for each Jira ID
     for jira_id, execute_jobs in jira_execute_job_mapping.items():
         _process_jira_id_reports(
-            ctx, jira_id, execute_jobs, rp, jira_connection, et)
+            ctx, jira_id, execute_jobs, rp, jira_connection, et, rog)

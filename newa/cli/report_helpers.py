@@ -15,6 +15,8 @@ from newa import (
     ExecuteJob,
     ReportPortal,
     RequestResult,
+    RoGCommentTrigger,
+    RoGTool,
     TFRequest,
     )
 from newa.cli.constants import JIRA_NONE_ID
@@ -270,13 +272,40 @@ def _add_erratum_comment_for_report(
             f"with a comment about {jira_id}")
 
 
+def _add_rog_comment_for_report(
+        ctx: CLIContext,
+        rog: RoGTool,
+        jira_connection: Any,
+        jira_id: str,
+        execute_job: ExecuteJob,
+        launch_url: Optional[str]) -> None:
+    """Add comment to RoG merge request about test execution completion."""
+    if (ctx.settings.rog_enable_comments and
+            RoGCommentTrigger.REPORT in execute_job.jira.rog_comment_triggers and
+            execute_job.rog):
+        issue_summary = jira_connection.issue(jira_id).fields.summary
+        issue_url = urllib.parse.urljoin(ctx.settings.jira_url, f"/browse/{jira_id}")
+
+        comment = ('The New Errata Workflow Automation (NEWA) has finished '
+                   'test execution for this merge request.\n\n'
+                   f'{jira_id} - {issue_summary}\n\n'
+                   f'{issue_url}')
+        if launch_url:
+            comment += f'\n\n{launch_url}'
+        rog.add_comment(execute_job.rog.id, comment)
+        ctx.logger.info(
+            f"RoG MR {execute_job.rog.id} was updated "
+            f"with a comment about {jira_id}")
+
+
 def _process_jira_id_reports(
         ctx: CLIContext,
         jira_id: str,
         execute_jobs: list[ExecuteJob],
         rp: Optional[ReportPortal],
         jira_connection: Any,
-        et: Optional[ErrataTool]) -> None:
+        et: Optional[ErrataTool],
+        rog: Optional[RoGTool]) -> None:
     """Process reporting for a single Jira ID."""
     # Get RP launch details
     launch_uuid, launch_url = _get_rp_launch_details(execute_jobs)
@@ -327,3 +356,8 @@ def _process_jira_id_reports(
         if et:
             _add_erratum_comment_for_report(
                 ctx, et, jira_connection, jira_id, execute_jobs[0], launch_url)
+
+        # Add RoG comment if needed
+        if rog:
+            _add_rog_comment_for_report(
+                ctx, rog, jira_connection, jira_id, execute_jobs[0], launch_url)

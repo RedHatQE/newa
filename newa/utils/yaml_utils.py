@@ -9,7 +9,13 @@ def yaml_parser() -> ruamel.yaml.YAML:
     """Create standardized YAML parser."""
     # Import here to avoid circular dependency
     from newa.models.artifacts import ErratumContentType
-    from newa.models.base import Arch, ErratumCommentTrigger, ExecuteHow, RequestResult
+    from newa.models.base import (
+        Arch,
+        ErratumCommentTrigger,
+        ExecuteHow,
+        RequestResult,
+        RoGCommentTrigger,
+        )
     from newa.models.events import EventType
 
     yaml = ruamel.yaml.YAML(typ='safe')
@@ -28,6 +34,7 @@ def yaml_parser() -> ruamel.yaml.YAML:
     yaml.representer.add_representer(EventType, _represent_enum)
     yaml.representer.add_representer(ErratumContentType, _represent_enum)
     yaml.representer.add_representer(ErratumCommentTrigger, _represent_enum)
+    yaml.representer.add_representer(RoGCommentTrigger, _represent_enum)
     yaml.representer.add_representer(Arch, _represent_enum)
     yaml.representer.add_representer(ExecuteHow, _represent_enum)
     yaml.representer.add_representer(RequestResult, _represent_enum)

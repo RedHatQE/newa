@@ -8,8 +8,10 @@ import click
 from newa import (
     JIRA_FILE_PREFIX,
     CLIContext,
+    EventType,
     IssueConfig,
     IssueHandler,
+    RoGTool,
     )
 from newa.cli.initialization import initialize_et_connection
 from newa.cli.jira_helpers import (
@@ -110,16 +112,26 @@ def cmd_jira(
     if assignee and unassigned:
         raise Exception('Options --assignee and --unassigned cannot be used together')
 
-    # Initialize Errata Tool connection
-    et = None
-    if ctx.settings.et_enable_comments:
-        et = initialize_et_connection(ctx)
-
     # Initialize fake Jira ID generator
     jira_none_id = _create_jira_fake_id_generator()
 
-    # Load artifact jobs
-    artifact_jobs = ctx.load_artifact_jobs()
+    # Load artifact jobs as a list (not iterator) since we need to iterate multiple times
+    artifact_jobs = list(ctx.load_artifact_jobs())
+
+    # Initialize Errata Tool connection only if there are erratum events
+    et = None
+    if ctx.settings.et_enable_comments:
+        has_erratum = any(job.event.type_ == EventType.ERRATUM
+                          for job in artifact_jobs)
+        if has_erratum:
+            et = initialize_et_connection(ctx)
+
+    # Initialize RoG connection only if there are RoG events
+    rog = None
+    if ctx.settings.rog_enable_comments and ctx.settings.rog_token:
+        has_rog = any(job.event.type_ == EventType.ROG for job in artifact_jobs)
+        if has_rog:
+            rog = RoGTool(token=ctx.settings.rog_token)
 
     # Process each artifact job
     for artifact_job in artifact_jobs:
@@ -151,7 +163,7 @@ def cmd_jira(
             _process_issue_config(
                 ctx, artifact_job, config, issue_mapping,
                 no_newa_id, recreate, assignee, unassigned,
-                jira_handler, et)
+                jira_handler, et, rog)
         else:
             # Mode 2: Simple mode with --issue and --job-recipe
             _create_simple_jira_job(
