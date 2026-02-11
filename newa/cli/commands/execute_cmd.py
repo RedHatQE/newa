@@ -4,7 +4,7 @@ from typing import cast
 
 import click
 
-from newa import EXECUTE_FILE_PREFIX, CLIContext, ScheduleJob, check_tf_cli_version
+from newa import EXECUTE_FILE_PREFIX, CLIContext, RoGTool, ScheduleJob, check_tf_cli_version
 from newa.cli.execute_helpers import (
     _check_execute_file_conflicts,
     _create_jira_job_mapping,
@@ -101,6 +101,11 @@ def cmd_execute(
     # Initialize Errata Tool connection if needed
     et = initialize_et_connection(ctx) if ctx.settings.et_enable_comments else None
 
+    # Initialize RoG connection if needed
+    rog = (RoGTool(token=ctx.settings.rog_token)
+           if ctx.settings.rog_enable_comments and ctx.settings.rog_token
+           else None)
+
     # Initialize environment (timestamp and TF token)
     _initialize_execute_environment(ctx)
 
@@ -111,7 +116,7 @@ def cmd_execute(
 
     # Process RP launches and update Jira issues
     launch_list = _process_rp_launches_and_jira_updates(
-        ctx, rp, et, jira_schedule_job_mapping)
+        ctx, rp, et, rog, jira_schedule_job_mapping)
 
     # Execute worker pool to process all schedule jobs
     try:

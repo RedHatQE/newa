@@ -121,6 +121,7 @@ class TestActionScheduleAttribute:
                 processed_actions={},
                 created_action_ids=[],
                 et=None,
+                rog=None,
                 )
 
             # Verify that _create_jira_job_from_action was NOT called
@@ -170,6 +171,7 @@ class TestActionScheduleAttribute:
                 processed_actions={},
                 created_action_ids=[],
                 et=None,
+                rog=None,
                 )
 
             # Verify that _create_jira_job_from_action WAS called
@@ -217,6 +219,7 @@ class TestActionScheduleAttribute:
                 processed_actions={},
                 created_action_ids=[],
                 et=None,
+                rog=None,
                 )
 
             # Verify that _create_jira_job_from_action WAS called despite schedule=False

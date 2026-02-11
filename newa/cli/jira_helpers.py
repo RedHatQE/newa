@@ -20,6 +20,8 @@ from newa import (
     JiraJob,
     OnRespinAction,
     Recipe,
+    RoGCommentTrigger,
+    RoGTool,
     eval_test,
     render_template,
     short_sleep,
@@ -218,7 +220,7 @@ def _find_or_create_issue(
     """
     Find existing issue or create a new one.
 
-    Returns (issue, old_issues, trigger_erratum_comment).
+    Returns (issue, old_issues, trigger_comment).
     Returns (None, [], False) if action should be skipped.
     """
     new_issues: list[Issue] = []
@@ -307,7 +309,7 @@ def _find_or_create_issue(
         new_issues = filtered_issues
 
     # Create new issue or reuse existing
-    trigger_erratum_comment = False
+    trigger_comment = False
     if not new_issues:
         if create_new_issue:
             parent = None
@@ -333,7 +335,7 @@ def _find_or_create_issue(
             processed_actions[action.id] = new_issue
             created_action_ids.append(action.id)
             ctx.logger.info(f"New issue {new_issue.id} created")
-            trigger_erratum_comment = True
+            trigger_comment = True
         else:
             return None, [], False  # Signal to skip this action
 
@@ -342,7 +344,13 @@ def _find_or_create_issue(
         assert action.id is not None
         processed_actions[action.id] = new_issue
         short_sleep()
-        trigger_erratum_comment = jira_handler.refresh_issue(action, new_issue)
+        # Refresh issue description to add/update NEWA ID unless --no-newa-id is used
+        if not no_newa_id:
+            ctx.logger.debug(f"Calling refresh_issue for {new_issue.id}")
+            trigger_comment = jira_handler.refresh_issue(action, new_issue)
+            ctx.logger.debug(f"refresh_issue returned: {trigger_comment}")
+        else:
+            ctx.logger.info("Skipping issue refresh due to --no-newa-id flag")
         ctx.logger.info(f"Issue {new_issue} re-used")
 
         # Add issue links from action configuration
@@ -351,7 +359,7 @@ def _find_or_create_issue(
     else:
         raise Exception(f"More than one new {action.id} found ({new_issues})!")
 
-    return new_issue, old_issues, trigger_erratum_comment
+    return new_issue, old_issues, trigger_comment
 
 
 def _handle_erratum_comment_for_jira(
@@ -361,10 +369,10 @@ def _handle_erratum_comment_for_jira(
         action: IssueAction,
         new_issue: Issue,
         rendered_summary: str,
-        trigger_erratum_comment: bool) -> None:
+        trigger_comment: bool) -> None:
     """Add comment to Errata Tool if required."""
     if (ctx.settings.et_enable_comments and
-            trigger_erratum_comment and
+            trigger_comment and
             action.erratum_comment_triggers and
             ErratumCommentTrigger.JIRA in action.erratum_comment_triggers and
             artifact_job.erratum):
@@ -378,6 +386,33 @@ def _handle_erratum_comment_for_jira(
             f'{issue_url}')
         ctx.logger.info(
             f"Erratum {artifact_job.erratum.id} was updated "
+            f"with a comment about {new_issue.id}")
+
+
+def _handle_rog_comment_for_jira(
+        ctx: CLIContext,
+        rog: RoGTool,
+        artifact_job: ArtifactJob,
+        action: IssueAction,
+        new_issue: Issue,
+        rendered_summary: str,
+        trigger_comment: bool) -> None:
+    """Add private comment to RoG merge request if required."""
+    if (ctx.settings.rog_enable_comments and
+            trigger_comment and
+            action.rog_comment_triggers and
+            RoGCommentTrigger.JIRA in action.rog_comment_triggers and
+            artifact_job.rog):
+        issue_url = urllib.parse.urljoin(
+            ctx.settings.jira_url, f"/browse/{new_issue.id}")
+        rog.add_comment(
+            artifact_job.rog.id,
+            'New Errata Workflow Automation (NEWA) prepared '
+            'a Jira tracker for this merge request.\n\n'
+            f'{new_issue.id} - {rendered_summary}\n\n'
+            f'{issue_url}')
+        ctx.logger.info(
+            f"RoG MR {artifact_job.rog.id} was updated "
             f"with a comment about {new_issue.id}")
 
 
@@ -400,6 +435,8 @@ def _create_jira_job_from_action(
             ENVIRONMENT=action.environment)
         if action.erratum_comment_triggers:
             new_issue.erratum_comment_triggers = action.erratum_comment_triggers
+        if action.rog_comment_triggers:
+            new_issue.rog_comment_triggers = action.rog_comment_triggers
         new_issue.action_id = action.id
         jira_job = JiraJob(
             event=artifact_job.event,
@@ -509,7 +546,8 @@ def _process_issue_action(
         unassigned: bool,
         processed_actions: dict[str, Issue],
         created_action_ids: list[str],
-        et: Optional[ErrataTool]) -> tuple[Optional[Issue], list[Issue]]:
+        et: Optional[ErrataTool],
+        rog: Optional[RoGTool]) -> tuple[Optional[Issue], list[Issue]]:
     """
     Process a single issue action.
 
@@ -527,7 +565,7 @@ def _process_issue_action(
         action, artifact_job, jira_event_fields, assignee, unassigned)
 
     # Find or create issue
-    new_issue, old_issues, trigger_erratum_comment = _find_or_create_issue(
+    new_issue, old_issues, trigger_comment = _find_or_create_issue(
         ctx, action, jira_handler, config, issue_mapping,
         no_newa_id, recreate, rendered_summary, rendered_description,
         rendered_assignee, rendered_fields, rendered_links,
@@ -541,7 +579,13 @@ def _process_issue_action(
     if et:
         _handle_erratum_comment_for_jira(
             ctx, et, artifact_job, action, new_issue,
-            rendered_summary, trigger_erratum_comment)
+            rendered_summary, trigger_comment)
+
+    # Handle RoG comment
+    if rog:
+        _handle_rog_comment_for_jira(
+            ctx, rog, artifact_job, action, new_issue,
+            rendered_summary, trigger_comment)
 
     # Create jira job if needed
     # Job is not created for actions with schedule == False, unless
@@ -588,7 +632,8 @@ def _process_issue_config(
         assignee: Optional[str],
         unassigned: bool,
         jira_handler: IssueHandler,
-        et: Optional[ErrataTool]) -> None:
+        et: Optional[ErrataTool],
+        rog: Optional[RoGTool]) -> None:
     """Process issue configuration and create/update Jira issues."""
     # All issue actions from the configuration
     issue_actions = config.issues[:]
@@ -655,7 +700,7 @@ def _process_issue_config(
         new_issue, old_issues = _process_issue_action(
             ctx, action, artifact_job, jira_handler, config,
             jira_event_fields, issue_mapping, no_newa_id, recreate,
-            assignee, unassigned, processed_actions, created_action_ids, et)
+            assignee, unassigned, processed_actions, created_action_ids, et, rog)
 
         # Skip if issue was closed
         if new_issue is None:

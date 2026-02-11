@@ -13,7 +13,7 @@ try:
 except ModuleNotFoundError:
     from attr import define, field
 
-from newa.models.base import ErratumCommentTrigger, Serializable
+from newa.models.base import ErratumCommentTrigger, RoGCommentTrigger, Serializable
 from newa.models.recipes import RecipeContext, RecipeEnvironment
 from newa.utils.http import ResponseContentType, get_request
 from newa.utils.yaml_utils import yaml_parser
@@ -53,6 +53,9 @@ class Issue(Serializable):  # type: ignore[no-untyped-def]
     erratum_comment_triggers: list[ErratumCommentTrigger] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda triggers: [
             ErratumCommentTrigger(trigger) for trigger in triggers])
+    rog_comment_triggers: list[RoGCommentTrigger] = field(  # type: ignore[var-annotated]
+        factory=list, converter=lambda triggers: [
+            RoGCommentTrigger(trigger) for trigger in triggers])
     # this is used to store comment visibility restriction
     # usually JiraHandler.group takes priority but this value
     # will be used when JiraHandler is not available
@@ -76,6 +79,9 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
     erratum_comment_triggers: list[ErratumCommentTrigger] = field(  # type: ignore[var-annotated]
         factory=list, converter=lambda triggers: [
             ErratumCommentTrigger(trigger) for trigger in triggers])
+    rog_comment_triggers: list[RoGCommentTrigger] = field(  # type: ignore[var-annotated]
+        factory=list, converter=lambda triggers: [
+            RoGCommentTrigger(trigger) for trigger in triggers])
     auto_transition: Optional[bool] = False
     summary: Optional[str] = None
     description: Optional[str] = None

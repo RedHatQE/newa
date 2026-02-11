@@ -16,6 +16,8 @@ from newa import (
     ExecuteJob,
     ReportPortal,
     RequestResult,
+    RoGCommentTrigger,
+    RoGTool,
     ScheduleJob,
     )
 from newa.cli.constants import JIRA_NONE_ID, RP_LAUNCH_DESCR_CHARS_LIMIT
@@ -245,10 +247,35 @@ def _add_erratum_comment_for_execution(
             f"Erratum {job.erratum.id} was updated with a comment about {jira_id}")
 
 
+def _add_rog_comment_for_execution(
+        ctx: CLIContext,
+        rog: RoGTool,
+        jira_connection: Any,
+        job: ScheduleJob,
+        jira_id: str,
+        launch_url: str) -> None:
+    """Add a comment to RoG merge request about test execution."""
+    if (ctx.settings.rog_enable_comments and
+            RoGCommentTrigger.EXECUTE in job.jira.rog_comment_triggers and
+            job.rog):
+        issue_summary = jira_connection.issue(jira_id).fields.summary
+        issue_url = urllib.parse.urljoin(ctx.settings.jira_url, f"/browse/{jira_id}")
+        rog.add_comment(
+            job.rog.id,
+            'The New Errata Workflow Automation (NEWA) has initiated test execution '
+            'for this merge request.\n\n'
+            f'{jira_id} - {issue_summary}\n\n'
+            f'{issue_url}\n\n'
+            f'{launch_url}')
+        ctx.logger.info(
+            f"RoG MR {job.rog.id} was updated with a comment about {jira_id}")
+
+
 def _process_rp_launches_and_jira_updates(
         ctx: CLIContext,
         rp: ReportPortal,
         et: Optional[ErrataTool],
+        rog: Optional[RoGTool],
         jira_schedule_job_mapping: dict[str, list[ScheduleJob]]) -> list[str]:
     """
     Process ReportPortal launches and update Jira issues.
@@ -289,6 +316,11 @@ def _process_rp_launches_and_jira_updates(
             if et and launch_url:
                 _add_erratum_comment_for_execution(
                     ctx, et, jira_connection, job, jira_id, launch_url)
+
+            # Update RoG MR if needed
+            if rog and launch_url:
+                _add_rog_comment_for_execution(
+                    ctx, rog, jira_connection, job, jira_id, launch_url)
 
     return launch_list
 

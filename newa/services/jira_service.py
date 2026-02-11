@@ -365,23 +365,40 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         new_description = ""
         return_value = False
 
+        if self.logger:
+            self.logger.debug(f"refresh_issue: description type: {type(description)}")
+            self.logger.debug(f"refresh_issue: newa_id(): {self.newa_id()}")
+            self.logger.debug(f"refresh_issue: newa_id(action): {self.newa_id(action)}")
+
         # add NEWA label if missing
         if self.newa_label not in labels:
             issue_details.add_field_value('labels', self.newa_label)
             return_value = True
+            if self.logger:
+                self.logger.debug("refresh_issue: Added NEWA label")
+
+        # Convert None description to empty string
+        if description is None:
+            description = ""
 
         # Issue does not have any NEWA ID yet
         if isinstance(description, str) and self.newa_id() not in description:
             new_description = f"{self.newa_id(action)}\n{description}"
             return_value = True
+            if self.logger:
+                self.logger.debug("refresh_issue: Adding newa_id (no ID present)")
 
         # Issue has NEWA ID but not the current respin - update it.
         elif isinstance(description, str) and self.newa_id(action) not in description:
             new_description = re.sub(f"^{re.escape(self.newa_id())}.*\n",
                                      f"{self.newa_id(action)}\n", description)
             return_value = True
+            if self.logger:
+                self.logger.debug("refresh_issue: Updating newa_id (different respin)")
 
         if new_description:
+            if self.logger:
+                self.logger.debug("refresh_issue: Updating description in Jira")
             try:
                 self.get_details(issue).update(fields={"description": new_description})
                 short_sleep()
@@ -390,6 +407,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 short_sleep()
             except jira.JIRAError as e:
                 raise Exception(f"Unable to modify issue {issue}!") from e
+        else:
+            if self.logger:
+                self.logger.debug("refresh_issue: No description update needed")
+
         return return_value
 
     def comment_issue(self, issue: Issue, comment: str) -> None:

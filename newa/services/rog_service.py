@@ -31,6 +31,18 @@ class RoGTool:
     def connection_factory(self) -> gitlab.Gitlab:
         return gitlab.Gitlab(self.url, private_token=self.token)
 
+    def add_comment(self, mr_url: str, comment: str) -> None:
+        """Add a private/internal comment to a GitLab merge request.
+
+        Args:
+            mr_url: The URL of the merge request
+            comment: The comment text to add
+        """
+        (project, number) = self.parse_mr_project_and_number(mr_url)
+        gp = self.connection.projects.get(project)
+        gm = gp.mergerequests.get(number)
+        gm.notes.create({'body': comment, 'internal': True})
+
     def parse_mr_project_and_number(self, url: str) -> tuple[str, str]:
         if not url.startswith(self.url):
             raise Exception(f'Merge-request URL "{url}" does not start with "{self.url}"')
