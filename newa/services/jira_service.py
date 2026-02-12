@@ -506,7 +506,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     short_sleep()
                 except jira.JIRAError:
                     if self.logger:
-                        self.logger.debug(
+                        self.logger.info(
                             f"Target issue {linked_key} does not exist "
                             "or is not accessible")
                     continue
