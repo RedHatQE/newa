@@ -4,7 +4,14 @@ from typing import cast
 
 import click
 
-from newa import EXECUTE_FILE_PREFIX, CLIContext, RoGTool, ScheduleJob, check_tf_cli_version
+from newa import (
+    EXECUTE_FILE_PREFIX,
+    CLIContext,
+    EventType,
+    RoGTool,
+    ScheduleJob,
+    check_tf_cli_version,
+    )
 from newa.cli.execute_helpers import (
     _check_execute_file_conflicts,
     _create_jira_job_mapping,
@@ -98,13 +105,20 @@ def cmd_execute(
     # Initialize ReportPortal connection
     rp = initialize_rp_connection(ctx)
 
-    # Initialize Errata Tool connection if needed
-    et = initialize_et_connection(ctx) if ctx.settings.et_enable_comments else None
+    # Initialize Errata Tool connection only if there are erratum events
+    et = None
+    if ctx.settings.et_enable_comments:
+        has_erratum = any(job.event.type_ == EventType.ERRATUM
+                          for job in schedule_job_list)
+        if has_erratum:
+            et = initialize_et_connection(ctx)
 
-    # Initialize RoG connection if needed
-    rog = (RoGTool(token=ctx.settings.rog_token)
-           if ctx.settings.rog_enable_comments and ctx.settings.rog_token
-           else None)
+    # Initialize RoG connection only if there are RoG events
+    rog = None
+    if ctx.settings.rog_enable_comments and ctx.settings.rog_token:
+        has_rog = any(job.event.type_ == EventType.ROG for job in schedule_job_list)
+        if has_rog:
+            rog = RoGTool(token=ctx.settings.rog_token)
 
     # Initialize environment (timestamp and TF token)
     _initialize_execute_environment(ctx)
