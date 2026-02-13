@@ -4,7 +4,7 @@ from typing import cast
 
 import click
 
-from newa import CLIContext, ExecuteJob, RoGTool
+from newa import CLIContext, EventType, ExecuteJob, RoGTool
 from newa.cli.execute_helpers import _create_jira_job_mapping
 from newa.cli.initialization import (
     initialize_et_connection,
@@ -44,10 +44,21 @@ def cmd_report(ctx: CLIContext) -> None:
     # Initialize connections
     rp = initialize_rp_connection(ctx) if ctx.settings.rp_url else None
     jira_connection = ctx.get_jira_connection().get_connection()
-    et = initialize_et_connection(ctx) if ctx.settings.et_enable_comments else None
-    rog = (RoGTool(token=ctx.settings.rog_token)
-           if ctx.settings.rog_enable_comments and ctx.settings.rog_token
-           else None)
+
+    # Initialize Errata Tool connection only if there are erratum events
+    et = None
+    if ctx.settings.et_enable_comments:
+        has_erratum = any(job.event.type_ == EventType.ERRATUM
+                          for job in all_execute_jobs)
+        if has_erratum:
+            et = initialize_et_connection(ctx)
+
+    # Initialize RoG connection only if there are RoG events
+    rog = None
+    if ctx.settings.rog_enable_comments and ctx.settings.rog_token:
+        has_rog = any(job.event.type_ == EventType.ROG for job in all_execute_jobs)
+        if has_rog:
+            rog = RoGTool(token=ctx.settings.rog_token)
 
     # Update TF request statuses for all jobs
     _update_all_tf_request_statuses(ctx, all_execute_jobs)
