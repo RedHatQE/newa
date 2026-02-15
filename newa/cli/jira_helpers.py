@@ -285,7 +285,7 @@ def _find_or_create_issue(
                         transition_processed=transition_processed))
 
     # Old opened issue(s) can be re-used for the current respin
-    if old_issues and action.on_respin == OnRespinAction.KEEP:
+    if old_issues and action.on_respin in (OnRespinAction.KEEP, OnRespinAction.UPDATE):
         new_issues.extend(old_issues)
         old_issues = []
 
@@ -344,14 +344,29 @@ def _find_or_create_issue(
         assert action.id is not None
         processed_actions[action.id] = new_issue
         short_sleep()
-        # Refresh issue description to add/update NEWA ID unless --no-newa-id is used
-        if not no_newa_id:
-            ctx.logger.debug(f"Calling refresh_issue for {new_issue.id}")
-            trigger_comment = jira_handler.refresh_issue(action, new_issue)
-            ctx.logger.debug(f"refresh_issue returned: {trigger_comment}")
+
+        # Handle UPDATE vs KEEP behavior
+        if action.on_respin == OnRespinAction.UPDATE:
+            # Update issue summary, description, custom fields (and later add missing links)
+            if not no_newa_id:
+                ctx.logger.debug(f"Calling update_issue for {new_issue.id}")
+                trigger_comment = jira_handler.update_issue(
+                    action, new_issue, rendered_summary, rendered_description,
+                    fields=rendered_fields)
+                ctx.logger.debug(f"update_issue returned: {trigger_comment}")
+                if trigger_comment:
+                    ctx.logger.info(f"Issue {new_issue} updated for respin")
+            else:
+                ctx.logger.info("Skipping issue update due to --no-newa-id flag")
         else:
-            ctx.logger.info("Skipping issue refresh due to --no-newa-id flag")
-        ctx.logger.info(f"Issue {new_issue} re-used")
+            # KEEP behavior - just refresh the NEWA ID
+            if not no_newa_id:
+                ctx.logger.debug(f"Calling refresh_issue for {new_issue.id}")
+                trigger_comment = jira_handler.refresh_issue(action, new_issue)
+                ctx.logger.debug(f"refresh_issue returned: {trigger_comment}")
+            else:
+                ctx.logger.info("Skipping issue refresh due to --no-newa-id flag")
+            ctx.logger.info(f"Issue {new_issue} re-used")
 
         # Add issue links from action configuration
         jira_handler.add_issue_links(new_issue, rendered_links)
