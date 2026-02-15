@@ -177,6 +177,137 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     result[jira_issue["key"]] |= {"parent": jira_issue["fields"]["parent"]["key"]}
         return result
 
+    def _process_fields_for_jira(
+            self,
+            fields: dict[str, Union[str, float, list[str]]],
+            for_update: bool = False) -> tuple[
+                dict[str, Any], dict[str, list[dict[str, Any]]], Optional[str]]:
+        """
+        Process custom fields for Jira issue creation or update.
+
+        Handles field value conversion and type-specific formatting for Jira API.
+        For updates, array fields are returned separately to use 'add' operations.
+
+        Args:
+            fields: Dictionary of field names to values
+            for_update: If True, array fields use 'add' operations for extending;
+                       If False, array fields are set directly (for creation)
+
+        Returns:
+            Tuple of (fields_data, update_data, transition_name):
+            - fields_data: Dict for 'fields' parameter (single-value fields,
+              or all fields when creating)
+            - update_data: Dict for 'update' parameter (only populated when
+              for_update=True, for array fields)
+            - transition_name: Transition name if status field is provided,
+              None otherwise
+
+        Raises:
+            Exception: If field is not found, has unsupported type, or Sprint
+              configuration is invalid
+        """
+        fields_data: dict[str, Union[str, float, list[Any], dict[str, Any]]] = {}
+        update_data: dict[str, list[dict[str, Any]]] = {}
+        transition_name: Optional[str] = None
+
+        for field_name, value in fields.items():
+            # Skip Reporter field during updates as it cannot be changed after creation
+            if for_update and field_name == 'Reporter':
+                if self.logger:
+                    self.logger.debug("Skipping Reporter field (cannot be updated after creation)")
+                continue
+
+            if field_name not in self.field_map:
+                raise Exception(f"Could not find field '{field_name}' in Jira.")
+
+            field_id = self.field_map[field_name].id_
+            field_type = self.field_map[field_name].type_
+            field_items = self.field_map[field_name].items
+
+            # Normalize value to list of strings for uniform processing
+            if isinstance(value, (float, int, str)):
+                field_values = [str(value)]
+            elif isinstance(value, list):
+                field_values = list(map(str, value))
+            else:
+                raise Exception(
+                    f'Unsupported Jira field conversion for {type(value).__name__}')
+
+            # Special handling for Sprint field
+            if field_name == 'Sprint':
+                if not value:
+                    continue
+                # Ensure sprint cache is loaded lazily when needed
+                if self.board:
+                    self.jira_connection.ensure_sprint_cache_loaded(self.board)
+                # Check if board is configured
+                if not self.board:
+                    raise Exception(
+                        "Jira 'board' is not configured in the issue-config file.")
+                # Check if sprints are available
+                if not self.sprint_cache['active'] and not self.sprint_cache['future']:
+                    raise Exception(
+                        f"No active or future sprints found on board '{self.board}'.")
+                if value == 'active':
+                    if not self.sprint_cache['active']:
+                        raise Exception(
+                            f"No active sprints found on board '{self.board}'.")
+                    sprint_id = self.sprint_cache['active'][0]
+                elif value == 'future':
+                    if not self.sprint_cache['future']:
+                        raise Exception(
+                            f"No future sprints found on board '{self.board}'.")
+                    sprint_id = self.sprint_cache['future'][0]
+                elif isinstance(value, (int, str)):
+                    sprint_id = int(value)
+                else:
+                    raise Exception(
+                        f"Invalid 'Sprint' value '{value}', "
+                        "should be 'active', 'future' or sprintID")
+                fields_data[field_id] = sprint_id
+
+            # Handle different field types
+            elif field_type == 'string':
+                fields_data[field_id] = field_values[0]
+
+            elif field_type == 'number':
+                fields_data[field_id] = float(field_values[0])
+
+            elif field_type == 'option':
+                fields_data[field_id] = {"value": field_values[0]}
+
+            elif field_type == 'array':
+                # For updates, use 'add' operations to extend; for creation, set directly
+                if for_update:
+                    if field_items == 'string':
+                        update_data[field_id] = [{"add": v} for v in field_values]
+                    elif field_items == 'option':
+                        update_data[field_id] = [{"add": {"value": v}} for v in field_values]
+                    elif field_items in ['component', 'version']:
+                        update_data[field_id] = [{"add": {"name": v}} for v in field_values]
+                    else:
+                        raise Exception(f'Unsupported Jira field item "{field_items}"')
+                else:
+                    if field_items == 'string':
+                        fields_data[field_id] = field_values
+                    elif field_items == 'option':
+                        fields_data[field_id] = [{"value": v} for v in field_values]
+                    elif field_items in ['component', 'version']:
+                        fields_data[field_id] = [{"name": v} for v in field_values]
+                    else:
+                        raise Exception(f'Unsupported Jira field item "{field_items}"')
+
+            elif field_type == 'priority':
+                fields_data[field_id] = {"name": field_values[0]}
+
+            elif field_type == 'status':
+                transition_name = field_values[0]
+
+            else:
+                raise Exception(f'Unsupported Jira field type "{field_type}"')
+
+        return fields_data, update_data, transition_name
+
     def create_issue(self,
                      action: IssueAction,
                      summary: str,
@@ -251,84 +382,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 fields['Labels'].append(self.newa_label)
             else:
                 fields['Labels'] = [self.newa_label]
-        # populate fdata with configuration provided by the user
-        fdata: dict[str, Union[str, float, list[Any], dict[str, Any]]] = {}
-        transition_name: Optional[str] = None
-        for field in fields:
 
-            # skip Reporter field as that one was processed previously
-            if field == 'Reporter':
-                continue
-
-            if field not in self.field_map:
-                raise Exception(f"Could not find field '{field}' in Jira.")
-            field_id = self.field_map[field].id_
-            field_type = self.field_map[field].type_
-            field_items = self.field_map[field].items
-            value = fields[field]
-            # to ease processing set field_values to be always a list of strings
-            if isinstance(value, (float, int, str)):
-                field_values = [str(value)]
-            elif isinstance(value, list):
-                field_values = list(map(str, value))
-            else:
-                raise Exception(
-                    f'Unsupported Jira field conversion for {type(value).__name__}')
-            # there is extra handling for Sprint as it should be an integer, maybe
-            # wrong custom field definition
-            if field == 'Sprint':
-                if not value:
-                    continue
-                # Ensure sprint cache is loaded lazily when needed
-                if self.board:
-                    self.jira_connection.ensure_sprint_cache_loaded(self.board)
-                # Check if board is configured (not whether sprints exist)
-                if not self.board:
-                    raise Exception(
-                        "Jira 'board' is not configured in the issue-config file.")
-                # Check if sprints are available (distinct from board configuration)
-                if not self.sprint_cache['active'] and not self.sprint_cache['future']:
-                    raise Exception(
-                        f"No active or future sprints found on board '{self.board}'.")
-                if value == 'active':
-                    if not self.sprint_cache['active']:
-                        raise Exception(
-                            f"No active sprints found on board '{self.board}'.")
-                    sprint_id = self.sprint_cache['active'][0]
-                elif value == 'future':
-                    if not self.sprint_cache['future']:
-                        raise Exception(
-                            f"No future sprints found on board '{self.board}'.")
-                    sprint_id = self.sprint_cache['future'][0]
-                elif isinstance(value, (int, str)):
-                    sprint_id = int(value)
-                else:
-                    raise Exception(
-                        f"Invalid 'Sprint' value '{value}', "
-                        "should be 'active', 'future' or sprintID")
-                fdata[field_id] = sprint_id
-            # now we need to distinguish different types of fields and values
-            elif field_type == 'string':
-                fdata[field_id] = field_values[0]
-            elif field_type == 'number':
-                fdata[field_id] = float(field_values[0])
-            elif field_type == 'option':
-                fdata[field_id] = {"value": field_values[0]}
-            elif field_type == 'array':
-                if field_items == 'string':
-                    fdata[field_id] = field_values
-                elif field_items == 'option':
-                    fdata[field_id] = [{"value": v} for v in field_values]
-                elif field_items in ['component', 'version']:
-                    fdata[field_id] = [{"name": v} for v in field_values]
-                else:
-                    raise Exception(f'Unsupported Jira field item "{field_items}"')
-            elif field_type == 'priority':
-                fdata[field_id] = {"name": field_values[0]}
-            elif field_type == 'status':
-                transition_name = field_values[0]
-            else:
-                raise Exception(f'Unsupported Jira field type "{field_type}"')
+        # Process custom fields using the helper method
+        fdata, _, transition_name = self._process_fields_for_jira(fields, for_update=False)
 
         try:
             jira_issue.update(fields=fdata)
@@ -412,6 +468,108 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 self.logger.debug("refresh_issue: No description update needed")
 
         return return_value
+
+    def update_issue(self,
+                     action: IssueAction,
+                     issue: Issue,
+                     summary: str,
+                     description: str,
+                     fields: Optional[dict[str, Union[str, float, list[str]]]] = None) -> bool:
+        """Update issue summary, description, and custom fields for respin.
+
+        This method is called when on_respin is set to UPDATE.
+        It updates the issue's summary and description (including NEWA ID),
+        and optionally updates custom fields. For array/multi-value fields,
+        it extends existing values rather than replacing them.
+
+        Only performs updates if the NEWA ID needs to be added or updated.
+        If the correct NEWA ID is already present, no updates are made.
+
+        Args:
+            action: The IssueAction configuration
+            issue: The issue to update
+            summary: New summary text
+            description: New description text (NEWA ID will be prepended)
+            fields: Optional custom fields to update
+
+        Returns:
+            True if the NEWA ID was added or updated in the description, False otherwise
+        """
+        issue_details = self.get_details(issue)
+        current_description = issue_details.fields.description or ""
+
+        # Check if NEWA ID is already correct (same logic as refresh_issue)
+        if self.newa_id(action) in current_description:
+            if self.logger:
+                self.logger.info(
+                    f"Issue {issue.id} already has correct NEWA ID, skipping update")
+            return False
+
+        # NEWA ID needs updating, proceed with full update
+        if self.logger:
+            self.logger.info(f"Updating issue {issue.id} with new NEWA ID")
+
+        # Prepare update data for single-value fields (uses 'fields' parameter)
+        update_fields: dict[str, Any] = {}
+
+        # Update summary if different
+        if issue_details.fields.summary != summary:
+            update_fields["summary"] = summary
+            if self.logger:
+                self.logger.debug(f"Updating summary for issue {issue.id}")
+
+        # Update description with NEWA ID
+        new_description = f"{self.newa_id(action)}\n\n{description}"
+        if current_description != new_description:
+            update_fields["description"] = new_description
+            if self.logger:
+                self.logger.debug(f"Updating description for issue {issue.id}")
+
+        # Process custom fields if provided
+        update_operations: dict[str, list[dict[str, Any]]] = {}
+        transition_name: Optional[str] = None
+        if fields:
+            fields_data, update_ops, transition_name = self._process_fields_for_jira(
+                fields, for_update=True)
+            # Merge the fields_data into update_fields
+            update_fields.update(fields_data)
+            update_operations = update_ops
+
+            if self.logger and fields_data:
+                self.logger.debug(
+                    f"Updating {len(fields_data)} custom field(s) for issue {issue.id}")
+            if self.logger and update_operations:
+                self.logger.debug(
+                    f"Extending {len(update_operations)} array field(s) for issue {issue.id}")
+
+        # Apply updates if any
+        if update_fields or update_operations:
+            try:
+                # Use both fields and update parameters for hybrid approach
+                if update_operations:
+                    issue_details.update(fields=update_fields, update=update_operations)
+                else:
+                    issue_details.update(fields=update_fields)
+                short_sleep()
+
+                if self.logger:
+                    self.logger.debug(f"Issue {issue.id} updated successfully")
+            except jira.JIRAError as e:
+                raise Exception(f"Unable to update issue {issue.id}!") from e
+
+        # Handle status transitions if specified (independent of other field changes)
+        if transition_name:
+            try:
+                self.connection.transition_issue(issue.id, transition=transition_name)
+                short_sleep()
+                if self.logger:
+                    self.logger.debug(
+                        f"Applied transition '{transition_name}' to issue {issue.id}")
+            except jira.JIRAError as e:
+                raise Exception(
+                    f"Unable to transition issue {issue.id} to '{transition_name}'!") from e
+
+        return True
 
     def comment_issue(self, issue: Issue, comment: str) -> None:
         """Add comment to issue"""
@@ -523,7 +681,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                             issue_link_type.name, issue.id, linked_key)
                     short_sleep()
                     if self.logger:
-                        self.logger.info(
+                        self.logger.debug(
                             f"Linked issue {issue.id} to {linked_key} "
                             f"with relation '{relation}'")
                 except jira.JIRAError as e:

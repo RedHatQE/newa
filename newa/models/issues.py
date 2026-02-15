@@ -33,6 +33,7 @@ class OnRespinAction(Enum):
     # TODO: what's the default? It would simplify the class a bit.
     KEEP = 'keep'
     CLOSE = 'close'
+    UPDATE = 'update'
 
 
 def _default_action_id_generator() -> Generator[str, int, None]:
