@@ -37,10 +37,15 @@ class JiraConnection:
     This class handles the connection to Jira. Metadata such as field mappings,
     issue link types, and sprint cache are loaded on-demand only when needed
     (e.g., during issue-config processing).
+
+    Supports both Jira Server (token authentication) and Jira Cloud (email + API token).
+    Authentication method is auto-detected based on the URL.
     """
 
     url: str = field()
     token: str = field()
+    email: Optional[str] = field(default=None)
+    api_version: str = field(default='2')
 
     # Private connection instance, initialized on first use
     _connection: Optional[jira.JIRA] = field(default=None, init=False, repr=False)
@@ -59,6 +64,10 @@ class JiraConnection:
         """
         Get or create Jira connection with lazy initialization.
 
+        Auto-detects whether to use Jira Cloud or Server authentication:
+        - Cloud (atlassian.net): Uses basic auth with email + API token
+        - Server: Uses token auth with Personal Access Token
+
         Returns:
             jira.JIRA: The initialized Jira connection
 
@@ -66,14 +75,33 @@ class JiraConnection:
             Exception: If authentication fails or connection cannot be established
         """
         if self._connection is None:
-            self._connection = jira.JIRA(self.url, token_auth=self.token)
+            # Auto-detect Jira Cloud vs Server based on URL
+            is_cloud = 'atlassian.net' in self.url.lower()
+
+            # Configure API version
+            options = {'rest_api_version': self.api_version}
+
+            if is_cloud:
+                # Jira Cloud requires email + API token for basic auth
+                if not self.email:
+                    raise Exception(
+                        'Jira Cloud (atlassian.net) requires email to be configured. '
+                        'Please set jira/email in config file or '
+                        'NEWA_JIRA_EMAIL environment variable.')
+                self._connection = jira.JIRA(
+                    self.url, basic_auth=(self.email, self.token), options=options)
+            else:
+                # Jira Server uses Personal Access Token
+                self._connection = jira.JIRA(self.url, token_auth=self.token, options=options)
 
             # Verify connection works
             try:
                 self._connection.myself()
                 short_sleep()
             except jira.JIRAError as e:
-                raise Exception('Could not authenticate to Jira. Wrong token?') from e
+                auth_type = 'email + API token' if is_cloud else 'Personal Access Token'
+                raise Exception(
+                    f'Could not authenticate to Jira. Wrong {auth_type}?') from e
 
         return self._connection
 

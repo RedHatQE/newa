@@ -99,6 +99,10 @@ deduplicate_releases = 1
 [jira]
 url = https://...
 token = *JIRATOKEN*
+# For Jira Cloud (atlassian.net), also specify email:
+# email = your-email@example.com
+# Optional: API version (default is 2)
+# api_version = 2
 [reportportal]
 url = https://...
 token = *RP_TOKEN*
@@ -115,6 +119,33 @@ api_token = *AI_API_TOKEN*
 api_model = gemini-2.0-flash-exp
 ```
 
+**Jira Server vs Jira Cloud:**
+
+NEWA automatically detects whether you're using Jira Server or Jira Cloud based on the URL:
+
+- **Jira Server**: Uses Personal Access Token authentication
+  ```
+  [jira]
+  url = https://jira.company.com
+  token = YOUR_PERSONAL_ACCESS_TOKEN
+  # Optional: specify API version (default: 2)
+  # api_version = 2
+  ```
+
+- **Jira Cloud** (URLs containing `atlassian.net`): Uses email + API token authentication
+  ```
+  [jira]
+  url = https://your-instance.atlassian.net
+  email = your-email@example.com
+  token = YOUR_API_TOKEN
+  # Optional: specify API version (default: 2, Cloud also supports 3)
+  # api_version = 2
+  ```
+
+For Jira Cloud, you need to:
+1. Generate an API token at https://id.atlassian.com/manage-profile/security/api-tokens
+2. Configure both `email` and `token` in the `[jira]` section
+
 These settings can be overridden by environment variables that take precedence.
 ```
 NEWA_STATEDIR_TOPDIR
@@ -123,6 +154,8 @@ NEWA_ET_ENABLE_COMMENTS
 NEWA_ET_DEDUPLICATE_RELEASES
 NEWA_JIRA_URL
 NEWA_JIRA_TOKEN
+NEWA_JIRA_EMAIL
+NEWA_JIRA_API_VERSION
 NEWA_JIRA_PROJECT
 NEWA_REPORTPORTAL_URL
 NEWA_REPORTPORTAL_TOKEN
