@@ -10,7 +10,7 @@ jobs:
       matrix:
         # Define which Fedora version maps to which Python version
         include:
-          - python-version: "3.9"
+          - python-version: "3.10"
             fedora-image: "fedora:42"
             python-pkg: "python3.9"
           - python-version: "3.11"

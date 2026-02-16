@@ -366,7 +366,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             field_items = self.field_map[field_name].items
 
             # Normalize value to list of strings for uniform processing
-            if isinstance(value, (float, int, str)):
+            if isinstance(value, float | int | str):
                 field_values = [str(value)]
             elif isinstance(value, list):
                 field_values = list(map(str, value))
@@ -399,7 +399,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                         raise Exception(
                             f"No future sprints found on board '{self.board}'.")
                     sprint_id = self.sprint_cache['future'][0]
-                elif isinstance(value, (int, str)):
+                elif isinstance(value, int | str):
                     sprint_id = int(value)
                 else:
                     raise Exception(

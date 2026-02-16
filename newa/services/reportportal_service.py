@@ -13,9 +13,7 @@ except ModuleNotFoundError:
 
 if TYPE_CHECKING:
     import logging
-    from typing import Any
-
-    from typing_extensions import TypeAlias
+    from typing import Any, TypeAlias
 
     JSON: TypeAlias = Any
 
