@@ -350,10 +350,10 @@ def _find_or_create_issue(
             # Update issue summary, description, custom fields (and later add missing links)
             if not no_newa_id:
                 ctx.logger.debug(f"Calling update_issue for {new_issue.id}")
-                jira_handler.update_issue(
+                trigger_comment = jira_handler.update_issue(
                     action, new_issue, rendered_summary, rendered_description,
                     fields=rendered_fields)
-                trigger_comment = True
+                ctx.logger.debug(f"update_issue returned: {trigger_comment}")
             else:
                 ctx.logger.info("Skipping issue update due to --no-newa-id flag")
             ctx.logger.info(f"Issue {new_issue} updated for respin")

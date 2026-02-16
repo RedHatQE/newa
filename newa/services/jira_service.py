@@ -474,7 +474,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                      issue: Issue,
                      summary: str,
                      description: str,
-                     fields: Optional[dict[str, Union[str, float, list[str]]]] = None) -> None:
+                     fields: Optional[dict[str, Union[str, float, list[str]]]] = None) -> bool:
         """Update issue summary, description, and custom fields for respin.
 
         This method is called when on_respin is set to UPDATE.
@@ -482,14 +482,32 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         and optionally updates custom fields. For array/multi-value fields,
         it extends existing values rather than replacing them.
 
+        Only performs updates if the NEWA ID needs to be added or updated.
+        If the correct NEWA ID is already present, no updates are made.
+
         Args:
             action: The IssueAction configuration
             issue: The issue to update
             summary: New summary text
             description: New description text (NEWA ID will be prepended)
             fields: Optional custom fields to update
+
+        Returns:
+            True if the NEWA ID was added or updated in the description, False otherwise
         """
         issue_details = self.get_details(issue)
+        current_description = issue_details.fields.description or ""
+
+        # Check if NEWA ID is already correct (same logic as refresh_issue)
+        if self.newa_id(action) in current_description:
+            if self.logger:
+                self.logger.info(
+                    f"Issue {issue.id} already has correct NEWA ID, skipping update")
+            return False
+
+        # NEWA ID needs updating, proceed with full update
+        if self.logger:
+            self.logger.info(f"Updating issue {issue.id} with new NEWA ID")
 
         # Prepare update data for single-value fields (uses 'fields' parameter)
         update_fields: dict[str, Any] = {}
@@ -498,15 +516,14 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         if issue_details.fields.summary != summary:
             update_fields["summary"] = summary
             if self.logger:
-                self.logger.info(f"Updating summary for issue {issue.id}")
+                self.logger.debug(f"Updating summary for issue {issue.id}")
 
         # Update description with NEWA ID
         new_description = f"{self.newa_id(action)}\n\n{description}"
-        current_description = issue_details.fields.description or ""
         if current_description != new_description:
             update_fields["description"] = new_description
             if self.logger:
-                self.logger.info(f"Updating description for issue {issue.id}")
+                self.logger.debug(f"Updating description for issue {issue.id}")
 
         # Process custom fields if provided
         update_operations: dict[str, list[dict[str, Any]]] = {}
@@ -519,10 +536,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             update_operations = update_ops
 
             if self.logger and fields_data:
-                self.logger.info(
+                self.logger.debug(
                     f"Updating {len(fields_data)} custom field(s) for issue {issue.id}")
             if self.logger and update_operations:
-                self.logger.info(
+                self.logger.debug(
                     f"Extending {len(update_operations)} array field(s) for issue {issue.id}")
 
         # Apply updates if any
@@ -535,18 +552,24 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     issue_details.update(fields=update_fields)
                 short_sleep()
 
-                # Handle status transitions if specified
-                if transition_name:
-                    self.connection.transition_issue(issue.id, transition=transition_name)
-                    short_sleep()
-                    if self.logger:
-                        self.logger.info(
-                            f"Applied transition '{transition_name}' to issue {issue.id}")
-
                 if self.logger:
                     self.logger.info(f"Issue {issue.id} updated successfully")
             except jira.JIRAError as e:
                 raise Exception(f"Unable to update issue {issue.id}!") from e
+
+        # Handle status transitions if specified (independent of other field changes)
+        if transition_name:
+            try:
+                self.connection.transition_issue(issue.id, transition=transition_name)
+                short_sleep()
+                if self.logger:
+                    self.logger.info(
+                        f"Applied transition '{transition_name}' to issue {issue.id}")
+            except jira.JIRAError as e:
+                raise Exception(
+                    f"Unable to transition issue {issue.id} to '{transition_name}'!") from e
+
+        return True
 
     def comment_issue(self, issue: Issue, comment: str) -> None:
         """Add comment to issue"""
