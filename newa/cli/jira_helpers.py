@@ -354,9 +354,10 @@ def _find_or_create_issue(
                     action, new_issue, rendered_summary, rendered_description,
                     fields=rendered_fields)
                 ctx.logger.debug(f"update_issue returned: {trigger_comment}")
+                if trigger_comment:
+                    ctx.logger.info(f"Issue {new_issue} updated for respin")
             else:
                 ctx.logger.info("Skipping issue update due to --no-newa-id flag")
-            ctx.logger.info(f"Issue {new_issue} updated for respin")
         else:
             # KEEP behavior - just refresh the NEWA ID
             if not no_newa_id:
