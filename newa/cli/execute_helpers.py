@@ -209,10 +209,10 @@ def _add_jira_comment_for_execution(
     if footer:
         comment += f'\n{footer}'
 
-    # Convert to ADF format for Jira Cloud
+    # Convert to ADF format for Jira Cloud API v3
     jira_conn_obj = ctx.get_jira_connection()
     comment_body: Union[str, dict[str, Any]] = (
-        text_to_adf(comment) if jira_conn_obj.is_cloud else comment
+        text_to_adf(comment) if jira_conn_obj.uses_adf else comment
         )
 
     try:

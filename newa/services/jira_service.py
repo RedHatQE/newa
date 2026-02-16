@@ -409,13 +409,13 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
             # Handle different field types
             elif field_type == 'string':
-                # For Jira Cloud, custom string fields often require ADF format
+                # For Jira Cloud API v3, custom string fields often require ADF format
                 # System fields like 'summary' are plain text, custom fields need ADF
-                if self.jira_connection.is_cloud and field_id.startswith('customfield_'):
-                    # Convert custom string fields to ADF for Jira Cloud
+                if self.jira_connection.uses_adf and field_id.startswith('customfield_'):
+                    # Convert custom string fields to ADF for Jira Cloud API v3
                     fields_data[field_id] = self._text_to_adf(field_values[0])
                 else:
-                    # Plain text for Jira Server or system fields
+                    # Plain text for Jira Server or API v2, or system fields
                     fields_data[field_id] = field_values[0]
 
             elif field_type == 'number':
@@ -472,10 +472,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         if use_newa_id:
             description = f"{self.newa_id(action)}\n\n{description}"
 
-        # For Jira Cloud, description must be in ADF format; for Server, use plain text
+        # For Jira Cloud API v3, description must be in ADF format; for Server/API
+        # v2, use plain text
         description_value = (
             self._text_to_adf(description)
-            if self.jira_connection.is_cloud
+            if self.jira_connection.uses_adf
             else description
             )
         data = {
@@ -624,9 +625,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             if self.logger:
                 self.logger.debug("refresh_issue: Updating description in Jira")
             try:
-                # Convert description to ADF for Cloud, keep plain text for Server
+                # Convert description to ADF for Cloud API v3, keep plain text for Server/API v2
                 description_value = self._text_to_adf(
-                    new_description) if self.jira_connection.is_cloud else new_description
+                    new_description) if self.jira_connection.uses_adf else new_description
                 self.get_details(issue).update(fields={"description": description_value})
                 short_sleep()
                 self.comment_issue(
@@ -695,9 +696,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         # Update description with NEWA ID
         new_description = f"{self.newa_id(action)}\n\n{description}"
         if current_description != new_description:
-            # Convert description to ADF for Cloud, keep plain text for Server
+            # Convert description to ADF for Cloud API v3, keep plain text for Server/API v2
             update_fields["description"] = self._text_to_adf(
-                new_description) if self.jira_connection.is_cloud else new_description
+                new_description) if self.jira_connection.uses_adf else new_description
             if self.logger:
                 self.logger.debug(f"Updating description for issue {issue.id}")
 
@@ -751,8 +752,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         """Add comment to issue"""
 
         try:
-            # For Jira Cloud, comment body must be in ADF format; for Server, use plain text
-            comment_body = self._text_to_adf(comment) if self.jira_connection.is_cloud else comment
+            # For Jira Cloud API v3, comment body must be in ADF format; for
+            # Server/API v2, use plain text
+            comment_body = self._text_to_adf(comment) if self.jira_connection.uses_adf else comment
 
             self.connection.add_comment(
                 issue.id, comment_body, visibility={
@@ -765,9 +767,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         obsoleting_comment = f"NEWA dropped this issue (obsoleted by {obsoleted_by})."
 
-        # For Jira Cloud, comment body must be in ADF format; for Server, use plain text
+        # For Jira Cloud API v3, comment body must be in ADF format; for
+        # Server/API v2, use plain text
         comment_body = self._text_to_adf(
-            obsoleting_comment) if self.jira_connection.is_cloud else obsoleting_comment
+            obsoleting_comment) if self.jira_connection.uses_adf else obsoleting_comment
 
         try:
             self.connection.create_issue_link(

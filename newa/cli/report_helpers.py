@@ -35,7 +35,9 @@ def execute_jobs_summary(ctx: CLIContext,
     """
     Prepares a string with a summary of executed jobs.
     Parameter 'target' could be either 'Jira' or 'ReportPortal'.
-    For Jira Cloud (is_cloud=True), returns structured data for ADF table generation.
+    Parameter 'is_cloud' determines the output format for Jira target:
+    - When True (Jira Cloud API v3): returns structured data for ADF table generation
+    - When False (Jira Server or Cloud API v2): returns plain text with pipe-separated tables
     """
     # prepare content with individual results
     results: dict[str, dict[str, str]] = {}
@@ -53,7 +55,7 @@ def execute_jobs_summary(ctx: CLIContext,
         else:
             results[job.request.id]['suite_desc'] = ''
 
-    # For Jira Cloud, return structured data for ADF table generation
+    # For Jira Cloud API v3, return structured data for ADF table generation
     if target == 'Jira' and is_cloud:
         # Build header and preamble
         preamble = ''
@@ -85,7 +87,7 @@ def execute_jobs_summary(ctx: CLIContext,
 
         return [{'preamble': preamble, 'table': table_data}]
 
-    # For Jira Server or ReportPortal, return plain text as before
+    # For Jira Server, Jira Cloud API v2, or ReportPortal, return plain text
     separator = '<br>' if target == 'ReportPortal' else '\n'
     summaries = []
     summary = ''
@@ -225,10 +227,10 @@ def _build_jira_comment(
         first_comment: bool = True) -> Union[str, dict[str, Any]]:
     """Build Jira comment text with optional RP launch details.
 
-    For Jira Cloud (when jira_description is a dict), returns structured data.
-    For Jira Server (when jira_description is a str), returns plain text.
+    For Jira Cloud API v3 (when jira_description is a dict), returns structured data.
+    For Jira Server or Cloud API v2 (when jira_description is a str), returns plain text.
     """
-    # Handle structured data for Jira Cloud
+    # Handle structured data for Jira Cloud API v3
     if isinstance(jira_description, dict):
         # Return structured data - will be converted to ADF later
         return {
@@ -240,7 +242,7 @@ def _build_jira_comment(
             'first_comment': first_comment,
             }
 
-    # Handle plain text for Jira Server
+    # Handle plain text for Jira Server or Jira Cloud API v2
     if launch_uuid:
         if first_comment:
             comment = ("NEWA has finished test execution and imported test results "
@@ -266,7 +268,7 @@ def _add_jira_comment_for_report(
     try:
         jira_conn_obj = ctx.get_jira_connection()
 
-        # Handle structured data for Jira Cloud (contains table)
+        # Handle structured data for Jira Cloud API v3 (contains table)
         if isinstance(comment, dict):
             # Build ADF document with table
             adf_content = []
@@ -325,8 +327,8 @@ def _add_jira_comment_for_report(
                 "content": adf_content,
                 }
         else:
-            # Handle plain text for Jira Server
-            comment_body = text_to_adf(comment) if jira_conn_obj.is_cloud else comment
+            # Handle plain text for Jira Server or Jira Cloud API v2
+            comment_body = text_to_adf(comment) if jira_conn_obj.uses_adf else comment
 
         jira_connection.add_comment(
             jira_id,
@@ -438,9 +440,9 @@ def _process_jira_id_reports(
     # save comment footer if configured
     footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
 
-    # Check if Jira Cloud
+    # Check if we should use ADF format with tables (Jira Cloud API v3)
     jira_conn_obj = ctx.get_jira_connection()
-    is_cloud = jira_conn_obj.is_cloud
+    uses_adf = jira_conn_obj.uses_adf
 
     # Generate summaries
     jira_descriptions = execute_jobs_summary(
@@ -449,7 +451,7 @@ def _process_jira_id_reports(
         execute_jobs,
         target='Jira',
         max_length=65000 - len(footer),
-        is_cloud=is_cloud)
+        is_cloud=uses_adf)
     # ReportPortal description is always a string (is_cloud=False for RP)
     rp_descriptions = execute_jobs_summary(ctx, jira_id, execute_jobs, target='ReportPortal')
     launch_description: str = str(rp_descriptions[0])

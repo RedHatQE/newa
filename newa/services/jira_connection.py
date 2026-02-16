@@ -66,6 +66,23 @@ class JiraConnection:
         """Check if this is a Jira Cloud instance (vs Jira Server)."""
         return 'atlassian.net' in self.url.lower()
 
+    @property
+    def uses_adf(self) -> bool:
+        """
+        Check if this Jira instance requires ADF (Atlassian Document Format).
+
+        ADF is required for:
+        - Jira Cloud with API v3 (default for Cloud)
+
+        Plain text is used for:
+        - Jira Server (any API version)
+        - Jira Cloud with API v2
+
+        Returns:
+            bool: True if ADF format should be used, False for plain text
+        """
+        return self.is_cloud and self.api_version == '3'
+
     def get_connection(self) -> jira.JIRA:
         """
         Get or create Jira connection with lazy initialization.
