@@ -9,7 +9,7 @@ import urllib3.response
 from requests_kerberos import HTTPKerberosAuth
 
 if TYPE_CHECKING:
-    from typing import TypeAlias
+    from typing_extensions import TypeAlias
 
     JSON: TypeAlias = Any
 

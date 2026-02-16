@@ -9,7 +9,7 @@ description = "newa"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = { paths = ["LICENSE.txt"] }
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 authors = [
     { name = "Karel Srot", email = "ksrot@redhat.com" },
     { name = "Patrik Kis", email = "pkis@redhat.com" },
@@ -43,11 +43,11 @@ dependencies = [
     "jinja2>=2.11.3",
     "requests",
     "requests_kerberos",
-    "jira>=3.10.5",
     "python-gitlab>=1.15.0",
 ]
 
 [project.optional-dependencies]
+jira = ["jira>=3.10.5"]
 
 [project.scripts]
 newa = "newa.cli.main:main"
@@ -104,7 +104,7 @@ template = "dev"
 description = "Run scripts with multiple Python versions"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12", "3.13"]
+python = ["3.9", "3.10", "3.11", "3.12", "3.13"]
 
 # [tool.hatch.envs.docs]
 # dependencies = ["tmt[docs]"]
@@ -126,7 +126,7 @@ show_error_codes = true
 # annotations across module boundaries.
 follow_imports = "normal"
 
-python_version = "3.10"
+python_version = "3.9"
 files = ["newa/"]
 
 [[tool.mypy.overrides]]
@@ -151,7 +151,7 @@ max-line-length = "99"
 [tool.ruff]
 line-length = 99
 src = ["newa"]
-target-version = "py310"
+target-version = "py39"
 select = [
     "F",  # pyflakes
     "E",  # pycodestyle

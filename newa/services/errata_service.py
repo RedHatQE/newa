@@ -18,7 +18,8 @@ from newa.utils.parsers import NSVCParser, NVRParser
 
 if TYPE_CHECKING:
     import logging
-    from typing import TypeAlias
+
+    from typing_extensions import TypeAlias
 
     ErratumId: TypeAlias = str
     JSON: TypeAlias = Any

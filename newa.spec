@@ -24,11 +24,11 @@ which may have limited Jira Cloud compatibility.
 %autosetup -p1 -n newa-%{version}
 
 %generate_buildrequires
-# EPEL9 has python3-jira 3.5.0, Fedora 42 has 3.8.0, but pyproject.toml requires >=3.10.5
-# for full Jira Cloud search support. We use -R to allow RPM to relax the version constraint
-# and use whatever version is available in the distro. This allows the package to build but
-# may limit Jira Cloud functionality on older distributions.
-%pyproject_buildrequires -R
+# The jira dependency is now an optional dependency in pyproject.toml because EPEL9 only has
+# python3-jira 3.5.0 and Fedora 42 only has 3.8.0, but full Jira Cloud support requires >=3.10.5.
+# RPM builds will not have jira as a hard requirement, allowing the package to build on these
+# distributions. Users who need Jira functionality should install python3-jira manually.
+%pyproject_buildrequires
 
 %build
 export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}

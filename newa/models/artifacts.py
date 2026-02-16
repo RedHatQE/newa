@@ -12,7 +12,7 @@ except ModuleNotFoundError:
 from newa.models.base import Arch, Cloneable, Serializable
 
 if TYPE_CHECKING:
-    from typing import TypeAlias
+    from typing_extensions import TypeAlias
 
     ComposeId: TypeAlias = str
     ErratumId: TypeAlias = str

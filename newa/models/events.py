@@ -11,7 +11,7 @@ except ModuleNotFoundError:
 from newa.models.base import Serializable
 
 if TYPE_CHECKING:
-    from typing import TypeAlias
+    from typing_extensions import TypeAlias
 
     EventId: TypeAlias = str
 

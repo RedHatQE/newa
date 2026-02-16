@@ -10,6 +10,9 @@ jobs:
       matrix:
         # Define which Fedora version maps to which Python version
         include:
+          - python-version: "3.9"
+            fedora-image: "fedora:42"
+            python-pkg: "python3.9"
           - python-version: "3.10"
             fedora-image: "fedora:42"
             python-pkg: "python3.10"
@@ -41,7 +44,8 @@ jobs:
         run: |
           dnf -y install make
           python -m pip install hatch
-          # Install jira from PyPI instead of Fedora repos to get required version (>=3.10.5)
+          # Install jira optional dependency from PyPI to get required version (>=3.10.5)
+          # Jira is now an optional dependency, so we install it explicitly for CI testing
           python -m pip install 'jira>=3.10.5'
           make system/fedora
 
