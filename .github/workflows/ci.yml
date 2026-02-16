@@ -41,6 +41,8 @@ jobs:
         run: |
           dnf -y install make
           python -m pip install hatch
+          # Install jira from PyPI instead of Fedora repos to get required version (>=3.10.5)
+          python -m pip install 'jira>=3.10.5'
           make system/fedora
 
       - name: Run unittests
