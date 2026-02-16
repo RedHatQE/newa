@@ -29,6 +29,132 @@ from newa import (
 from newa.cli.constants import JIRA_NONE_ID
 
 
+def text_to_adf(text: str) -> dict[str, Any]:
+    """
+    Convert plain text to Atlassian Document Format (ADF).
+
+    Jira Cloud requires descriptions and comments to be in ADF format instead of plain text.
+    This converts multi-line text into ADF paragraphs.
+
+    Args:
+        text: Plain text string (may contain newlines)
+
+    Returns:
+        Dictionary representing the ADF document
+    """
+    # Split text into paragraphs (by double newlines or single newlines)
+    paragraphs = text.split('\n')
+
+    content = []
+    for para in paragraphs:
+        if para.strip():  # Skip empty paragraphs
+            content.append({
+                "type": "paragraph",
+                "content": [{
+                    "type": "text",
+                    "text": para,
+                    }],
+                })
+        else:
+            # Empty line - add empty paragraph for spacing
+            content.append({
+                "type": "paragraph",
+                "content": [],
+                })
+
+    return {
+        "version": 1,
+        "type": "doc",
+        "content": content,
+        }
+
+
+def table_to_adf(header_row: list[str], data_rows: list[list[dict[str, str]]]) -> dict[str, Any]:
+    """
+    Convert table data to Atlassian Document Format (ADF) table structure.
+
+    Args:
+        header_row: List of header column names
+        data_rows: List of rows, where each row is a list of cell dicts
+                   with 'text' and optional 'url'
+
+    Returns:
+        ADF table node
+
+    Example:
+        header_row = ['Request', 'State', 'Result', 'Plan', 'Description']
+        data_rows = [
+            [
+                {'text': 'REQ-1.2.1', 'url': 'https://...'},
+                {'text': 'running'},
+                {'text': 'None'},
+                {'text': '/Plans/sw-regression'},
+                {'text': 'Sanity testing...'}
+            ]
+        ]
+    """
+    # Create header row
+    header_cells = []
+    for header_text in header_row:
+        header_cells.append({
+            "type": "tableHeader",
+            "content": [{
+                "type": "paragraph",
+                "content": [{
+                    "type": "text",
+                    "text": header_text,
+                    }],
+                }],
+            })
+
+    # Create data rows
+    rows = [{
+        "type": "tableRow",
+        "content": header_cells,
+        }]
+
+    for data_row in data_rows:
+        cells = []
+        for cell_data in data_row:
+            # Check if cell has a URL (link)
+            if cell_data.get('url'):
+                cell_content = [{
+                    "type": "paragraph",
+                    "content": [{
+                        "type": "text",
+                        "text": cell_data['text'],
+                        "marks": [{
+                            "type": "link",
+                            "attrs": {"href": cell_data['url']},
+                            }],
+                        }],
+                    }]
+            else:
+                # Plain text cell
+                cell_content = [{
+                    "type": "paragraph",
+                    "content": [{
+                        "type": "text",
+                        "text": cell_data['text'],
+                        }],
+                    }]
+
+            cells.append({
+                "type": "tableCell",
+                "content": cell_content,
+                })
+
+        rows.append({
+            "type": "tableRow",
+            "content": cells,
+            })
+
+    return {
+        "type": "table",
+        "content": rows,
+        }
+
+
 def _parse_issue_mapping(map_issue: list[str], config: IssueConfig) -> dict[str, str]:
     """Parse and validate issue mapping from command line arguments."""
     issue_mapping: dict[str, str] = {}

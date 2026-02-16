@@ -64,6 +64,129 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         """Get the sprint cache from the Jira connection."""
         return self.jira_connection.sprint_cache
 
+    def _text_to_adf(self, text: str) -> dict[str, Any]:
+        """
+        Convert plain text to Atlassian Document Format (ADF).
+
+        Jira Cloud requires descriptions to be in ADF format instead of plain text.
+        This converts multi-line text into ADF paragraphs.
+
+        Args:
+            text: Plain text string (may contain newlines)
+
+        Returns:
+            Dictionary representing the ADF document
+        """
+        # Split text into paragraphs (by double newlines or single newlines)
+        paragraphs = text.split('\n')
+
+        content = []
+        for para in paragraphs:
+            if para.strip():  # Skip empty paragraphs
+                content.append({
+                    "type": "paragraph",
+                    "content": [{
+                        "type": "text",
+                        "text": para,
+                        }],
+                    })
+            else:
+                # Empty line - add empty paragraph for spacing
+                content.append({
+                    "type": "paragraph",
+                    "content": [],
+                    })
+
+        return {
+            "version": 1,
+            "type": "doc",
+            "content": content,
+            }
+
+    def _convert_description_to_text(self, description_field: Any) -> str:
+        """
+        Convert description field to plain text.
+
+        Handles multiple formats:
+        - Plain text strings (Jira Server)
+        - ADF dicts (Jira Cloud search results)
+        - PropertyHolder objects (Jira Cloud API responses)
+
+        Args:
+            description_field: Description field from Jira API
+
+        Returns:
+            Plain text string extracted from the description
+        """
+        if description_field is None:
+            return ""
+        if isinstance(description_field, str):
+            return description_field
+        if isinstance(description_field, dict):
+            # Regular dict from search results
+            return self._adf_to_text(description_field)
+        if hasattr(description_field, 'type'):
+            # PropertyHolder object with ADF attributes
+            return self._adf_to_text(description_field)
+        return str(description_field)
+
+    def _adf_to_text(self, adf: dict[str, Any]) -> str:
+        """
+        Extract plain text from Atlassian Document Format (ADF).
+
+        Args:
+            adf: ADF document structure (dict or PropertyHolder)
+
+        Returns:
+            Plain text string extracted from ADF
+        """
+        text_parts = []
+
+        def extract_text_from_node(node: Any, depth: int = 0) -> None:
+            # Handle PropertyHolder objects by accessing attributes directly
+            if hasattr(node, 'type') and not isinstance(node, dict):
+                # This is a PropertyHolder - access attributes directly
+                node_type = getattr(node, 'type', None)
+                node_content = getattr(node, 'content', None)
+                node_text = getattr(node, 'text', "")
+            elif isinstance(node, dict):
+                # Regular dict - use .get()
+                node_type = node.get("type")
+                node_content = node.get("content")
+                node_text = node.get("text", "")
+            elif isinstance(node, list):
+                # List of nodes - recurse into each
+                for item in node:
+                    extract_text_from_node(item, depth + 1)
+                return
+            else:
+                # Unknown type, skip
+                return
+
+            if node_type == "text":
+                text_parts.append(node_text)
+            elif node_type == "paragraph":
+                # Process paragraph content
+                if node_content:
+                    if isinstance(node_content, list):
+                        for child in node_content:
+                            extract_text_from_node(child, depth + 1)
+                    else:
+                        extract_text_from_node(node_content, depth + 1)
+                # Add newline after paragraph
+                if text_parts and text_parts[-1] != "\n":
+                    text_parts.append("\n")
+            elif (node_type == "doc" or node_content) and node_content:
+                # For doc type or any other type with content, just recurse
+                if isinstance(node_content, list):
+                    for child in node_content:
+                        extract_text_from_node(child, depth + 1)
+                else:
+                    extract_text_from_node(node_content, depth + 1)
+
+        extract_text_from_node(adf, 0)
+        return "".join(text_parts).strip()
+
     def newa_id(self, action: Optional[IssueAction] = None, partial: bool = False) -> str:
         """
         NEWA identifier
@@ -89,23 +212,31 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
     def get_user_name(self, assignee_email: str) -> str:
         """
-        Find Jira user name associated with given e-mail address
+        Find Jira user identifier associated with given e-mail address
 
-        Notice that Jira user name has various forms, it can be either an e-mail
-        address or just an user name or even an user name with some sort of prefix.
+        For Jira Cloud, returns the accountId. For Jira Server, returns the username.
         It is possible that some e-mail addresses don't have Jira user associated,
         e.g. some mailing lists. In that case empty string is returned.
         """
 
         if assignee_email not in self.user_names:
-            assignee_names = [u.name for u in self.connection.search_users(user=assignee_email)]
-            if not assignee_names:
+            # For Jira Cloud with GDPR strict mode, use 'query' parameter instead of 'user'
+            if self.jira_connection.is_cloud:
+                users = self.connection.search_users(query=assignee_email)
+                # For Cloud, use accountId instead of name
+                assignee_ids = [u.accountId for u in users]
+            else:
+                users = self.connection.search_users(user=assignee_email)
+                # For Server, use name (username)
+                assignee_ids = [u.name for u in users]
+
+            if not assignee_ids:
                 self.user_names[assignee_email] = ""
-            elif len(assignee_names) == 1:
-                self.user_names[assignee_email] = assignee_names[0]
+            elif len(assignee_ids) == 1:
+                self.user_names[assignee_email] = assignee_ids[0]
             else:
                 raise Exception(f"At most one Jira user is expected to match {assignee_email}"
-                                f"({', '.join(assignee_names)})!")
+                                f"({', '.join(assignee_ids)})!")
 
         return self.user_names[assignee_email]
 
@@ -167,8 +298,18 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         # searches containing characters like underscore, space etc. and may return extra issues
         result = {}
         for jira_issue in search_result["issues"]:
-            if newa_description in jira_issue["fields"]["description"]:
-                result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
+            description_field = jira_issue["fields"]["description"]
+
+            # For Jira Cloud, description is ADF (dict); for Server, it's plain text (str)
+            if isinstance(description_field, dict):
+                # Extract text from ADF format
+                description_text = self._adf_to_text(description_field)
+            else:
+                # Plain text for Jira Server
+                description_text = description_field or ""
+
+            if newa_description in description_text:
+                result[jira_issue["key"]] = {"description": description_text}
                 if jira_issue["fields"]["status"]["name"] in self.transitions.closed:
                     result[jira_issue["key"]] |= {"status": "closed"}
                 else:
@@ -268,7 +409,14 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
             # Handle different field types
             elif field_type == 'string':
-                fields_data[field_id] = field_values[0]
+                # For Jira Cloud, custom string fields often require ADF format
+                # System fields like 'summary' are plain text, custom fields need ADF
+                if self.jira_connection.is_cloud and field_id.startswith('customfield_'):
+                    # Convert custom string fields to ADF for Jira Cloud
+                    fields_data[field_id] = self._text_to_adf(field_values[0])
+                else:
+                    # Plain text for Jira Server or system fields
+                    fields_data[field_id] = field_values[0]
 
             elif field_type == 'number':
                 fields_data[field_id] = float(field_values[0])
@@ -323,13 +471,25 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         """Create issue"""
         if use_newa_id:
             description = f"{self.newa_id(action)}\n\n{description}"
+
+        # For Jira Cloud, description must be in ADF format; for Server, use plain text
+        description_value = (
+            self._text_to_adf(description)
+            if self.jira_connection.is_cloud
+            else description
+            )
         data = {
             "project": {"key": self.project},
             "summary": summary,
-            "description": description,
+            "description": description_value,
             }
         if assignee_email and self.get_user_name(assignee_email):
-            data |= {"assignee": {"name": self.get_user_name(assignee_email)}}
+            # For Jira Cloud, use accountId; for Server, use name
+            user_id = self.get_user_name(assignee_email)
+            data |= {
+                "assignee": {
+                    "accountId": user_id} if self.jira_connection.is_cloud else {
+                    "name": user_id}}
 
         if action.type == IssueType.EPIC:
             data |= {
@@ -357,7 +517,12 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         # handle fields['Reporter'] already during ticket creation
         if fields and 'Reporter' in fields and isinstance(fields['Reporter'], str):
-            data |= {"reporter": {"name": self.get_user_name(fields['Reporter'])}}
+            # For Jira Cloud, use accountId; for Server, use name
+            reporter_id = self.get_user_name(fields['Reporter'])
+            data |= {
+                "reporter": {
+                    "accountId": reporter_id} if self.jira_connection.is_cloud else {
+                    "name": reporter_id}}
 
         try:
             jira_issue = self.connection.create_issue(data)
@@ -416,13 +581,13 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             Returns True when the issue had been 'adopted' by NEWA."""
 
         issue_details = self.get_details(issue)
-        description = issue_details.fields.description
+        description_field = issue_details.fields.description
         labels = issue_details.fields.labels
         new_description = ""
         return_value = False
 
         if self.logger:
-            self.logger.debug(f"refresh_issue: description type: {type(description)}")
+            self.logger.debug(f"refresh_issue: description type: {type(description_field)}")
             self.logger.debug(f"refresh_issue: newa_id(): {self.newa_id()}")
             self.logger.debug(f"refresh_issue: newa_id(action): {self.newa_id(action)}")
 
@@ -433,19 +598,22 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             if self.logger:
                 self.logger.debug("refresh_issue: Added NEWA label")
 
-        # Convert None description to empty string
-        if description is None:
-            description = ""
+        # Convert ADF to text if needed (Jira Cloud returns ADF
+        # dict/PropertyHolder, Server returns string)
+        description = self._convert_description_to_text(description_field)
+
+        if self.logger:
+            self.logger.debug(f"refresh_issue: converted description: {description!r}")
 
         # Issue does not have any NEWA ID yet
-        if isinstance(description, str) and self.newa_id() not in description:
+        if self.newa_id() not in description:
             new_description = f"{self.newa_id(action)}\n{description}"
             return_value = True
             if self.logger:
                 self.logger.debug("refresh_issue: Adding newa_id (no ID present)")
 
         # Issue has NEWA ID but not the current respin - update it.
-        elif isinstance(description, str) and self.newa_id(action) not in description:
+        elif self.newa_id(action) not in description:
             new_description = re.sub(f"^{re.escape(self.newa_id())}.*\n",
                                      f"{self.newa_id(action)}\n", description)
             return_value = True
@@ -456,7 +624,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             if self.logger:
                 self.logger.debug("refresh_issue: Updating description in Jira")
             try:
-                self.get_details(issue).update(fields={"description": new_description})
+                # Convert description to ADF for Cloud, keep plain text for Server
+                description_value = self._text_to_adf(
+                    new_description) if self.jira_connection.is_cloud else new_description
+                self.get_details(issue).update(fields={"description": description_value})
                 short_sleep()
                 self.comment_issue(
                     issue, f"NEWA ID has been updated to:\n{self.newa_id(action)}")
@@ -496,7 +667,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             True if the NEWA ID was added or updated in the description, False otherwise
         """
         issue_details = self.get_details(issue)
-        current_description = issue_details.fields.description or ""
+        current_description_field = issue_details.fields.description
+
+        # Convert ADF to text if needed (Jira Cloud returns ADF dict, Server returns string)
+        current_description = self._convert_description_to_text(current_description_field)
 
         # Check if NEWA ID is already correct (same logic as refresh_issue)
         if self.newa_id(action) in current_description:
@@ -521,7 +695,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         # Update description with NEWA ID
         new_description = f"{self.newa_id(action)}\n\n{description}"
         if current_description != new_description:
-            update_fields["description"] = new_description
+            # Convert description to ADF for Cloud, keep plain text for Server
+            update_fields["description"] = self._text_to_adf(
+                new_description) if self.jira_connection.is_cloud else new_description
             if self.logger:
                 self.logger.debug(f"Updating description for issue {issue.id}")
 
@@ -575,8 +751,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         """Add comment to issue"""
 
         try:
+            # For Jira Cloud, comment body must be in ADF format; for Server, use plain text
+            comment_body = self._text_to_adf(comment) if self.jira_connection.is_cloud else comment
+
             self.connection.add_comment(
-                issue.id, comment, visibility={
+                issue.id, comment_body, visibility={
                     'type': 'group', 'value': self.group} if self.group else None)
         except jira.JIRAError as e:
             raise Exception(f"Unable to add a comment to issue {issue}!") from e
@@ -585,13 +764,18 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         """Close obsoleted issue and link obsoleting issue to the obsoleted one"""
 
         obsoleting_comment = f"NEWA dropped this issue (obsoleted by {obsoleted_by})."
+
+        # For Jira Cloud, comment body must be in ADF format; for Server, use plain text
+        comment_body = self._text_to_adf(
+            obsoleting_comment) if self.jira_connection.is_cloud else obsoleting_comment
+
         try:
             self.connection.create_issue_link(
                 type="relates to",
                 inwardIssue=issue.id,
                 outwardIssue=obsoleted_by.id,
                 comment={
-                    "body": obsoleting_comment,
+                    "body": comment_body,
                     "visibility": {
                         'type': 'group',
                         'value': self.group} if self.group else None,

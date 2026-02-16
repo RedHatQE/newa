@@ -43,7 +43,7 @@ dependencies = [
     "jinja2>=2.11.3",
     "requests",
     "requests_kerberos",
-    "jira>=3.5.0",
+    "jira>=3.10.5",
     "python-gitlab>=1.15.0",
 ]
 

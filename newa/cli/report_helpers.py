@@ -2,7 +2,7 @@
 
 import os
 import urllib.parse
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import jira
 
@@ -21,6 +21,7 @@ from newa import (
     )
 from newa.cli.constants import JIRA_NONE_ID
 from newa.cli.initialization import issue_transition
+from newa.cli.jira_helpers import table_to_adf, text_to_adf
 from newa.utils.helpers import short_sleep
 
 
@@ -29,22 +30,13 @@ def execute_jobs_summary(ctx: CLIContext,
                          jira_id: str,
                          execute_jobs: list[ExecuteJob],
                          target: str = 'Jira',
-                         max_length: int = 0) -> list[str]:
+                         max_length: int = 0,
+                         is_cloud: bool = False) -> Union[list[str], list[dict[str, Any]]]:
     """
     Prepares a string with a summary of executed jobs.
     Parameter 'target' could be either 'Jira' or 'ReportPortal'.
+    For Jira Cloud (is_cloud=True), returns structured data for ADF table generation.
     """
-    separator = '<br>' if target == 'ReportPortal' else '\n'
-    # an actual list we are going to return
-    summaries = []
-    summary = ''
-    msg_next_comment = 'TBC in the next comment...'
-    magic_number = len(separator + msg_next_comment)
-    # add configured RP description if available
-    if execute_jobs[0].request.reportportal:
-        launch_description = execute_jobs[0].request.reportportal.get(
-            'launch_description', '')
-        summary += launch_description + 2 * separator if launch_description else ''
     # prepare content with individual results
     results: dict[str, dict[str, str]] = {}
     for job in execute_jobs:
@@ -60,6 +52,52 @@ def execute_jobs_summary(ctx: CLIContext,
                 'suite_description', '')
         else:
             results[job.request.id]['suite_desc'] = ''
+
+    # For Jira Cloud, return structured data for ADF table generation
+    if target == 'Jira' and is_cloud:
+        # Build header and preamble
+        preamble = ''
+        if execute_jobs[0].request.reportportal:
+            launch_description = execute_jobs[0].request.reportportal.get(
+                'launch_description', '')
+            if launch_description:
+                preamble += launch_description + '\n\n'
+
+        if not jira_id.startswith(JIRA_NONE_ID):
+            preamble += f'{jira_id}: '
+        preamble += f'{len(execute_jobs)} request(s) in total:'
+
+        # Build table data
+        table_data: dict[str, Any] = {
+            'header': ['Request', 'State', 'Result', 'Plan', 'Description'],
+            'rows': [],
+            }
+
+        for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
+            row: list[dict[str, str]] = [
+                {'text': results[req]['id'], 'url': results[req]['url']},
+                {'text': results[req]['state']},
+                {'text': results[req]['result']},
+                {'text': results[req]['plan']},
+                {'text': results[req]['suite_desc']},
+                ]
+            table_data['rows'].append(row)
+
+        return [{'preamble': preamble, 'table': table_data}]
+
+    # For Jira Server or ReportPortal, return plain text as before
+    separator = '<br>' if target == 'ReportPortal' else '\n'
+    summaries = []
+    summary = ''
+    msg_next_comment = 'TBC in the next comment...'
+    magic_number = len(separator + msg_next_comment)
+
+    # add configured RP description if available
+    if execute_jobs[0].request.reportportal:
+        launch_description = execute_jobs[0].request.reportportal.get(
+            'launch_description', '')
+        summary += launch_description + 2 * separator if launch_description else ''
+
     if not jira_id.startswith(JIRA_NONE_ID):
         jira_url = ctx.settings.jira_url
         issue_url = urllib.parse.urljoin(
@@ -70,9 +108,8 @@ def execute_jobs_summary(ctx: CLIContext,
         else:
             summary += f'{jira_id}: '
     summary += f'{len(execute_jobs)} request(s) in total:'
+
     for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
-        # it would be nice to use hyperlinks in launch description however we
-        # would hit launch description length limit. Therefore using plain text
         if target == 'ReportPortal':
             new_line = "{id}: {state}, {result}".format(**results[req])
         else:
@@ -183,10 +220,27 @@ def _finalize_rp_launch(
 def _build_jira_comment(
         launch_uuid: Optional[str],
         launch_url: Optional[str],
-        jira_description: str,
+        jira_description: Union[str, dict[str, Any]],
         footer: str = '',
-        first_comment: bool = True) -> str:
-    """Build Jira comment text with optional RP launch details."""
+        first_comment: bool = True) -> Union[str, dict[str, Any]]:
+    """Build Jira comment text with optional RP launch details.
+
+    For Jira Cloud (when jira_description is a dict), returns structured data.
+    For Jira Server (when jira_description is a str), returns plain text.
+    """
+    # Handle structured data for Jira Cloud
+    if isinstance(jira_description, dict):
+        # Return structured data - will be converted to ADF later
+        return {
+            'launch_uuid': launch_uuid,
+            'launch_url': launch_url,
+            'preamble': jira_description.get('preamble', ''),
+            'table': jira_description.get('table'),
+            'footer': footer if first_comment else '',
+            'first_comment': first_comment,
+            }
+
+    # Handle plain text for Jira Server
     if launch_uuid:
         if first_comment:
             comment = ("NEWA has finished test execution and imported test results "
@@ -207,12 +261,76 @@ def _add_jira_comment_for_report(
         jira_connection: Any,
         jira_id: str,
         execute_job: ExecuteJob,
-        comment: str) -> None:
+        comment: Union[str, dict[str, Any]]) -> None:
     """Add comment to Jira issue with test execution results."""
     try:
+        jira_conn_obj = ctx.get_jira_connection()
+
+        # Handle structured data for Jira Cloud (contains table)
+        if isinstance(comment, dict):
+            # Build ADF document with table
+            adf_content = []
+
+            # Add preamble paragraph(s)
+            preamble_text = ''
+            if comment.get('launch_uuid') and comment.get('first_comment'):
+                preamble_text = ("NEWA has finished test execution and imported test results "
+                                 f"to RP launch\n{comment.get('launch_url')}\n\n")
+            elif not comment.get('launch_uuid'):
+                preamble_text = "NEWA has finished test execution\n\n"
+            elif not comment.get('first_comment'):
+                preamble_text = "Continuation of the previous comment...\n\n"
+
+            preamble_text += comment.get('preamble', '')
+
+            # Convert preamble to ADF paragraphs
+            for para in preamble_text.split('\n'):
+                if para.strip():
+                    adf_content.append({
+                        "type": "paragraph",
+                        "content": [{
+                            "type": "text",
+                            "text": para,
+                            }],
+                        })
+                else:
+                    adf_content.append({
+                        "type": "paragraph",
+                        "content": [],
+                        })
+
+            # Add table if present
+            if comment.get('table'):
+                table_data = comment['table']
+                adf_table = table_to_adf(table_data['header'], table_data['rows'])
+                adf_content.append(adf_table)
+
+            # Add footer if present
+            if comment.get('footer'):
+                adf_content.append({
+                    "type": "paragraph",
+                    "content": [],
+                    })
+                adf_content.append({
+                    "type": "paragraph",
+                    "content": [{
+                        "type": "text",
+                        "text": comment['footer'],
+                        }],
+                    })
+
+            comment_body: Union[str, dict[str, Any]] = {
+                "version": 1,
+                "type": "doc",
+                "content": adf_content,
+                }
+        else:
+            # Handle plain text for Jira Server
+            comment_body = text_to_adf(comment) if jira_conn_obj.is_cloud else comment
+
         jira_connection.add_comment(
             jira_id,
-            comment,
+            comment_body,
             visibility={
                 'type': 'group',
                 'value': execute_job.jira.group}
@@ -320,14 +438,21 @@ def _process_jira_id_reports(
     # save comment footer if configured
     footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
 
+    # Check if Jira Cloud
+    jira_conn_obj = ctx.get_jira_connection()
+    is_cloud = jira_conn_obj.is_cloud
+
     # Generate summaries
     jira_descriptions = execute_jobs_summary(
         ctx,
         jira_id,
         execute_jobs,
         target='Jira',
-        max_length=65000 - len(footer))
-    launch_description = execute_jobs_summary(ctx, jira_id, execute_jobs, target='ReportPortal')[0]
+        max_length=65000 - len(footer),
+        is_cloud=is_cloud)
+    # ReportPortal description is always a string (is_cloud=False for RP)
+    rp_descriptions = execute_jobs_summary(ctx, jira_id, execute_jobs, target='ReportPortal')
+    launch_description: str = str(rp_descriptions[0])
 
     # Finalize RP launch if needed
     if launch_uuid and rp:

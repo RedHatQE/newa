@@ -1,6 +1,6 @@
 """Summarize command for NEWA CLI."""
 
-from typing import Any
+from typing import Any, Union
 
 import click
 from jira import JIRA
@@ -8,6 +8,7 @@ from jira import JIRA
 from newa import CLIContext, ExecuteJob
 from newa.cli.constants import JIRA_NONE_ID
 from newa.cli.initialization import initialize_rp_connection
+from newa.cli.jira_helpers import text_to_adf
 from newa.cli.summarize_helpers import (
     collect_launch_details,
     format_jira_issue_details,
@@ -166,9 +167,15 @@ def process_execute_job_for_summary(
     # Add comment to Jira issue
     ctx.logger.info(f'Adding AI summary comment to {jira_id}')
     try:
+        # Convert to ADF format for Jira Cloud
+        jira_conn_obj = ctx.get_jira_connection()
+        comment_body: Union[str, dict[str, Any]] = (
+            text_to_adf(comment) if jira_conn_obj.is_cloud else comment
+            )
+
         jira_client.add_comment(
             jira_id,
-            comment,
+            comment_body,
             visibility={
                 'type': 'group',
                 'value': execute_job.jira.group}

@@ -21,6 +21,7 @@ from newa import (
     ScheduleJob,
     )
 from newa.cli.constants import JIRA_NONE_ID, RP_LAUNCH_DESCR_CHARS_LIMIT
+from newa.cli.jira_helpers import text_to_adf
 from newa.cli.utils import test_file_presence
 
 
@@ -208,10 +209,16 @@ def _add_jira_comment_for_execution(
     if footer:
         comment += f'\n{footer}'
 
+    # Convert to ADF format for Jira Cloud
+    jira_conn_obj = ctx.get_jira_connection()
+    comment_body: Union[str, dict[str, Any]] = (
+        text_to_adf(comment) if jira_conn_obj.is_cloud else comment
+        )
+
     try:
         jira_connection.add_comment(
             jira_id,
-            comment,
+            comment_body,
             visibility={
                 'type': 'group',
                 'value': job.jira.group}

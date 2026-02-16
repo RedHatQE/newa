@@ -20,6 +20,7 @@ class JiraField:
     name: str
     type_: Optional[str]
     items: Optional[str]
+    system: Optional[str] = None  # For rich text fields: "atlassian-doc-format"
 
 
 @define
@@ -60,6 +61,11 @@ class JiraConnection:
     # Track which board's sprint cache is currently loaded
     _cached_board: Optional[Union[str, int]] = field(default=None, init=False, repr=False)
 
+    @property
+    def is_cloud(self) -> bool:
+        """Check if this is a Jira Cloud instance (vs Jira Server)."""
+        return 'atlassian.net' in self.url.lower()
+
     def get_connection(self) -> jira.JIRA:
         """
         Get or create Jira connection with lazy initialization.
@@ -75,13 +81,10 @@ class JiraConnection:
             Exception: If authentication fails or connection cannot be established
         """
         if self._connection is None:
-            # Auto-detect Jira Cloud vs Server based on URL
-            is_cloud = 'atlassian.net' in self.url.lower()
-
             # Configure API version
             options = {'rest_api_version': self.api_version}
 
-            if is_cloud:
+            if self.is_cloud:
                 # Jira Cloud requires email + API token for basic auth
                 if not self.email:
                     raise Exception(
@@ -99,7 +102,7 @@ class JiraConnection:
                 self._connection.myself()
                 short_sleep()
             except jira.JIRAError as e:
-                auth_type = 'email + API token' if is_cloud else 'Personal Access Token'
+                auth_type = 'email + API token' if self.is_cloud else 'Personal Access Token'
                 raise Exception(
                     f'Could not authenticate to Jira. Wrong {auth_type}?') from e
 
@@ -126,6 +129,7 @@ class JiraConnection:
                 id_=f['id'],
                 type_=f['schema']['type'] if 'schema' in f else None,
                 items=f['schema']['items'] if ('schema' in f and 'items' in f['schema']) else None,
+                system=f['schema'].get('system') if 'schema' in f else None,
                 )
 
         # Read issue link types
