@@ -51,6 +51,7 @@ class Settings:  # type: ignore[no-untyped-def]
     rp_launch_descr_chars_limit: str = ''
     jira_url: str = ''
     jira_token: str = ''
+    jira_email: str = ''
     jira_project: str = ''
     tf_token: str = ''
     tf_recheck_delay: str = ''
@@ -143,6 +144,10 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'jira/token',
                 'NEWA_JIRA_TOKEN'),
+            jira_email=_get(
+                cp,
+                'jira/email',
+                'NEWA_JIRA_EMAIL'),
             tf_token=_get(
                 cp,
                 'testingfarm/token',
@@ -476,6 +481,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
             self.jira_connection = JiraConnection(
                 url=self.settings.jira_url,
                 token=self.settings.jira_token,
+                email=self.settings.jira_email if self.settings.jira_email else None,
                 )
 
         return self.jira_connection
