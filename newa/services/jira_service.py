@@ -89,7 +89,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
     def get_user_name(self, assignee_email: str) -> str:
         """
-        Find Jira user name associated with given e-mail address
+        Find Jira user identifier associated with given e-mail address.
+
+        For Jira Server, returns the user 'name'.
+        For Jira Cloud, returns the user 'accountId'.
 
         Notice that Jira user name has various forms, it can be either an e-mail
         address or just an user name or even an user name with some sort of prefix.
@@ -98,16 +101,24 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         """
 
         if assignee_email not in self.user_names:
-            assignee_names = [u.name for u in self.connection.search_users(user=assignee_email)]
-            if not assignee_names:
+            assignee_ids = self.jira_connection.search_users_by_email(assignee_email)
+            if not assignee_ids:
                 self.user_names[assignee_email] = ""
-            elif len(assignee_names) == 1:
-                self.user_names[assignee_email] = assignee_names[0]
+            elif len(assignee_ids) == 1:
+                self.user_names[assignee_email] = assignee_ids[0]
             else:
                 raise Exception(f"At most one Jira user is expected to match {assignee_email}"
-                                f"({', '.join(assignee_names)})!")
+                                f"({', '.join(assignee_ids)})!")
 
         return self.user_names[assignee_email]
+
+    def _get_user_field_name(self) -> str:
+        """
+        Get the correct field name for user assignment.
+
+        Returns 'accountId' for Jira Cloud, 'name' for Jira Server.
+        """
+        return 'accountId' if self.jira_connection.is_cloud else 'name'
 
     def get_details(self, issue: Issue) -> jira.Issue:
         """Return issue details"""
@@ -187,9 +198,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         Handles field value conversion and type-specific formatting for Jira API.
         For updates, array fields are returned separately to use 'add' operations.
+        User fields are automatically converted from email addresses to proper
+        user identifiers (name for Server, accountId for Cloud).
 
         Args:
-            fields: Dictionary of field names to values
+            fields: Dictionary of field names to values (emails for user fields)
             for_update: If True, array fields use 'add' operations for extending;
                        If False, array fields are set directly (for creation)
 
@@ -276,6 +289,13 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             elif field_type == 'option':
                 fields_data[field_id] = {"value": field_values[0]}
 
+            elif field_type == 'user':
+                # Single user field - convert email to user identifier
+                user_field_name = self._get_user_field_name()
+                user_id = self.get_user_name(field_values[0])
+                if user_id:
+                    fields_data[field_id] = {user_field_name: user_id}
+
             elif field_type == 'array':
                 # For updates, use 'add' operations to extend; for creation, set directly
                 if for_update:
@@ -285,6 +305,16 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                         update_data[field_id] = [{"add": {"value": v}} for v in field_values]
                     elif field_items in ['component', 'version']:
                         update_data[field_id] = [{"add": {"name": v}} for v in field_values]
+                    elif field_items == 'user':
+                        # Array of users - convert each email to user identifier
+                        user_field_name = self._get_user_field_name()
+                        user_update_ops: list[dict[str, dict[str, str]]] = []
+                        for email in field_values:
+                            user_id = self.get_user_name(email)
+                            if user_id:
+                                user_update_ops.append({"add": {user_field_name: user_id}})
+                        if user_update_ops:
+                            update_data[field_id] = user_update_ops
                     else:
                         raise Exception(f'Unsupported Jira field item "{field_items}"')
                 else:
@@ -294,6 +324,16 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                         fields_data[field_id] = [{"value": v} for v in field_values]
                     elif field_items in ['component', 'version']:
                         fields_data[field_id] = [{"name": v} for v in field_values]
+                    elif field_items == 'user':
+                        # Array of users - convert each email to user identifier
+                        user_field_name = self._get_user_field_name()
+                        user_objects: list[dict[str, str]] = []
+                        for email in field_values:
+                            user_id = self.get_user_name(email)
+                            if user_id:
+                                user_objects.append({user_field_name: user_id})
+                        if user_objects:
+                            fields_data[field_id] = user_objects
                     else:
                         raise Exception(f'Unsupported Jira field item "{field_items}"')
 
@@ -329,7 +369,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             "description": description,
             }
         if assignee_email and self.get_user_name(assignee_email):
-            data |= {"assignee": {"name": self.get_user_name(assignee_email)}}
+            user_field = self._get_user_field_name()
+            data |= {"assignee": {user_field: self.get_user_name(assignee_email)}}
 
         if action.type == IssueType.EPIC:
             data |= {
@@ -357,7 +398,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         # handle fields['Reporter'] already during ticket creation
         if fields and 'Reporter' in fields and isinstance(fields['Reporter'], str):
-            data |= {"reporter": {"name": self.get_user_name(fields['Reporter'])}}
+            user_field = self._get_user_field_name()
+            data |= {"reporter": {user_field: self.get_user_name(fields['Reporter'])}}
 
         try:
             jira_issue = self.connection.create_issue(data)
