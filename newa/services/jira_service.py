@@ -87,6 +87,17 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         return newa_id
 
+    def _format_for_jira(self, text: str) -> str:
+        """
+        Format text for Jira Cloud or Server.
+
+        For Jira Cloud, wraps text in {{...}} (inline code) to prevent mention parsing.
+        For Jira Server, returns text as-is.
+        """
+        if self.jira_connection.is_cloud:
+            return f"{{{{{text}}}}}"
+        return text
+
     def get_user_name(self, assignee_email: str) -> str:
         """
         Find Jira user identifier associated with given e-mail address.
@@ -362,7 +373,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                      links: Optional[dict[str, list[str]]] = None) -> Issue:
         """Create issue"""
         if use_newa_id:
-            description = f"{self.newa_id(action)}\n\n{description}"
+            description = f"{self._format_for_jira(self.newa_id(action))}\n\n{description}"
         data = {
             "project": {"key": self.project},
             "summary": summary,
@@ -481,15 +492,18 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         # Issue does not have any NEWA ID yet
         if isinstance(description, str) and self.newa_id() not in description:
-            new_description = f"{self.newa_id(action)}\n{description}"
+            new_description = f"{self._format_for_jira(self.newa_id(action))}\n{description}"
             return_value = True
             if self.logger:
                 self.logger.debug("refresh_issue: Adding newa_id (no ID present)")
 
         # Issue has NEWA ID but not the current respin - update it.
         elif isinstance(description, str) and self.newa_id(action) not in description:
-            new_description = re.sub(f"^{re.escape(self.newa_id())}.*\n",
-                                     f"{self.newa_id(action)}\n", description)
+            # Strip any existing formatting ({{...}}) from the old NEWA ID before replacing
+            pattern = f"^(?:\\{{{{)?{re.escape(self.newa_id())}(?:\\}}}})?.*\n"
+            new_description = re.sub(pattern,
+                                     f"{self._format_for_jira(self.newa_id(action))}\n",
+                                     description)
             return_value = True
             if self.logger:
                 self.logger.debug("refresh_issue: Updating newa_id (different respin)")
@@ -500,8 +514,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             try:
                 self.get_details(issue).update(fields={"description": new_description})
                 short_sleep()
+                formatted_id = self._format_for_jira(self.newa_id(action))
                 self.comment_issue(
-                    issue, f"NEWA ID has been updated to:\n{self.newa_id(action)}")
+                    issue, f"NEWA ID has been updated to:\n{formatted_id}")
                 short_sleep()
             except jira.JIRAError as e:
                 raise Exception(f"Unable to modify issue {issue}!") from e
@@ -561,7 +576,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 self.logger.debug(f"Updating summary for issue {issue.id}")
 
         # Update description with NEWA ID
-        new_description = f"{self.newa_id(action)}\n\n{description}"
+        new_description = f"{self._format_for_jira(self.newa_id(action))}\n\n{description}"
         if current_description != new_description:
             update_fields["description"] = new_description
             if self.logger:
