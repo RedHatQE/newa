@@ -99,6 +99,8 @@ deduplicate_releases = 1
 [jira]
 url = https://...
 token = *JIRATOKEN*
+# For Jira Cloud (atlassian.net), also specify email:
+# email = your-email@example.com
 [reportportal]
 url = https://...
 token = *RP_TOKEN*
@@ -123,6 +125,7 @@ NEWA_ET_ENABLE_COMMENTS
 NEWA_ET_DEDUPLICATE_RELEASES
 NEWA_JIRA_URL
 NEWA_JIRA_TOKEN
+NEWA_JIRA_EMAIL
 NEWA_JIRA_PROJECT
 NEWA_REPORTPORTAL_URL
 NEWA_REPORTPORTAL_TOKEN
@@ -136,6 +139,29 @@ NEWA_AI_API_TOKEN
 NEWA_AI_API_MODEL
 NEWA_AI_SYSTEM_PROMPT
 ```
+
+**Jira Server vs Jira Cloud:**
+
+NEWA automatically detects whether you're using Jira Server or Jira Cloud based on the URL and uses API v2 for both:
+
+- **Jira Server**: Uses Personal Access Token authentication
+  ```
+  [jira]
+  url = https://jira.company.com
+  token = YOUR_PERSONAL_ACCESS_TOKEN
+  ```
+
+- **Jira Cloud** (URLs containing `atlassian.net`): Uses email + API token authentication
+  ```
+  [jira]
+  url = https://your-instance.atlassian.net
+  email = your-email@example.com
+  token = YOUR_API_TOKEN
+  ```
+
+For Jira Cloud, you need to:
+1. Generate an API token at https://id.atlassian.com/manage-profile/security/api-tokens
+2. Configure both `email` and `token` in the `[jira]` section
 
 ### Jira issue configuration file
 
@@ -367,7 +393,7 @@ The following options are available:
    - `execute` - Adds a comment when automated tests are initiated by NEWA.
    - `report` - Adds a comment when automated test results are reported by NEWA.
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
- - `fields`: A dictionary identifying additional Jira issue fields that should be set for the issue. Currently, fields Reporter, Sprint, Status, Component/s and other fields having type "number", "string", "option", "list/select" and "version" should be supported.
+ - `fields`: A dictionary identifying additional Jira issue fields that should be set for the issue. Currently, fields Reporter, Sprint, Status, Component/s and other fields having type "number", "string", "option", "user", "list/select" and "version" should be supported. For user fields, provide email addresses which will be automatically converted to proper user identifiers (works for both Jira Server and Cloud).
  - `links`: A dictionary identifying required link relations to a list of other Jira issues. The value can be either a list of issue keys or a Jinja2 template reference to a list variable. When using a template reference (e.g., `"{{ ERRATUM.jira_issues }}"`), NEWA will evaluate the template and use the resulting list to create links. This is particularly useful for dynamically linking to all Jira issues associated with an erratum. See examples below.
 
 #### Using links in issue configuration
