@@ -1,6 +1,6 @@
 """Jira connection management."""
 
-from typing import Optional, Union
+from typing import Any, Optional, Union, cast
 
 import jira
 import jira.client
@@ -12,6 +12,64 @@ except ModuleNotFoundError:
     from attr import define, field
 
 from newa.utils.helpers import short_sleep
+
+
+def adf_to_text(adf_content: Any) -> str:
+    """
+    Convert Atlassian Document Format (ADF) to plain text.
+
+    ADF is a JSON structure used by Jira Cloud API v3 for rich text fields
+    like description. This function extracts the text content from the ADF structure.
+
+    Args:
+        adf_content: ADF JSON structure (dict) or plain text string
+
+    Returns:
+        Plain text string extracted from ADF content
+    """
+    if not adf_content:
+        return ""
+
+    # If it's already a string, return it as-is
+    if isinstance(adf_content, str):
+        return adf_content
+
+    # If it's not a dict, convert to string
+    if not isinstance(adf_content, dict):
+        return str(adf_content)
+
+    # ADF content should have a 'type' and 'content' field
+    if 'content' not in adf_content:
+        return ""
+
+    text_parts = []
+
+    def extract_text(node: Any) -> None:
+        """Recursively extract text from ADF nodes."""
+        if isinstance(node, str):
+            text_parts.append(node)
+            return
+
+        if not isinstance(node, dict):
+            return
+
+        # Handle text nodes
+        if node.get('type') == 'text' and 'text' in node:
+            text_parts.append(node['text'])
+            return
+
+        # Handle nodes with content
+        if 'content' in node:
+            for child in node['content']:
+                extract_text(child)
+                # Add newline after paragraphs, headings, etc.
+                if isinstance(child, dict) and child.get('type') in [
+                        'paragraph', 'heading', 'codeBlock', 'blockquote',
+                        ]:
+                    text_parts.append('\n')
+
+    extract_text(adf_content)
+    return ''.join(text_parts).strip()
 
 
 @define
@@ -228,3 +286,109 @@ class JiraConnection:
             short_sleep()
             # Server uses name
             return [u.name for u in users]
+
+    def search_issues_v3(
+            self,
+            jql: str,
+            fields: Optional[list[str]] = None,
+            max_results: int = 50,
+            start_at: int = 0) -> dict[str, Any]:
+        """
+        Search for issues using Jira Cloud API v3.
+
+        This method is specifically for Jira Cloud instances and uses the v3 API
+        endpoint /rest/api/3/search/jql which returns description and other rich
+        text fields in ADF (Atlassian Document Format). The ADF content is
+        automatically converted to plain text for compatibility with existing code.
+
+        Note: This should only be used for Jira Cloud. For Jira Server, use the
+        standard connection.search_issues() method which uses v2 API.
+
+        Args:
+            jql: JQL query string
+            fields: List of field names to retrieve (e.g., ['description', 'status'])
+            max_results: Maximum number of results to return (default: 50)
+            start_at: Starting index for pagination (default: 0)
+
+        Returns:
+            Dictionary with the same structure as v2 API search_issues(json_result=True):
+            {
+                'issues': [
+                    {
+                        'key': 'PROJECT-123',
+                        'fields': {
+                            'description': 'plain text description',
+                            'status': {'name': 'Open'},
+                            ...
+                        }
+                    },
+                    ...
+                ],
+                'total': 10,
+                'maxResults': 50,
+                'startAt': 0
+            }
+
+        Raises:
+            Exception: If not a Cloud instance, or if the API request fails
+        """
+        if not self.is_cloud:
+            raise Exception('search_issues_v3 is only available for Jira Cloud instances')
+
+        if not self.email:
+            raise Exception(
+                'Jira Cloud (atlassian.net) requires email to be configured. '
+                'Please set jira/email in config file or '
+                'NEWA_JIRA_EMAIL environment variable.')
+
+        # Prepare request
+        url = f"{self.url}/rest/api/3/search/jql"
+        headers = {
+            'Accept': 'application/json',
+            }
+        auth = (self.email, self.token)
+
+        # Build query parameters
+        params: dict[str, Any] = {
+            'jql': jql,
+            'maxResults': max_results,
+            'startAt': start_at,
+            }
+
+        if fields:
+            # Fields should be comma-separated string for query params
+            params['fields'] = ','.join(fields)
+
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                headers=headers,
+                auth=auth,
+                timeout=30,
+                )
+            response.raise_for_status()
+            result = cast(dict[str, Any], response.json())
+            short_sleep()
+
+            # Convert ADF descriptions to plain text
+            if 'issues' in result:
+                for issue in result['issues']:
+                    if 'fields' in issue and 'description' in issue['fields']:
+                        # Convert ADF to text
+                        adf_desc = issue['fields']['description']
+                        issue['fields']['description'] = adf_to_text(adf_desc)
+
+            return result
+
+        except requests.exceptions.RequestException as e:
+            # Include response body in error message for debugging
+            error_details = ""
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_body = e.response.json()
+                    error_details = f" Response: {error_body}"
+                except Exception:
+                    error_details = f" Response text: {e.response.text[:500]}"
+            raise Exception(
+                f'Failed to search issues with v3 API: {e!s}.{error_details}') from e
