@@ -179,7 +179,17 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 f"labels in ({self.newa_label}) AND " + \
                 f"description ~ '{newa_description}' AND " + \
                 f"status not in ({','.join(self.transitions.closed)})"
-        search_result = self.connection.search_issues(query, fields=fields, json_result=True)
+
+        # Use v3 API for Jira Cloud (which returns ADF format), v2 for Server
+        if self.jira_connection.is_cloud:
+            search_result = self.jira_connection.search_issues_v3(
+                jql=query,
+                fields=fields,
+                max_results=100,  # Increase limit for better results
+                )
+        else:
+            search_result = self.connection.search_issues(query, fields=fields, json_result=True)
+
         if not isinstance(search_result, dict):
             raise Exception(f"Unexpected search result type {type(search_result)}!")
 
@@ -189,8 +199,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         # searches containing characters like underscore, space etc. and may return extra issues
         result = {}
         for jira_issue in search_result["issues"]:
-            if newa_description in jira_issue["fields"]["description"]:
-                result[jira_issue["key"]] = {"description": jira_issue["fields"]["description"]}
+            # Handle both string descriptions (from v3 after ADF conversion or v2)
+            # and None values
+            description = jira_issue["fields"].get("description") or ""
+            if newa_description in description:
+                result[jira_issue["key"]] = {"description": description}
                 if jira_issue["fields"]["status"]["name"] in self.transitions.closed:
                     result[jira_issue["key"]] |= {"status": "closed"}
                 else:
