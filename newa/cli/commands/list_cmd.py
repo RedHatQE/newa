@@ -22,6 +22,13 @@ from newa import (
     show_default=True,
     )
 @click.option(
+    '--all', '-a',
+    'list_all',
+    is_flag=True,
+    default=False,
+    help='List all newa state directories (overrides --last).',
+    )
+@click.option(
     '--events',
     is_flag=True,
     default=False,
@@ -34,12 +41,15 @@ from newa import (
     help='List details only up to the Jira issue level.',
     )
 @click.pass_obj
-def cmd_list(ctx: CLIContext, last: int, events: bool, issues: bool) -> None:
+def cmd_list(ctx: CLIContext, last: int, list_all: bool, events: bool, issues: bool) -> None:
     """List NEWA execution details from state directories."""
     ctx.enter_command('list')
     # Ensure --events and --issues are not used together
     if events and issues:
         raise click.UsageError('--events and --issues cannot be used together')
+    # Validate --last parameter
+    if last < 1:
+        raise click.UsageError("'--last' must be >= 1")
     # save current logger level and statedir
     saved_logger_level = ctx.logger.level
     saved_state_dir = ctx.state_dirpath
@@ -50,14 +60,17 @@ def cmd_list(ctx: CLIContext, last: int, events: bool, issues: bool) -> None:
     # when existing state-dir has been provided, use it
     if ctx.state_dirpath.is_dir():
         state_dirs = [ctx.state_dirpath]
-    # otherwise choose last N dirs
+    # otherwise choose last N dirs or all dirs
     else:
         try:
             entries = os.scandir(ctx.settings.newa_statedir_topdir)
         except FileNotFoundError as e:
             raise Exception(f'{ctx.settings.newa_statedir_topdir} does not exist') from e
         sorted_entries = sorted(entries, key=lambda entry: os.path.getmtime(Path(entry)))
-        state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
+        if list_all:
+            state_dirs = [Path(e.path) for e in sorted_entries]
+        else:
+            state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
 
     def _print(indent: int, s: str, end: str = '\n') -> None:
         print(f'{" " * indent}{s}', end=end)
