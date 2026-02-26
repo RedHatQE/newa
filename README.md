@@ -1463,13 +1463,59 @@ $ newa event --compose CentOS-Stream-9 jira --issue-config config.yaml schedule 
 
 ### Subcommand `list`
 
-With this subcommand you get a brief listing of the most recent newa invocations.
+With this subcommand you get a brief listing of newa invocations based on state directories.
 This information is based on state-directories on the default path /var/tmp/newa.
 
+By default, `list` shows details of the last 10 state directories. Use the `--all` option to list all available state directories.
+
+#### Option `--last`
+
+Specifies the number of most recent state directories to display (default: 10).
+
 Example:
+```
+$ newa list --last 20
+```
+
+#### Option `--all`, `-a`
+
+Lists all newa state directories instead of only the most recent ones. This option overrides `--last`.
+
+Example:
+```
+$ newa list --all
+$ newa list -a
+```
+
+#### Option `--events`
+
+Lists details only up to the event level, omitting Jira issues and test execution details.
+
+Example:
+```
+$ newa list --events
+```
+
+#### Option `--issues`
+
+Lists details only up to the Jira issue level, omitting test execution details.
+
+Example:
+```
+$ newa list --issues
+```
+
+Basic usage examples:
 
 ```
+# List last 10 state directories (default)
 $ newa list
+
+# List all state directories
+$ newa list --all
+
+# List all with only event-level details
+$ newa list -a --events
 ```
 
 ## Contribute
