@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 from re import Pattern
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import click
 
@@ -21,7 +21,11 @@ from newa.cli.commands.report_cmd import cmd_report
 from newa.cli.commands.schedule_cmd import cmd_schedule
 from newa.cli.commands.summarize_cmd import cmd_summarize
 from newa.cli.constants import NEWA_DEFAULT_CONFIG
+from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
 from newa.cli.utils import get_state_dir, initialize_state_dir
+
+if TYPE_CHECKING:
+    from newa.models.settings import EventFilter
 
 logging.basicConfig(
     format='%(asctime)s %(message)s',
@@ -33,26 +37,28 @@ def _should_filter_yaml_file(
         yaml_file: Path,
         action_id_pattern: Optional[Pattern[str]],
         issue_id_pattern: Optional[Pattern[str]],
+        event_filter_pattern: Optional['EventFilter'],
         logger: logging.Logger) -> bool:
     """
-    Check if a YAML file should be filtered out based on action_id and issue_id patterns.
+    Check if a YAML file should be filtered out based on action_id, issue_id, and event patterns.
 
     Args:
         yaml_file: Path to the YAML file to check
         action_id_pattern: Compiled regex pattern for action_id filtering (or None)
         issue_id_pattern: Compiled regex pattern for issue_id filtering (or None)
+        event_filter_pattern: EventFilter for event/artifact filtering (or None)
         logger: Logger instance for debug messages
 
     Returns:
         True if the file should be filtered out (skipped), False if it should be kept
     """
-    if not action_id_pattern and not issue_id_pattern:
+    if not action_id_pattern and not issue_id_pattern and not event_filter_pattern:
         return False  # No filters, keep the file
 
     try:
         from newa.utils.yaml_utils import yaml_parser
 
-        # Load the YAML file to check filters
+        # Load the YAML file once to check all filters
         yaml_data = yaml_parser().load(yaml_file.read_text())
 
         # Check action_id_filter if specified
@@ -71,6 +77,16 @@ def _should_filter_yaml_file(
                 logger.debug(
                     f'Filtering {yaml_file.name} (issue_id "{issue_id}" '
                     f'does not match filter)')
+                return True
+
+        # Check event_filter if specified
+        if event_filter_pattern:
+            from newa.models.jobs import ArtifactJob
+
+            # Create job from already-loaded YAML data (avoids double parsing)
+            job = ArtifactJob(**yaml_data)
+            if should_filter_by_event(event_filter_pattern, job, logger, log_message=False):
+                logger.debug(f'Filtering {yaml_file.name} (event filter)')
                 return True
 
     except Exception as e:
@@ -153,6 +169,13 @@ def _should_filter_yaml_file(
     default='',
     help='Regular expression matching Jira issue keys to process (only).',
     )
+@click.option(
+    '--event-filter',
+    default='',
+    help='Filter by event/artifact attributes, e.g., "compose.id=RHEL-8.*" '
+         'or "erratum.release=RHEL-9.5". '
+         'Supported: compose.id, erratum.id, erratum.release, rog.id.',
+    )
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
@@ -166,7 +189,8 @@ def main(click_context: click.Context,
          copy_state_dir: bool,
          force: bool,
          action_id_filter: str,
-         issue_id_filter: str) -> None:
+         issue_id_filter: str,
+         event_filter: str) -> None:
     """NEWA - New Errata Workflow Automation."""
     import io
     import tarfile
@@ -230,6 +254,9 @@ def main(click_context: click.Context,
         raise Exception(
             f'Cannot compile --issue-id-filter regular expression. {e!r}') from e
 
+    # Parse event filter if provided
+    event_filter_obj = parse_event_filter(event_filter) if event_filter else None
+
     ctx = CLIContext(
         settings=settings,
         logger=logging.getLogger(),
@@ -240,6 +267,7 @@ def main(click_context: click.Context,
         force=force,
         action_id_filter_pattern=pattern,
         issue_id_filter_pattern=issue_pattern,
+        event_filter_pattern=event_filter_obj,
         )
     click_context.obj = ctx
 
@@ -283,12 +311,17 @@ def main(click_context: click.Context,
         initialize_state_dir(ctx)
 
         # Apply filters if specified - delete non-matching YAML files
-        if pattern or issue_pattern:
+        if pattern or issue_pattern or event_filter_obj:
             yaml_files = list(ctx.state_dirpath.glob('*.yaml'))
             deleted_count = 0
             kept_count = 0
             for yaml_file in yaml_files:
-                if _should_filter_yaml_file(yaml_file, pattern, issue_pattern, ctx.logger):
+                if _should_filter_yaml_file(
+                        yaml_file,
+                        pattern,
+                        issue_pattern,
+                        event_filter_obj,
+                        ctx.logger):
                     yaml_file.unlink()
                     deleted_count += 1
                 else:
@@ -322,7 +355,12 @@ def main(click_context: click.Context,
             skipped_count = 0
             for yaml_file in yaml_files:
                 # Check if this file should be filtered out
-                if _should_filter_yaml_file(yaml_file, pattern, issue_pattern, ctx.logger):
+                if _should_filter_yaml_file(
+                        yaml_file,
+                        pattern,
+                        issue_pattern,
+                        event_filter_obj,
+                        ctx.logger):
                     skipped_count += 1
                     continue
 

@@ -169,3 +169,251 @@ class TestBothFilters:
         issue_result = ctx_with_both_filters._should_filter_by_issue_id('RHEL-99999')
         assert action_result is True
         assert issue_result is True
+
+
+class TestEventFilter:
+    """Tests for event filter parsing and filtering."""
+
+    def test_parse_compose_id_filter(self):
+        """Test parsing compose.id filter."""
+        from newa.cli.event_helpers import parse_event_filter
+
+        filter_obj = parse_event_filter('compose.id=RHEL-8.*')
+        assert filter_obj.object_type == 'compose'
+        assert filter_obj.attribute == 'id'
+        assert filter_obj.pattern.pattern == 'RHEL-8.*'
+
+    def test_parse_erratum_id_filter(self):
+        """Test parsing erratum.id filter."""
+        from newa.cli.event_helpers import parse_event_filter
+
+        filter_obj = parse_event_filter('erratum.id=RHBA-.*')
+        assert filter_obj.object_type == 'erratum'
+        assert filter_obj.attribute == 'id'
+        assert filter_obj.pattern.pattern == 'RHBA-.*'
+
+    def test_parse_erratum_release_filter(self):
+        """Test parsing erratum.release filter."""
+        from newa.cli.event_helpers import parse_event_filter
+
+        filter_obj = parse_event_filter('erratum.release=RHEL-9.5')
+        assert filter_obj.object_type == 'erratum'
+        assert filter_obj.attribute == 'release'
+        assert filter_obj.pattern.pattern == 'RHEL-9.5'
+
+    def test_parse_rog_id_filter(self):
+        """Test parsing rog.id filter."""
+        from newa.cli.event_helpers import parse_event_filter
+
+        filter_obj = parse_event_filter('rog.id=https://.*')
+        assert filter_obj.object_type == 'rog'
+        assert filter_obj.attribute == 'id'
+        assert filter_obj.pattern.pattern == 'https://.*'
+
+    def test_parse_invalid_format(self):
+        """Test parsing invalid filter format."""
+        import click
+
+        from newa.cli.event_helpers import parse_event_filter
+
+        with pytest.raises(click.ClickException, match='Invalid --event-filter format'):
+            parse_event_filter('invalid_format')
+
+    def test_parse_invalid_regex(self):
+        """Test parsing invalid regex pattern."""
+        import click
+
+        from newa.cli.event_helpers import parse_event_filter
+
+        with pytest.raises(click.ClickException, match='Cannot compile --event-filter'):
+            parse_event_filter('compose.id=[invalid')
+
+    def test_parse_unsupported_object_type(self):
+        """Test parsing unsupported object type."""
+        import click
+
+        from newa.cli.event_helpers import parse_event_filter
+
+        with pytest.raises(click.ClickException, match='Unsupported object type'):
+            parse_event_filter('invalid.id=test')
+
+    def test_parse_unsupported_attribute(self):
+        """Test parsing unsupported attribute."""
+        import click
+
+        from newa.cli.event_helpers import parse_event_filter
+
+        with pytest.raises(click.ClickException, match='Unsupported attribute'):
+            parse_event_filter('compose.release=test')
+
+    def test_should_filter_compose_matching(self, mock_logger):
+        """Test filtering compose job that matches."""
+        from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+        from newa.models.artifacts import Compose
+        from newa.models.events import Event, EventType
+        from newa.models.jobs import ArtifactJob
+
+        filter_obj = parse_event_filter('compose.id=RHEL-8.*')
+        job = ArtifactJob(
+            event=Event(type_=EventType.COMPOSE, id='test'),
+            compose=Compose(id='RHEL-8.10-Nightly'),
+            erratum=None,
+            )
+
+        result = should_filter_by_event(filter_obj, job, mock_logger)
+        assert result is False  # Should NOT be filtered (matches)
+
+    def test_should_filter_compose_not_matching(self, mock_logger):
+        """Test filtering compose job that doesn't match."""
+        from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+        from newa.models.artifacts import Compose
+        from newa.models.events import Event, EventType
+        from newa.models.jobs import ArtifactJob
+
+        filter_obj = parse_event_filter('compose.id=RHEL-8.*')
+        job = ArtifactJob(
+            event=Event(type_=EventType.COMPOSE, id='test'),
+            compose=Compose(id='RHEL-9.5-Nightly'),
+            erratum=None,
+            )
+
+        result = should_filter_by_event(filter_obj, job, mock_logger)
+        assert result is True  # Should be filtered (doesn't match)
+
+    def test_should_filter_erratum_release_matching(self, mock_logger):
+        """Test filtering erratum job by release that matches."""
+        from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+        from newa.models.artifacts import Erratum, ErratumContentType
+        from newa.models.events import Event, EventType
+        from newa.models.jobs import ArtifactJob
+
+        filter_obj = parse_event_filter('erratum.release=RHEL-9.5')
+        job = ArtifactJob(
+            event=Event(type_=EventType.ERRATUM, id='RHBA-2024:1234'),
+            erratum=Erratum(
+                id='RHBA-2024:1234',
+                content_type=ErratumContentType.RPM,
+                respin_count=0,
+                summary='Test advisory',
+                release='RHEL-9.5',
+                url='https://example.com',
+                ),
+            compose=None,
+            )
+
+        result = should_filter_by_event(filter_obj, job, mock_logger)
+        assert result is False  # Should NOT be filtered (matches)
+
+    def test_should_filter_erratum_release_not_matching(self, mock_logger):
+        """Test filtering erratum job by release that doesn't match."""
+        from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+        from newa.models.artifacts import Erratum, ErratumContentType
+        from newa.models.events import Event, EventType
+        from newa.models.jobs import ArtifactJob
+
+        filter_obj = parse_event_filter('erratum.release=RHEL-9.5.*')
+        job = ArtifactJob(
+            event=Event(type_=EventType.ERRATUM, id='RHBA-2024:1234'),
+            erratum=Erratum(
+                id='RHBA-2024:1234',
+                content_type=ErratumContentType.RPM,
+                respin_count=0,
+                summary='Test advisory',
+                release='RHEL-8.10',
+                url='https://example.com',
+                ),
+            compose=None,
+            )
+
+        result = should_filter_by_event(filter_obj, job, mock_logger)
+        assert result is True  # Should be filtered (doesn't match)
+
+    def test_should_filter_erratum_empty_release(self, mock_logger):
+        """Test filtering erratum job with empty release value."""
+        from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+        from newa.models.artifacts import Erratum, ErratumContentType
+        from newa.models.events import Event, EventType
+        from newa.models.jobs import ArtifactJob
+
+        filter_obj = parse_event_filter('erratum.release=RHEL-9.5')
+        job = ArtifactJob(
+            event=Event(type_=EventType.ERRATUM, id='RHBA-2024:1234'),
+            erratum=Erratum(
+                id='RHBA-2024:1234',
+                content_type=ErratumContentType.RPM,
+                respin_count=0,
+                summary='Test advisory',
+                release='',  # Empty release
+                url='https://example.com',
+                ),
+            compose=None,
+            )
+
+        result = should_filter_by_event(filter_obj, job, mock_logger)
+        assert result is True  # Should be filtered (has no value)
+
+    def test_should_filter_rog_id_matching(self, mock_logger):
+        """Test filtering rog job that matches."""
+        from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+        from newa.models.artifacts import RoG
+        from newa.models.events import Event, EventType
+        from newa.models.jobs import ArtifactJob
+
+        filter_obj = parse_event_filter('rog.id=https://gitlab.com/.*')
+        job = ArtifactJob(
+            event=Event(type_=EventType.ROG, id='test'),
+            compose=None,
+            erratum=None,
+            rog=RoG(
+                id='https://gitlab.com/redhat/centos-stream/rpms/bash/-/merge_requests/1',
+                content_type=None,
+                title='Test MR',
+                build_task_id='12345',
+                build_target='centos-stream-9',
+                ),
+            )
+
+        result = should_filter_by_event(filter_obj, job, mock_logger)
+        assert result is False  # Should NOT be filtered (matches)
+
+    def test_should_filter_rog_id_not_matching(self, mock_logger):
+        """Test filtering rog job that doesn't match."""
+        from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+        from newa.models.artifacts import RoG
+        from newa.models.events import Event, EventType
+        from newa.models.jobs import ArtifactJob
+
+        filter_obj = parse_event_filter('rog.id=https://gitlab.com/.*')
+        job = ArtifactJob(
+            event=Event(type_=EventType.ROG, id='test'),
+            compose=None,
+            erratum=None,
+            rog=RoG(
+                id='https://github.com/organization/repo/pull/123',
+                content_type=None,
+                title='Test MR',
+                build_task_id='12345',
+                build_target='centos-stream-9',
+                ),
+            )
+
+        result = should_filter_by_event(filter_obj, job, mock_logger)
+        assert result is True  # Should be filtered (doesn't match)
+
+    def test_should_filter_wrong_artifact_type(self, mock_logger):
+        """Test filtering when artifact type doesn't match filter."""
+        from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+        from newa.models.artifacts import Compose
+        from newa.models.events import Event, EventType
+        from newa.models.jobs import ArtifactJob
+
+        # Filter is for erratum, but job has compose
+        filter_obj = parse_event_filter('erratum.id=RHBA-.*')
+        job = ArtifactJob(
+            event=Event(type_=EventType.COMPOSE, id='test'),
+            compose=Compose(id='RHEL-8.10-Nightly'),
+            erratum=None,
+            )
+
+        result = should_filter_by_event(filter_obj, job, mock_logger)
+        assert result is True  # Should be filtered (wrong artifact type)
