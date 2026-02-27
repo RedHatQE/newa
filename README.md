@@ -378,6 +378,7 @@ The following options are available:
  - `type`: Jira issue type, could be `epic`, `task`, `sub-task`
  - `id`: unique identifier within the scope of issue-config file, it is used to identify this specific config item.
  - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
+ - `newa_id`: Optional custom identifier (usually a Jinja2 template) that NEWA will embed in the Jira issue description. This identifier is used by NEWA to find and reuse existing Jira issues in subsequent runs instead of creating duplicates. When NEWA processes an issue-config, it first searches for existing Jira issues containing this identifier in their description. If found, the existing issue is reused; otherwise, a new issue is created and the identifier is added to its description. This is particularly useful for erratum-based workflows where you want to track the same erratum across multiple NEWA runs. See example below.
  - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are `close` (i.e. create a new issue) and `keep` (i.e. reuse existing issue).
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
  - `schedule`: Controls whether a job should be automatically scheduled for this action (default: `True`). Can be either a boolean value or a Jinja template string that evaluates to a boolean:
@@ -395,6 +396,31 @@ The following options are available:
  - `when`: A condition that restricts when an item should be used. See "In-config tests" section for examples.
  - `fields`: A dictionary identifying additional Jira issue fields that should be set for the issue. Currently, fields Reporter, Sprint, Status, Component/s and other fields having type "number", "string", "option", "user", "list/select" and "version" should be supported. For user fields, provide email addresses which will be automatically converted to proper user identifiers (works for both Jira Server and Cloud).
  - `links`: A dictionary identifying required link relations to a list of other Jira issues. The value can be either a list of issue keys or a Jinja2 template reference to a list variable. When using a template reference (e.g., `"{{ ERRATUM.jira_issues }}"`), NEWA will evaluate the template and use the resulting list to create links. This is particularly useful for dynamically linking to all Jira issues associated with an erratum. See examples below.
+
+#### Using custom newa_id for issue tracking (optional)
+
+The `newa_id` attribute allows you to define a custom identifier that NEWA embeds in Jira issue descriptions. This enables NEWA to find and reuse existing issues across multiple runs instead of creating duplicates.
+
+**Example:**
+```yaml
+issues:
+ - summary: "Testing container ER#{{ ERRATUM.id }} {{ ERRATUM.summary }}"
+   description: "{{ ERRATUM.url }}"
+   assignee: '{{ ERRATUM.people_assigned_to }}'
+   type: epic
+   id: errata_epic
+   newa_id: "ER#{{ ERRATUM.id }}"
+   on_respin: keep
+
+ - summary: "Container errata respin {{ ERRATUM.components|join(' ') }}"
+   description: "testing container {{ ERRATUM.components|join(' ') }}"
+   type: task
+   id: errata_task
+   parent_id: errata_epic
+   on_respin: close
+```
+
+In this example, the epic issue uses `"ER#{{ ERRATUM.id }}"` as its NEWA ID (e.g., "ER#123456"). When you run NEWA again for the same erratum, it will find and reuse the epic issue because the identifier matches.
 
 #### Using links in issue configuration
 
