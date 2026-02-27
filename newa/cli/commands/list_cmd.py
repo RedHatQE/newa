@@ -78,7 +78,7 @@ def cmd_list(ctx: CLIContext, last: int, list_all: bool, events: bool, issues: b
     for state_dir in state_dirs:
         print(f'{state_dir}:')
         ctx.state_dirpath = state_dir
-        event_jobs = list(ctx.load_artifact_jobs())
+        event_jobs = list(ctx.load_artifact_jobs(filter_events=True))
         for event_job in event_jobs:
             if event_job.erratum:
                 _print(2, f'event {event_job.id} - {event_job.erratum.summary}')
