@@ -34,6 +34,15 @@ SettingsT = TypeVar('SettingsT', bound='Settings')
 
 
 @define
+class EventFilter:
+    """Represents a single event/artifact filter."""
+
+    object_type: str  # 'compose', 'erratum', or 'rog'
+    attribute: str  # 'id' or 'release'
+    pattern: Pattern[str]
+
+
+@define
 class Settings:  # type: ignore[no-untyped-def]
     """Class storing newa settings."""
 
@@ -205,9 +214,25 @@ class CLIContext:  # type: ignore[no-untyped-def]
     force: bool = False
     action_id_filter_pattern: Optional[Pattern[str]] = None
     issue_id_filter_pattern: Optional[Pattern[str]] = None
+    event_filter_pattern: Optional[EventFilter] = None
 
     # Jira connection instance (lazy initialized)
     jira_connection: Optional['JiraConnection'] = field(default=None, init=False, repr=False)
+
+    def should_filter_job(self, job: 'ArtifactJob') -> bool:
+        """Check if job should be filtered based on event filter pattern.
+
+        Args:
+            job: The job to check (ArtifactJob or any subclass like JiraJob,
+                ScheduleJob, ExecuteJob)
+
+        Returns:
+            True if the job should be filtered out (skipped), False if it should be processed.
+        """
+        if not self.event_filter_pattern:
+            return False
+        from newa.cli.event_helpers import should_filter_by_event
+        return should_filter_by_event(self.event_filter_pattern, job, self.logger)
 
     def enter_command(self, command: str) -> None:
         self.logger.handlers[0].formatter = logging.Formatter(
@@ -240,12 +265,16 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
     def load_artifact_jobs(
             self,
-            filename_prefix: str = EVENT_FILE_PREFIX) -> Iterator['ArtifactJob']:
+            filename_prefix: str = EVENT_FILE_PREFIX,
+            filter_events: bool = False) -> Iterator['ArtifactJob']:
         for child in self.state_dirpath.iterdir():
             if not child.name.startswith(filename_prefix):
                 continue
 
-            yield self.load_artifact_job(child.resolve())
+            job = self.load_artifact_job(child.resolve())
+            if filter_events and self.should_filter_job(job):
+                continue
+            yield job
 
     def load_jira_job(self, filepath: Path) -> 'JiraJob':
         from newa.models.jobs import JiraJob
@@ -268,6 +297,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 if self._should_filter_by_action_id(job.jira.action_id):
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
+                    continue
+                if self.should_filter_job(job):
                     continue
             yield job
 
@@ -293,6 +324,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
                     continue
+                if self.should_filter_job(job):
+                    continue
             yield job
 
     def load_execute_job(self, filepath: Path) -> 'ExecuteJob':
@@ -316,6 +349,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 if self._should_filter_by_action_id(job.jira.action_id):
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
+                    continue
+                if self.should_filter_job(job):
                     continue
             yield job
 

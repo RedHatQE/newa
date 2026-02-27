@@ -1058,6 +1058,42 @@ Example (combine with --action-id-filter):
 $ newa --action-id-filter 'tier.*' --issue-id-filter 'RHEL-.*' event --compose CentOS-Stream-10 jira --issue-config config.yaml schedule
 ```
 
+#### Option `--event-filter`
+
+Instructs NEWA to process only jobs associated with events/artifacts that match the provided filter expression. The filter uses the format `object.attribute=regex` where:
+- **object**: `compose`, `erratum`, or `rog`
+- **attribute**: `id` (for compose/erratum/rog) or `release` (for erratum only)
+- **regex**: A regular expression pattern to match against the attribute value
+
+**Supported filters:**
+- `compose.id=PATTERN` - Filter by compose ID
+- `erratum.id=PATTERN` - Filter by erratum/advisory ID
+- `erratum.release=PATTERN` - Filter by erratum release field
+- `rog.id=PATTERN` - Filter by RoG merge request URL
+
+**Behavior across subcommands:**
+- For **event** subcommand: Only creates YAML files for events/artifacts matching the filter
+- For **jira, schedule, execute, report, summarize, and list** subcommands: Only processes existing jobs where the event/artifact matches the filter
+
+This option can be combined with `--action-id-filter` and `--issue-id-filter` for fine-grained control. It also works with `--copy-state-dir` and `--extract-state-dir` to filter which YAML files are copied or extracted.
+
+Use with caution.
+
+Example (filter by erratum release):
+```
+$ newa --event-filter 'erratum.release=RHEL-9.2.*' event --erratum 123456 jira --issue-config config.yaml schedule execute report
+```
+
+Example (combine with --copy-state-dir):
+```
+$ newa --state-dir /path/to/existing/run-123 --copy-state-dir --event-filter 'erratum.release=RHEL-9.2.*' schedule execute report
+```
+
+Example (combine with other filters):
+```
+$ newa --event-filter 'erratum.id=RHSA-.*' --action-id-filter 'tier1.*' event --erratum 123456 jira --issue-config config.yaml schedule
+```
+
 #### Option `--jira-issue`
 
 Directs NEWA to the `JIRA`-type event it should use, in particular a Jira issue key. Option can be used multiple times but each event will be processed individually. This event is not that useful for test scheduling at the moment. But you can use NEWA to create a pre-configure set of associated Jira issues.

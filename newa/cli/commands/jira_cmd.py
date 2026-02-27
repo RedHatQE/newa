@@ -116,7 +116,7 @@ def cmd_jira(
     jira_none_id = _create_jira_fake_id_generator()
 
     # Load artifact jobs as a list (not iterator) since we need to iterate multiple times
-    artifact_jobs = list(ctx.load_artifact_jobs())
+    artifact_jobs = list(ctx.load_artifact_jobs(filter_events=True))
 
     # Initialize Errata Tool connection only if there are erratum events
     et = None

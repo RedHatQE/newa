@@ -31,7 +31,7 @@ def copy_events_from_previous_statedir(ctx: CLIContext) -> None:
     ctx_prev = copy.deepcopy(ctx)
     ctx_prev.state_dirpath = ctx.prev_state_dirpath
 
-    artifact_jobs = list(ctx_prev.load_artifact_jobs())
+    artifact_jobs = list(ctx_prev.load_artifact_jobs(filter_events=True))
     if not artifact_jobs:
         raise Exception(f'No {EVENT_FILE_PREFIX} YAML files found in {ctx_prev.state_dirpath}')
 
@@ -99,6 +99,9 @@ def process_event_errata(
                     erratum=erratum,
                     compose=Compose(id=compose),
                     rog=None)
+                # Apply event filter if specified
+                if ctx.should_filter_job(artifact_job):
+                    continue
                 ctx.save_artifact_job(artifact_job)
 
             # for docker content type we create ArtifactJob per build
@@ -112,6 +115,9 @@ def process_event_errata(
                         erratum=erratum_clone,
                         compose=Compose(id=compose),
                         rog=None)
+                    # Apply event filter if specified
+                    if ctx.should_filter_job(artifact_job):
+                        continue
                     ctx.save_artifact_job(artifact_job)
 
 
@@ -124,6 +130,9 @@ def process_event_composes(ctx: CLIContext, compose_ids: list[str]) -> None:
             erratum=None,
             compose=Compose(id=compose_id),
             rog=None)
+        # Apply event filter if specified
+        if ctx.should_filter_job(artifact_job):
+            continue
         ctx.save_artifact_job(artifact_job)
 
 
@@ -148,6 +157,9 @@ def process_event_rog_urls(
             erratum=None,
             compose=Compose(id=compose_id),
             rog=mr)
+        # Apply event filter if specified
+        if ctx.should_filter_job(artifact_job):
+            continue
         ctx.save_artifact_job(artifact_job)
 
 
@@ -160,6 +172,9 @@ def process_event_jira_keys(ctx: CLIContext, jira_keys: list[str]) -> None:
             erratum=None,
             compose=None,
             rog=None)
+        # Apply event filter if specified
+        if ctx.should_filter_job(artifact_job):
+            continue
         ctx.save_artifact_job(artifact_job)
 
 
