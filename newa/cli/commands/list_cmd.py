@@ -12,6 +12,7 @@ from newa import (
     SCHEDULE_FILE_PREFIX,
     CLIContext,
     )
+from newa.cli.report_helpers import _update_all_tf_request_statuses
 
 
 @click.command(name='list')
@@ -40,8 +41,29 @@ from newa import (
     default=False,
     help='List details only up to the Jira issue level.',
     )
+@click.option(
+    '--refresh',
+    is_flag=True,
+    default=False,
+    help='Refresh Testing Farm request statuses before listing (only incomplete requests). '
+         'Requires -D/--state-dir or -P/--prev-state-dir.',
+    )
+@click.option(
+    '--refresh-all',
+    is_flag=True,
+    default=False,
+    help='Refresh all Testing Farm request statuses before listing (overrides --refresh). '
+         'Requires -D/--state-dir or -P/--prev-state-dir.',
+    )
 @click.pass_obj
-def cmd_list(ctx: CLIContext, last: int, list_all: bool, events: bool, issues: bool) -> None:
+def cmd_list(
+        ctx: CLIContext,
+        last: int,
+        list_all: bool,
+        events: bool,
+        issues: bool,
+        refresh: bool,
+        refresh_all: bool) -> None:
     """List NEWA execution details from state directories."""
     ctx.enter_command('list')
     # Ensure --events and --issues are not used together
@@ -50,6 +72,11 @@ def cmd_list(ctx: CLIContext, last: int, list_all: bool, events: bool, issues: b
     # Validate --last parameter
     if last < 1:
         raise click.UsageError("'--last' must be >= 1")
+    # Ensure --refresh and --refresh-all are only used with a specific state-dir
+    if (refresh or refresh_all) and not ctx.state_dirpath.is_dir():
+        raise click.UsageError(
+            '--refresh and --refresh-all require a specific state directory. '
+            'Use -D/--state-dir or -P/--prev-state-dir to specify one.')
     # save current logger level and statedir
     saved_logger_level = ctx.logger.level
     saved_state_dir = ctx.state_dirpath
@@ -126,6 +153,15 @@ def cmd_list(ctx: CLIContext, last: int, list_all: bool, events: bool, issues: b
                         ctx.load_execute_jobs(
                             execute_file_prefix,
                             filter_actions=True))
+                    # Refresh TF request statuses if --refresh or --refresh-all flag is set
+                    if (refresh or refresh_all) and execute_jobs:
+                        _update_all_tf_request_statuses(
+                            ctx, execute_jobs, force_refresh=refresh_all)
+                        # Reload execute jobs to get refreshed data
+                        execute_jobs = list(
+                            ctx.load_execute_jobs(
+                                execute_file_prefix,
+                                filter_actions=True))
                     if execute_jobs:
                         for execute_job in execute_jobs:
                             if hasattr(execute_job, 'execution'):

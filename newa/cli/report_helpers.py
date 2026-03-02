@@ -96,10 +96,11 @@ def execute_jobs_summary(ctx: CLIContext,
 
 def _update_tf_request_status(
         ctx: CLIContext,
-        execute_job: ExecuteJob) -> None:
+        execute_job: ExecuteJob,
+        force_refresh: bool = False) -> None:
     """Check and update Testing Farm request status if not yet finished."""
-    if (execute_job.execution.result == RequestResult.NONE and
-            execute_job.request.how == ExecuteHow.TESTING_FARM):
+    should_refresh = (execute_job.execution.result == RequestResult.NONE or force_refresh)
+    if (should_refresh and execute_job.request.how == ExecuteHow.TESTING_FARM):
         tf_request = TFRequest(
             api=execute_job.execution.request_api,
             uuid=execute_job.execution.request_uuid)
@@ -113,17 +114,30 @@ def _update_tf_request_status(
                          for e in tf_request.details['environments_requested']])
         ctx.logger.info(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
 
-        # Update result if available
-        if tf_request.details['result']:
-            execute_job.execution.result = RequestResult(
-                tf_request.details['result']['overall'])
-            ctx.logger.info(f'finished with result: {execute_job.execution.result}')
-        elif tf_request.is_finished():
-            execute_job.execution.result = RequestResult.ERROR
-
-        # Update state
+        # Update state first
         if tf_request.details['state']:
             execute_job.execution.state = tf_request.details['state']
+
+        # Handle canceled requests
+        if 'cancel' in execute_job.execution.state:
+            execute_job.execution.state = 'canceled'
+            execute_job.execution.result = RequestResult.ERROR
+            ctx.logger.info(f'finished with result: {execute_job.execution.result}')
+        # Update result if available
+        elif tf_request.details['result']:
+            overall_result = tf_request.details['result']['overall']
+            # Only update if it's a valid RequestResult value
+            try:
+                execute_job.execution.result = RequestResult(overall_result)
+                ctx.logger.info(f'finished with result: {execute_job.execution.result}')
+            except ValueError:
+                # Handle unknown or invalid result values
+                ctx.logger.warning(
+                    f'TF request {tf_request.uuid} has invalid result "{overall_result}", '
+                    f'setting to ERROR')
+                execute_job.execution.result = RequestResult.ERROR
+        elif tf_request.is_finished():
+            execute_job.execution.result = RequestResult.ERROR
 
         # Update artifacts URL if available
         if tf_request.details['run'] and tf_request.details['run'].get('artifacts', None):
@@ -134,10 +148,11 @@ def _update_tf_request_status(
 
 def _update_all_tf_request_statuses(
         ctx: CLIContext,
-        execute_jobs: list[ExecuteJob]) -> None:
+        execute_jobs: list[ExecuteJob],
+        force_refresh: bool = False) -> None:
     """Update TF request status for all execute jobs that need it."""
     for execute_job in execute_jobs:
-        _update_tf_request_status(ctx, execute_job)
+        _update_tf_request_status(ctx, execute_job, force_refresh=force_refresh)
 
 
 def _get_rp_launch_details(

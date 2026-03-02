@@ -1567,6 +1567,31 @@ Example:
 $ newa list --issues
 ```
 
+#### Option `--refresh`
+
+Refreshes Testing Farm request statuses before listing (only incomplete requests where `result == NONE`). This option requires a specific state directory to be specified via `-D/--state-dir` or `-P/--prev-state-dir`. It cannot be used when listing multiple state directories for performance reasons.
+
+When `--refresh` is used, NEWA will:
+1. Check the current status of incomplete Testing Farm requests
+2. Update the state directory with fresh data
+3. Display the updated status information
+
+Example:
+```
+$ newa -D /var/tmp/newa/run-123 list --refresh
+```
+
+#### Option `--refresh-all`
+
+Refreshes all Testing Farm request statuses before listing, regardless of their current status. This option overrides `--refresh` and also requires a specific state directory to be specified via `-D/--state-dir` or `-P/--prev-state-dir`.
+
+Use this option when you want to force a status update for all requests, including those that have already completed.
+
+Example:
+```
+$ newa -P list --refresh-all
+```
+
 Basic usage examples:
 
 ```
@@ -1578,6 +1603,12 @@ $ newa list --all
 
 # List all with only event-level details
 $ newa list -a --events
+
+# List specific state directory with refreshed status
+$ newa -D /var/tmp/newa/run-123 list --refresh
+
+# List previous state directory with all requests refreshed
+$ newa -P list --refresh-all
 ```
 
 ## Contribute
