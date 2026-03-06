@@ -340,6 +340,7 @@ The following transitions can be defined:
  - `dropped` - Required, single state required. Tells NEWA which state to use when an issue is obsoleted by a newer issue.
  - `processed` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when issue processing is finished by NEWA.
  - `passed` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when all automated tests scheduled by NEWA pass.
+ - `updated` - Optional, single state required. Used when an issue is updated for a new respin with `on_respin: update`. This state is applied after the issue is updated with the new NEWA ID, allowing you to automatically reopen closed issues or transition them to a specific status when they are updated for a new respin. This transition is applied regardless of the `auto_transition` setting.
 
 Example:
 ```
@@ -350,6 +351,10 @@ transitions:
     - Closed.Obsolete
   processed:
     - In Progress
+  passed:
+    - Closed.Done
+  updated:
+    - To Do
 # here, not using transition for passed tests
 # passed:
 #  - Closed.Done
@@ -379,7 +384,10 @@ The following options are available:
  - `id`: unique identifier within the scope of issue-config file, it is used to identify this specific config item.
  - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
  - `newa_id`: Optional custom identifier (usually a Jinja2 template) that NEWA will embed in the Jira issue description. This identifier is used by NEWA to find and reuse existing Jira issues in subsequent runs instead of creating duplicates. When NEWA processes an issue-config, it first searches for existing Jira issues containing this identifier in their description. If found, the existing issue is reused; otherwise, a new issue is created and the identifier is added to its description. This is particularly useful for erratum-based workflows where you want to track the same erratum across multiple NEWA runs. See example below.
- - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are `close` (i.e. create a new issue) and `keep` (i.e. reuse existing issue).
+ - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are:
+   - `close` - Creates a new issue and marks the old one as obsolete
+   - `keep` - Reuses the existing open issue without updating it (only refreshes the NEWA ID)
+   - `update` - Reuses the existing open issue and updates its summary, description, and custom fields. If no open issue exists but a closed issue with an old NEWA ID is found, it will be reopened and updated. When multiple old closed issues exist, the most recently updated one is selected. If the `updated` transition is configured, it will be applied after the update.
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
  - `schedule`: Controls whether a job should be automatically scheduled for this action (default: `True`). Can be either a boolean value or a Jinja template string that evaluates to a boolean:
    - **Boolean value**: When set to `False`, NEWA will create or update the Jira issue but will not schedule any associated job (even if `job_recipe` is defined), unless the action is explicitly selected using the `--action-id-filter` option.
