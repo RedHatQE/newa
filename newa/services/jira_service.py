@@ -147,7 +147,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         Get issues related to erratum job with given summary
 
         Unless 'all_respins' is defined only issues related to the current respin are returned.
-        Unless 'closed' is defined, only opened issues are returned.
+        Unless 'closed' is defined, only open issues are returned.
         Result is a dictionary such that keys are found Jira issue keys (ID) and values
         are dictionaries such that there is always 'description' key and if the issues has
         parent then there is also 'parent' key. For instance:
@@ -156,16 +156,18 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             "NEWA-123": {
                 "description": "description of first issue",
                 "parent": "NEWA-456"
-                "status": "closed"
+                "status": "closed",
+                "updated": "2024-01-15T10:30:00.000+0000"
             }
             "NEWA-456": {
                 "description": "description of second issue"
-                "status": "opened"
+                "status": "opened",
+                "updated": "2024-01-16T14:20:00.000+0000"
             }
         }
         """
 
-        fields = ["description", "parent", "status"]
+        fields = ["description", "parent", "status", "updated"]
 
         newa_description = f"{self.newa_id(action, True) if all_respins else self.newa_id(action)}"
         if closed:
@@ -203,7 +205,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             # and None values
             description = jira_issue["fields"].get("description") or ""
             if newa_description in description:
-                result[jira_issue["key"]] = {"description": description}
+                result[jira_issue["key"]] = {
+                    "description": description,
+                    "updated": jira_issue["fields"].get("updated", ""),
+                    }
                 if jira_issue["fields"]["status"]["name"] in self.transitions.closed:
                     result[jira_issue["key"]] |= {"status": "closed"}
                 else:
@@ -626,6 +631,18 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                     self.logger.debug(f"Issue {issue.id} updated successfully")
             except jira.JIRAError as e:
                 raise Exception(f"Unable to update issue {issue.id}!") from e
+
+            # Add comment about NEWA ID update (isolated from main update to avoid
+            # failing the entire operation if comment fails)
+            try:
+                formatted_id = self._format_for_jira(self.newa_id(action))
+                self.comment_issue(
+                    issue, f"NEWA ID has been updated to:\n{formatted_id}")
+                short_sleep()
+            except jira.JIRAError as e:
+                if self.logger:
+                    self.logger.warning(
+                        f"Unable to add NEWA ID comment to issue {issue.id}: {e}")
 
         # Handle status transitions if specified (independent of other field changes)
         if transition_name:

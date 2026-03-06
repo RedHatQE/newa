@@ -137,6 +137,7 @@ class IssueTransitions(Serializable):
     dropped: list[str] = field()
     processed: Optional[list[str]] = None
     passed: Optional[list[str]] = None
+    updated: Optional[list[str]] = None
 
 
 @define

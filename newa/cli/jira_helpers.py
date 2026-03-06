@@ -202,6 +202,38 @@ def _render_action_fields(
             rendered_fields, rendered_links, rendered_schedule)
 
 
+def _select_most_recently_updated_issue(
+        old_closed_issues: list[Issue],
+        search_result: dict[str, dict[str, str]]) -> Issue:
+    """
+    Select the most recently updated issue from a list of issues.
+
+    Uses pre-fetched updated timestamps from get_related_issues() to avoid
+    making additional API calls for each candidate issue.
+
+    Args:
+        old_closed_issues: List of old closed issues to select from
+        search_result: Dict from get_related_issues() containing issue metadata
+                      including 'updated' timestamps
+
+    Returns:
+        The most recently updated issue
+    """
+    if len(old_closed_issues) == 1:
+        return old_closed_issues[0]
+
+    most_recent_issue = old_closed_issues[0]
+    most_recent_time = search_result.get(most_recent_issue.id, {}).get("updated", "")
+
+    for issue in old_closed_issues:
+        updated_time = search_result.get(issue.id, {}).get("updated", "")
+        if updated_time > most_recent_time:
+            most_recent_time = updated_time
+            most_recent_issue = issue
+
+    return most_recent_issue
+
+
 def _find_or_create_issue(
         ctx: CLIContext,
         action: IssueAction,
@@ -220,16 +252,28 @@ def _find_or_create_issue(
     """
     Find existing issue or create a new one.
 
-    Returns (issue, old_issues, trigger_comment).
+    Returns (issue, old_opened_issues, trigger_comment) where:
+    - issue: The issue to use (new or existing)
+    - old_opened_issues: List of old open issues to be closed (for CLOSE action)
+    - trigger_comment: Whether to trigger erratum/RoG comments
+
     Returns (None, [], False) if action should be skipped.
     """
     new_issues: list[Issue] = []
-    old_issues: list[Issue] = []
+    old_opened_issues: list[Issue] = []
+    old_closed_issues: list[Issue] = []
     create_new_issue = not ctx.issue_id_filter_pattern
+    search_result: dict[str, dict[str, str]] = {}
 
     # Get transition settings
     transition_passed = None
     transition_processed = None
+    transition_updated = None
+
+    # Extract transition_updated for UPDATE action (regardless of auto_transition)
+    if jira_handler.transitions.updated:
+        transition_updated = jira_handler.transitions.updated[0]
+
     if action.auto_transition:
         if jira_handler.transitions.passed:
             transition_passed = jira_handler.transitions.passed[0]
@@ -259,7 +303,7 @@ def _find_or_create_issue(
                 action, all_respins=True, closed=True)
 
         for jira_issue_key, jira_issue in search_result.items():
-            ctx.logger.info(f"Checking {jira_issue_key}")
+            ctx.logger.debug(f"Checking {jira_issue_key}")
 
             is_new = False
             if jira_handler.newa_id(action) in jira_issue["description"] \
@@ -276,18 +320,59 @@ def _find_or_create_issue(
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
             elif jira_issue["status"] == "opened":
-                old_issues.append(
+                # Opened issue with old newa_id (different respin)
+                old_opened_issues.append(
                     Issue(
                         jira_issue_key,
                         group=config.group,
                         closed=False,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
+            else:
+                # Closed issue with old newa_id (different respin)
+                old_closed_issues.append(
+                    Issue(
+                        jira_issue_key,
+                        group=config.group,
+                        closed=True,
+                        transition_passed=transition_passed,
+                        transition_processed=transition_processed))
 
-    # Old opened issue(s) can be re-used for the current respin
-    if old_issues and action.on_respin in (OnRespinAction.KEEP, OnRespinAction.UPDATE):
-        new_issues.extend(old_issues)
-        old_issues = []
+    # Handle old issues (with old newa_id from different respin):
+    # Only process old issues if no new issues with current newa_id were found
+    # - For KEEP and UPDATE actions, old open issues can be re-used for the current respin
+    # - For UPDATE action, old closed issues can be reopened ONLY if there are no old
+    #   open issues (prioritize open over closed)
+    if not new_issues:
+        if old_opened_issues and action.on_respin in (OnRespinAction.KEEP, OnRespinAction.UPDATE):
+            new_issues.extend(old_opened_issues)
+            old_opened_issues = []
+            # Ignore old closed issues if we have open ones
+            if old_closed_issues:
+                ctx.logger.debug(
+                    f"Ignoring {len(old_closed_issues)} old closed issue(s) "
+                    f"in favor of open issue(s)")
+                old_closed_issues = []
+        elif old_closed_issues and action.on_respin == OnRespinAction.UPDATE:
+            # No old open issues, but we have old closed issues - reopen them
+            # Select the most recently updated one
+            # transition_updated (if configured) will be applied when the issue is updated
+            if len(old_closed_issues) > 1:
+                ctx.logger.debug(
+                    f"Found {len(old_closed_issues)} old closed issues, "
+                    f"selecting the most recently updated one")
+                selected_issue = _select_most_recently_updated_issue(
+                    old_closed_issues, search_result)
+                ctx.logger.debug(f"Selected issue: {selected_issue.id}")
+            else:
+                selected_issue = old_closed_issues[0]
+                ctx.logger.info(
+                    f"Found old closed issue {selected_issue.id} that will be reopened")
+
+            # Mark as not closed since we're reopening it
+            selected_issue.closed = False
+            new_issues.append(selected_issue)
+            old_closed_issues = []
 
     # Unless we want recreate closed issues we would stop processing
     if new_issues and (not recreate):
@@ -356,6 +441,13 @@ def _find_or_create_issue(
                 ctx.logger.debug(f"update_issue returned: {trigger_comment}")
                 if trigger_comment:
                     ctx.logger.info(f"Issue {new_issue} updated for respin")
+                    # Apply transition_updated if configured
+                    if transition_updated:
+                        short_sleep()
+                        jira_handler.connection.transition_issue(
+                            new_issue.id, transition=transition_updated)
+                        ctx.logger.debug(
+                            f"Issue {new_issue.id} transitioned to '{transition_updated}'")
             else:
                 ctx.logger.info("Skipping issue update due to --no-newa-id flag")
         else:
@@ -374,7 +466,7 @@ def _find_or_create_issue(
     else:
         raise Exception(f"More than one new {action.id} found ({new_issues})!")
 
-    return new_issue, old_issues, trigger_comment
+    return new_issue, old_opened_issues, trigger_comment
 
 
 def _handle_erratum_comment_for_jira(
