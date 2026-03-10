@@ -62,8 +62,10 @@ class Settings:  # type: ignore[no-untyped-def]
     jira_token: str = ''
     jira_email: str = ''
     jira_project: str = ''
+    jira_show_url: bool = False
     tf_token: str = ''
     tf_recheck_delay: str = ''
+    tf_show_url: bool = False
     rog_token: str = ''
     ai_api_url: str = ''
     ai_api_token: str = ''
@@ -157,6 +159,11 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'jira/email',
                 'NEWA_JIRA_EMAIL'),
+            jira_show_url=_str_to_bool(
+                _get(
+                    cp,
+                    'jira/show_url',
+                    'NEWA_JIRA_SHOW_URL')),
             tf_token=_get(
                 cp,
                 'testingfarm/token',
@@ -166,6 +173,11 @@ class Settings:  # type: ignore[no-untyped-def]
                 'testingfarm/recheck_delay',
                 'NEWA_TF_RECHECK_DELAY',
                 "60"),
+            tf_show_url=_str_to_bool(
+                _get(
+                    cp,
+                    'testingfarm/show_url',
+                    'NEWA_TF_SHOW_URL')),
             rog_token=_get(
                 cp,
                 'rog/token',
