@@ -105,7 +105,7 @@ class Settings:  # type: ignore[no-untyped-def]
             et_url=_get(
                 cp,
                 'erratatool/url',
-                'NEWA_ET_URL'),
+                'NEWA_ET_URL').rstrip('/'),
             et_enable_comments=_str_to_bool(
                 _get(
                     cp,
@@ -124,7 +124,7 @@ class Settings:  # type: ignore[no-untyped-def]
             rp_url=_get(
                 cp,
                 'reportportal/url',
-                'NEWA_REPORTPORTAL_URL'),
+                'NEWA_REPORTPORTAL_URL').rstrip('/'),
             rp_token=_get(
                 cp,
                 'reportportal/token',
@@ -148,7 +148,7 @@ class Settings:  # type: ignore[no-untyped-def]
             jira_url=_get(
                 cp,
                 'jira/url',
-                'NEWA_JIRA_URL'),
+                'NEWA_JIRA_URL').rstrip('/'),
             jira_token=_get(
                 cp,
                 'jira/token',
@@ -173,7 +173,7 @@ class Settings:  # type: ignore[no-untyped-def]
             ai_api_url=_get(
                 cp,
                 'ai/api_url',
-                'NEWA_AI_API_URL'),
+                'NEWA_AI_API_URL').rstrip('/'),
             ai_api_token=_get(
                 cp,
                 'ai/api_token',
