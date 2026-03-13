@@ -125,7 +125,12 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
                     pass
             envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
                              for e in tf_request.details['environments_requested']])
-            log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
+            if ctx.settings.tf_show_url:
+                log(
+                    f'TF request {execute_job.execution.artifacts_url}'
+                    f' envs: {envs} state: {state}')
+            else:
+                log(f'TF request {tf_request.uuid} envs: {envs} state: {state}')
             finished = tf_request.is_finished()
         else:
             log(f'Could not read details of TF request {tf_request.uuid}')
