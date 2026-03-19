@@ -48,6 +48,12 @@ def render_template(
     max_iterations = iterations or limit
     use_limit_mode = iterations is None
 
+    # Our common tests for each render_template call
+    def _test_match(s: str, pattern: str) -> bool:
+        return re.match(pattern, s) is not None
+
+    environment.tests['match'] = _test_match
+
     try:
         for _ in range(max_iterations):
             new = environment.from_string(old).render(**variables).strip()
@@ -117,13 +123,9 @@ def eval_test(
 
         raise Exception(f"Unsupported type in 'rog-mr' test: {type(obj).__name__}")
 
-    def _test_match(s: str, pattern: str) -> bool:
-        return re.match(pattern, s) is not None
-
     environment.tests['compose'] = _test_compose
     environment.tests['erratum'] = _test_erratum
     environment.tests['RoG'] = _test_rog
-    environment.tests['match'] = _test_match
 
     try:
         outcome = render_template(
