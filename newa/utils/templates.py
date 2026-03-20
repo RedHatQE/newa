@@ -41,7 +41,8 @@ def render_template(
     :param limit: if iterations not set, maximum iterations before raising exception (default 50).
     :param variables: variables to pass to the template.
     """
-    environment = environment or default_template_environment()
+    environment = default_template_environment() if environment is None else environment.overlay()
+
     old = template
 
     # Determine max iterations: use iterations if set, otherwise limit
@@ -49,10 +50,12 @@ def render_template(
     use_limit_mode = iterations is None
 
     # Our common tests for each render_template call
-    def _test_match(s: str, pattern: str) -> bool:
-        return re.match(pattern, s) is not None
+    # Register if not already present
+    if 'match' not in environment.tests:
+        def _test_match(s: str, pattern: str) -> bool:
+            return re.match(pattern, s) is not None
 
-    environment.tests['match'] = _test_match
+        environment.tests['match'] = _test_match
 
     try:
         for _ in range(max_iterations):
