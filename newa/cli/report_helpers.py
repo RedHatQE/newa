@@ -76,6 +76,8 @@ def execute_jobs_summary(ctx: CLIContext,
         if target == 'ReportPortal':
             new_line = "{id}: {state}, {result}".format(**results[req])
         else:
+            # replace "|" with unicode "Fullwidth Vertical Line"
+            results[req]['plan'] = results[req]['plan'].replace('|', '｜')  # noqa: RUF001
             new_line = (
                 "| [{id}|{url}] | {state} | {result} | {plan} | {suite_desc} |".format(
                     **results[req])
