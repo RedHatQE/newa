@@ -322,7 +322,8 @@ def _process_jira_id_reports(
         rp: Optional[ReportPortal],
         jira_connection: Any,
         et: Optional[ErrataTool],
-        rog: Optional[RoGTool]) -> None:
+        rog: Optional[RoGTool],
+        jira_comment_limit: int) -> None:
     """Process reporting for a single Jira ID."""
     # Get RP launch details
     launch_uuid, launch_url = _get_rp_launch_details(execute_jobs)
@@ -343,7 +344,7 @@ def _process_jira_id_reports(
         jira_id,
         execute_jobs,
         target='Jira',
-        max_length=65000 - len(footer))
+        max_length=jira_comment_limit - len(footer))
     launch_description = execute_jobs_summary(ctx, jira_id, execute_jobs, target='ReportPortal')[0]
 
     # Finalize RP launch if needed
