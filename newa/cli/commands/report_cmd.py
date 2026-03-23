@@ -43,7 +43,9 @@ def cmd_report(ctx: CLIContext) -> None:
 
     # Initialize connections
     rp = initialize_rp_connection(ctx) if ctx.settings.rp_url else None
-    jira_connection = ctx.get_jira_connection().get_connection()
+    jira_conn_wrapper = ctx.get_jira_connection()
+    jira_connection = jira_conn_wrapper.get_connection()
+    jira_comment_limit = jira_conn_wrapper.get_comment_length_limit()
 
     # Initialize Errata Tool connection only if there are erratum events
     et = None
@@ -71,4 +73,4 @@ def cmd_report(ctx: CLIContext) -> None:
     # Process reports for each Jira ID
     for jira_id, execute_jobs in jira_execute_job_mapping.items():
         _process_jira_id_reports(
-            ctx, jira_id, execute_jobs, rp, jira_connection, et, rog)
+            ctx, jira_id, execute_jobs, rp, jira_connection, et, rog, jira_comment_limit)

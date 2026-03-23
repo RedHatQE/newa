@@ -128,6 +128,19 @@ class JiraConnection:
             self._is_cloud = 'atlassian.net' in self.url.lower()
         return self._is_cloud
 
+    def get_comment_length_limit(self) -> int:
+        """
+        Get the maximum comment length limit based on Jira server type.
+
+        Jira Cloud has a lower limit (32767 characters) compared to
+        Jira Server (65535 characters). We use conservative values
+        to leave some reserve space.
+
+        Returns:
+            int: Maximum comment length (32000 for Cloud, 65000 for Server)
+        """
+        return 32000 if self.is_cloud else 65000
+
     def get_connection(self) -> jira.JIRA:
         """
         Get or create Jira connection with lazy initialization.
