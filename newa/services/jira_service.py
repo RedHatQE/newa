@@ -89,14 +89,43 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
     def _format_for_jira(self, text: str) -> str:
         """
-        Format text for Jira Cloud or Server.
+        Format text for Jira to prevent auto-linking of issue keys.
 
-        For Jira Cloud, wraps text in {{...}} (inline code) to prevent mention parsing.
-        For Jira Server, returns text as-is.
+        Replaces regular hyphens with non-breaking hyphens (U+2011) which look identical
+        but don't trigger Jira's issue key detection and auto-linking.
         """
-        if self.jira_connection.is_cloud:
-            return f"{{{{{text}}}}}"
-        return text
+        # Replace regular hyphen (-) with non-breaking hyphen (-, U+2011)
+        # This prevents Jira from auto-linking issue keys like "RHELMISC-29371"
+        # while keeping the text visually identical
+        return text.replace('-', '\u2011')
+
+    def _newa_id_in_description(self, newa_id: str, description: str) -> Optional[str]:
+        """
+        Find NEWA ID in description and return the actual matching string.
+
+        Handles backwards compatibility by checking for both regular and non-breaking hyphens.
+        This allows matching old NEWA IDs (with regular hyphens) and new ones (with non-breaking
+        hyphens), and returns the actual string that was found in the description.
+
+        Args:
+            newa_id: The NEWA ID to search for (with regular hyphens)
+            description: The description text to search in
+
+        Returns:
+            The actual matching NEWA ID string found in the description, or None if not found.
+            The returned string will have the same hyphen format as it appears in the description
+            (either all regular hyphens or all non-breaking hyphens).
+        """
+        # Try to find with formatted (non-breaking) hyphens first
+        formatted_id = self._format_for_jira(newa_id)
+        if formatted_id in description:
+            return formatted_id
+
+        # Fall back to original (regular) hyphens for backwards compatibility
+        if newa_id in description:
+            return newa_id
+
+        return None
 
     def get_user_name(self, assignee_email: str) -> str:
         """
@@ -169,42 +198,69 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         fields = ["description", "parent", "status", "updated"]
 
-        newa_description = f"{self.newa_id(action, True) if all_respins else self.newa_id(action)}"
+        # Get base NEWA ID (with regular hyphens)
+        base_newa_id = self.newa_id(action, True) if all_respins else self.newa_id(action)
+
+        # Search with both formats for backwards compatibility
+        # New format: non-breaking hyphens
+        formatted_newa_id = self._format_for_jira(base_newa_id)
+        # Old format: regular hyphens
+        original_newa_id = base_newa_id
+
+        # Build queries for both formats
+        queries = []
+        base_filter = f"project = '{self.project}' AND labels in ({self.newa_label})"
         if closed:
-            query = \
-                f"project = '{self.project}' AND " + \
-                f"labels in ({self.newa_label}) AND " + \
-                f"description ~ '{newa_description}'"
+            status_filter = ""
         else:
-            query = \
-                f"project = '{self.project}' AND " + \
-                f"labels in ({self.newa_label}) AND " + \
-                f"description ~ '{newa_description}' AND " + \
-                f"status not in ({','.join(self.transitions.closed)})"
+            status_filter = f" AND status not in ({','.join(self.transitions.closed)})"
 
-        # Use v3 API for Jira Cloud (which returns ADF format), v2 for Server
-        if self.jira_connection.is_cloud:
-            search_result = self.jira_connection.search_issues_v3(
-                jql=query,
-                fields=fields,
-                max_results=100,  # Increase limit for better results
-                )
-        else:
-            search_result = self.connection.search_issues(query, fields=fields, json_result=True)
+        # Query 1: Search with formatted NEWA ID (non-breaking hyphens)
+        queries.append(
+            f"{base_filter} AND description ~ '{formatted_newa_id}'{status_filter}")
 
-        if not isinstance(search_result, dict):
-            raise Exception(f"Unexpected search result type {type(search_result)}!")
+        # Query 2: Search with original NEWA ID (regular hyphens) for backwards compatibility
+        queries.append(
+            f"{base_filter} AND description ~ '{original_newa_id}'{status_filter}")
+
+        # Execute both searches and merge results
+        all_issues: dict[str, dict[str, Any]] = {}
+
+        for query in queries:
+            # Use v3 API for Jira Cloud (which returns ADF format), v2 for Server
+            if self.jira_connection.is_cloud:
+                search_result = self.jira_connection.search_issues_v3(
+                    jql=query,
+                    fields=fields,
+                    max_results=100,  # Increase limit for better results
+                    )
+            else:
+                search_result = self.connection.search_issues(
+                    query, fields=fields, json_result=True)
+
+            if not isinstance(search_result, dict):
+                raise Exception(f"Unexpected search result type {type(search_result)}!")
+
+            # Merge issues by key (avoid duplicates)
+            for jira_issue in search_result["issues"]:
+                issue_key = jira_issue["key"]
+                if issue_key not in all_issues:
+                    all_issues[issue_key] = jira_issue
+
+            short_sleep()
 
         # Transformation of search_result json into simpler structure gets rid of
         # linter warning and also makes easier mocking (for tests).
         # Additionally, double-check that the description matches since Jira tend to mess up
         # searches containing characters like underscore, space etc. and may return extra issues
         result = {}
-        for jira_issue in search_result["issues"]:
+
+        for jira_issue in all_issues.values():
             # Handle both string descriptions (from v3 after ADF conversion or v2)
             # and None values
             description = jira_issue["fields"].get("description") or ""
-            if newa_description in description:
+            # Use helper function for backwards-compatible comparison
+            if self._newa_id_in_description(base_newa_id, description) is not None:
                 result[jira_issue["key"]] = {
                     "description": description,
                     "updated": jira_issue["fields"].get("updated", ""),
@@ -509,22 +565,30 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             description = ""
 
         # Issue does not have any NEWA ID yet
-        if isinstance(description, str) and self.newa_id() not in description:
+        # Use helper function for backwards-compatible comparison
+        if isinstance(description, str) and self._newa_id_in_description(
+                self.newa_id(), description) is None:
             new_description = f"{self._format_for_jira(self.newa_id(action))}\n{description}"
             return_value = True
             if self.logger:
                 self.logger.debug("refresh_issue: Adding newa_id (no ID present)")
 
         # Issue has NEWA ID but not the current respin - update it.
-        elif isinstance(description, str) and self.newa_id(action) not in description:
-            # Strip any existing formatting ({{...}}) from the old NEWA ID before replacing
-            pattern = f"^(?:\\{{{{)?{re.escape(self.newa_id())}(?:\\}}}})?.*\n"
-            new_description = re.sub(pattern,
-                                     f"{self._format_for_jira(self.newa_id(action))}\n",
-                                     description)
-            return_value = True
-            if self.logger:
-                self.logger.debug("refresh_issue: Updating newa_id (different respin)")
+        elif isinstance(description, str):
+            # Check if current respin's NEWA ID is already present
+            current_match = self._newa_id_in_description(self.newa_id(action), description)
+            if current_match is None:
+                # Find the old NEWA ID in the description
+                old_match = self._newa_id_in_description(self.newa_id(), description)
+                if old_match:
+                    # Replace old NEWA ID with new one (preserving the format we found)
+                    pattern = f"^{re.escape(old_match)}.*\n"
+                    new_description = re.sub(pattern,
+                                             f"{self._format_for_jira(self.newa_id(action))}\n",
+                                             description)
+                    return_value = True
+                    if self.logger:
+                        self.logger.debug("refresh_issue: Updating newa_id (different respin)")
 
         if new_description:
             if self.logger:
@@ -574,7 +638,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         current_description = issue_details.fields.description or ""
 
         # Check if NEWA ID is already correct (same logic as refresh_issue)
-        if self.newa_id(action) in current_description:
+        # Use helper function for backwards-compatible comparison
+        if self._newa_id_in_description(self.newa_id(action), current_description) is not None:
             if self.logger:
                 self.logger.info(
                     f"Issue {issue.id} already has correct NEWA ID, skipping update")

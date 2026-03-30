@@ -61,14 +61,57 @@ def _create_jira_fake_id_generator() -> Generator[str, int, None]:
         n += 1
 
 
+def _sanitize_jira_field_value(value: Any) -> Any:
+    """
+    Sanitize Jira field values to prevent Jinja2 template conflicts.
+
+    Jira uses {{ }} for code formatting, which conflicts with Jinja2 syntax.
+    This function replaces the braces with double quotes.
+    """
+    if isinstance(value, str):
+        # Replace {{ and }} with double quotes
+        return value.replace('{{', '"').replace('}}', '"')
+    if isinstance(value, list):
+        return [_sanitize_jira_field_value(item) for item in value]
+    if isinstance(value, dict):
+        return {k: _sanitize_jira_field_value(v) for k, v in value.items()}
+    # Return other types unchanged (int, bool, None, objects, etc.)
+    return value
+
+
 def _get_jira_event_fields(
         ctx: CLIContext,
         artifact_job: ArtifactJob,
         jira_handler: IssueHandler) -> Any:
     """Get Jira event fields for Jinja template usage."""
     if artifact_job.event.type_ is EventType.JIRA:
-        jira_event_fields = jira_handler.get_details(Issue(artifact_job.event.id)).fields
-        jira_event_fields.id = artifact_job.event.id
+        jira_fields_obj = jira_handler.get_details(Issue(artifact_job.event.id)).fields
+
+        # Convert fields object to dictionary and sanitize values
+        jira_event_fields: dict[str, Any] = {}
+
+        # Iterate through all attributes of the fields object
+        try:
+            obj_dict = vars(jira_fields_obj)
+            for attr_name, attr_value in obj_dict.items():
+                # Skip private/protected attributes
+                if not attr_name.startswith('_'):
+                    jira_event_fields[attr_name] = _sanitize_jira_field_value(attr_value)
+        except TypeError:
+            # If vars() doesn't work, fall back to using dir()
+            for attr_name in dir(jira_fields_obj):
+                if not attr_name.startswith('_'):
+                    try:
+                        attr_value = getattr(jira_fields_obj, attr_name)
+                        # Skip methods
+                        if not callable(attr_value):
+                            jira_event_fields[attr_name] = _sanitize_jira_field_value(attr_value)
+                    except (AttributeError, TypeError):
+                        # Skip attributes that can't be accessed
+                        pass
+
+        # Add the event ID
+        jira_event_fields['id'] = artifact_job.event.id
         short_sleep()
     else:
         jira_event_fields = {}
@@ -306,9 +349,11 @@ def _find_or_create_issue(
             ctx.logger.debug(f"Checking {jira_issue_key}")
 
             is_new = False
-            if jira_handler.newa_id(action) in jira_issue["description"] \
+            # Use helper function for backwards-compatible comparison
+            if (jira_handler._newa_id_in_description(
+                    jira_handler.newa_id(action), jira_issue["description"]) is not None
                 and (not action.parent_id
-                     or action.parent_id not in created_action_ids):
+                     or action.parent_id not in created_action_ids)):
                 is_new = True
 
             if is_new:
