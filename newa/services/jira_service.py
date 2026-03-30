@@ -99,7 +99,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         # while keeping the text visually identical
         return text.replace('-', '\u2011')
 
-    def _newa_id_in_description(self, newa_id: str, description: str) -> Optional[str]:
+    def newa_id_in_description(self, newa_id: str, description: str) -> Optional[str]:
         """
         Find NEWA ID in description and return the actual matching string.
 
@@ -260,7 +260,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             # and None values
             description = jira_issue["fields"].get("description") or ""
             # Use helper function for backwards-compatible comparison
-            if self._newa_id_in_description(base_newa_id, description) is not None:
+            if self.newa_id_in_description(base_newa_id, description) is not None:
                 result[jira_issue["key"]] = {
                     "description": description,
                     "updated": jira_issue["fields"].get("updated", ""),
@@ -566,7 +566,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         # Issue does not have any NEWA ID yet
         # Use helper function for backwards-compatible comparison
-        if isinstance(description, str) and self._newa_id_in_description(
+        if isinstance(description, str) and self.newa_id_in_description(
                 self.newa_id(), description) is None:
             new_description = f"{self._format_for_jira(self.newa_id(action))}\n{description}"
             return_value = True
@@ -576,10 +576,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         # Issue has NEWA ID but not the current respin - update it.
         elif isinstance(description, str):
             # Check if current respin's NEWA ID is already present
-            current_match = self._newa_id_in_description(self.newa_id(action), description)
+            current_match = self.newa_id_in_description(self.newa_id(action), description)
             if current_match is None:
                 # Find the old NEWA ID in the description
-                old_match = self._newa_id_in_description(self.newa_id(), description)
+                old_match = self.newa_id_in_description(self.newa_id(), description)
                 if old_match:
                     # Replace old NEWA ID with new one (preserving the format we found)
                     pattern = f"^{re.escape(old_match)}.*\n"
@@ -639,7 +639,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         # Check if NEWA ID is already correct (same logic as refresh_issue)
         # Use helper function for backwards-compatible comparison
-        if self._newa_id_in_description(self.newa_id(action), current_description) is not None:
+        if self.newa_id_in_description(self.newa_id(action), current_description) is not None:
             if self.logger:
                 self.logger.info(
                     f"Issue {issue.id} already has correct NEWA ID, skipping update")

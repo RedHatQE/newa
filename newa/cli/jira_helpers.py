@@ -350,7 +350,7 @@ def _find_or_create_issue(
 
             is_new = False
             # Use helper function for backwards-compatible comparison
-            if (jira_handler._newa_id_in_description(
+            if (jira_handler.newa_id_in_description(
                     jira_handler.newa_id(action), jira_issue["description"]) is not None
                 and (not action.parent_id
                      or action.parent_id not in created_action_ids)):
