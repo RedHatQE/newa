@@ -135,7 +135,7 @@ def cmd_list(
                 _print(4, f'issue {jira_job.jira.id} ({jira_action_id}) {jira_summary}')
                 if jira_job.jira.url:
                     _print(4, jira_job.jira.url)
-                if jira_job.recipe.url:
+                if jira_job.recipe and jira_job.recipe.url:
                     _print(6, f'recipe: {jira_job.recipe.url}')
                 # Skip schedule/execute details if --issues flag is set
                 if issues:

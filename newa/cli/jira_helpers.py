@@ -574,7 +574,15 @@ def _create_jira_job_from_action(
         artifact_job: ArtifactJob,
         jira_event_fields: dict[str, Any],
         new_issue: Issue) -> None:
-    """Create and save JiraJob if action has job_recipe."""
+    """Create and save JiraJob with or without recipe."""
+    if action.erratum_comment_triggers:
+        new_issue.erratum_comment_triggers = action.erratum_comment_triggers
+    if action.rog_comment_triggers:
+        new_issue.rog_comment_triggers = action.rog_comment_triggers
+    new_issue.action_id = action.id
+
+    # Create recipe if job_recipe is specified
+    recipe = None
     if action.job_recipe:
         recipe_url = render_template(
             action.job_recipe,
@@ -585,22 +593,20 @@ def _create_jira_job_from_action(
             ROG=artifact_job.rog,
             CONTEXT=action.context,
             ENVIRONMENT=action.environment)
-        if action.erratum_comment_triggers:
-            new_issue.erratum_comment_triggers = action.erratum_comment_triggers
-        if action.rog_comment_triggers:
-            new_issue.rog_comment_triggers = action.rog_comment_triggers
-        new_issue.action_id = action.id
-        jira_job = JiraJob(
-            event=artifact_job.event,
-            erratum=artifact_job.erratum,
-            compose=artifact_job.compose,
-            rog=artifact_job.rog,
-            jira=new_issue,
-            recipe=Recipe(
-                url=recipe_url,
-                context=action.context,
-                environment=action.environment))
-        ctx.save_jira_job(jira_job)
+        recipe = Recipe(
+            url=recipe_url,
+            context=action.context,
+            environment=action.environment)
+
+    # Create JiraJob with or without recipe
+    jira_job = JiraJob(
+        event=artifact_job.event,
+        erratum=artifact_job.erratum,
+        compose=artifact_job.compose,
+        rog=artifact_job.rog,
+        jira=new_issue,
+        recipe=recipe)
+    ctx.save_jira_job(jira_job)
 
 
 def _close_old_issues(
