@@ -1,6 +1,13 @@
 """Data models for newa."""
 
-from newa.models.artifacts import UNDEFINED_COMPOSE, Compose, Erratum, ErratumContentType, RoG
+from newa.models.artifacts import (
+    UNDEFINED_COMPOSE,
+    Compose,
+    Erratum,
+    ErratumContentType,
+    JiraIssue,
+    RoG,
+    )
 from newa.models.base import (
     TF_REQUEST_FINISHED_STATES,
     Arch,
@@ -79,6 +86,7 @@ __all__ = [
     'IssueConfig',
     'IssueTransitions',
     'IssueType',
+    'JiraIssue',
     'JiraJob',
     'OnRespinAction',
     'RawRecipeConfigDimension',

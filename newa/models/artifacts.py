@@ -120,3 +120,18 @@ class RoG(Cloneable, Serializable):  # type: ignore[no-untyped-def]
                                   for a in arch_list])
     builds: list[str] = field(factory=list)
     components: list[str] = field(factory=list)
+
+
+@define
+class JiraIssue(Cloneable, Serializable):
+    """
+    A Jira issue used as an event.
+
+    Represents a Jira issue that triggered a NEWA pipeline run.
+    """
+
+    id: str = field()
+    summary: str = field(repr=False)
+    url: str = field()
+    reporter: Optional[str] = field(default=None)
+    assignee: Optional[str] = field(default=None)

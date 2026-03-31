@@ -112,6 +112,16 @@ def cmd_list(
                 _print(2, event_job.erratum.url)
             elif event_job.rog:
                 _print(2, f'event {event_job.id} - {event_job.rog.title}')
+            elif event_job.jira_issue:
+                _print(2, f'event {event_job.id} - {event_job.jira_issue.summary}')
+                _print(2, event_job.jira_issue.url)
+                people_info = []
+                if event_job.jira_issue.assignee:
+                    people_info.append(f'assignee: {event_job.jira_issue.assignee}')
+                if event_job.jira_issue.reporter:
+                    people_info.append(f'reporter: {event_job.jira_issue.reporter}')
+                if people_info:
+                    _print(2, ', '.join(people_info))
             else:
                 _print(2, f'event {event_job.id}')
             # Skip Jira issues and other details if --events flag is set
