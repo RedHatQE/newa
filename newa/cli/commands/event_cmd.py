@@ -2,6 +2,7 @@
 
 import copy
 import sys
+import urllib.parse
 from typing import Optional
 
 import click
@@ -14,11 +15,13 @@ from newa import (
     ErratumContentType,
     Event,
     EventType,
+    JiraIssue,
     NVRParser,
     RoGTool,
     )
 from newa.cli.initialization import initialize_et_connection
 from newa.cli.utils import derive_compose, initialize_state_dir, test_file_presence
+from newa.services.jira_connection import JiraConnection
 
 
 def copy_events_from_previous_statedir(ctx: CLIContext) -> None:
@@ -165,13 +168,67 @@ def process_event_rog_urls(
 
 def process_event_jira_keys(ctx: CLIContext, jira_keys: list[str]) -> None:
     """Process Jira issue keys and create corresponding artifact jobs."""
+    if not jira_keys:
+        return
+
+    # Initialize Jira connection
+    if not ctx.settings.jira_url:
+        raise Exception('Jira URL is not configured!')
+    if not ctx.settings.jira_token:
+        raise Exception('Jira token is not configured!')
+
+    jira_conn = JiraConnection(
+        url=ctx.settings.jira_url,
+        token=ctx.settings.jira_token,
+        email=ctx.settings.jira_email if ctx.settings.jira_email else None,
+        )
+    jira_connection = jira_conn.get_connection()
+
     for jira_key in jira_keys:
         event = Event(type_=EventType.JIRA, id=jira_key)
+
+        # Fetch Jira issue details
+        try:
+            jira_issue_data = jira_connection.issue(jira_key)
+            summary = jira_issue_data.fields.summary or ''
+
+            # Get reporter and assignee names
+            reporter = None
+            if hasattr(jira_issue_data.fields, 'reporter') and jira_issue_data.fields.reporter:
+                reporter = jira_issue_data.fields.reporter.displayName
+
+            assignee = None
+            if hasattr(jira_issue_data.fields, 'assignee') and jira_issue_data.fields.assignee:
+                assignee = jira_issue_data.fields.assignee.displayName
+
+            # Construct Jira issue URL
+            jira_url = urllib.parse.urljoin(ctx.settings.jira_url, f'/browse/{jira_key}')
+
+            jira_issue = JiraIssue(
+                id=jira_key,
+                summary=summary,
+                url=jira_url,
+                reporter=reporter,
+                assignee=assignee,
+                )
+        except Exception as e:
+            ctx.logger.warning(f'Failed to fetch Jira issue {jira_key}: {e}')
+            # Create minimal JiraIssue with just the key and URL
+            jira_url = urllib.parse.urljoin(ctx.settings.jira_url, f'/browse/{jira_key}')
+            jira_issue = JiraIssue(
+                id=jira_key,
+                summary='',
+                url=jira_url,
+                reporter=None,
+                assignee=None,
+                )
+
         artifact_job = ArtifactJob(
             event=event,
             erratum=None,
             compose=None,
-            rog=None)
+            rog=None,
+            jira_issue=jira_issue)
         # Apply event filter if specified
         if ctx.should_filter_job(artifact_job):
             continue

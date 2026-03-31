@@ -7,7 +7,7 @@ try:
 except ModuleNotFoundError:
     from attr import define, field
 
-from newa.models.artifacts import Compose, Erratum, ErratumContentType, RoG
+from newa.models.artifacts import Compose, Erratum, ErratumContentType, JiraIssue, RoG
 from newa.models.base import Cloneable, Serializable
 from newa.models.events import Event
 from newa.models.execution import Execution, Request
@@ -48,6 +48,12 @@ class ArtifactJob(EventJob):
 
     rog: Optional[RoG] = field(  # type: ignore[var-annotated]
         converter=lambda x: None if x is None else x if isinstance(x, RoG) else RoG(**x),
+        default=None,
+        )
+
+    jira_issue: Optional[JiraIssue] = field(  # type: ignore[var-annotated]
+        converter=lambda x: None if x is None else x if isinstance(
+            x, JiraIssue) else JiraIssue(**x),
         default=None,
         )
 

@@ -32,6 +32,7 @@ from newa.models import (
     IssueConfig,
     IssueTransitions,
     IssueType,
+    JiraIssue,
     JiraJob,
     OnRespinAction,
     RawRecipeConfigDimension,
@@ -122,6 +123,7 @@ __all__ = [
     'IssueTransitions',
     'IssueType',
     'JiraField',
+    'JiraIssue',
     'JiraIssueLinkType',
     'JiraJob',
     # Utils
