@@ -196,7 +196,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         }
         """
 
-        fields = ["description", "parent", "status", "updated"]
+        fields = ["description", "parent", "status", "updated", "summary"]
 
         # Get base NEWA ID (with regular hyphens)
         base_newa_id = self.newa_id(action, True) if all_respins else self.newa_id(action)
@@ -264,6 +264,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                 result[jira_issue["key"]] = {
                     "description": description,
                     "updated": jira_issue["fields"].get("updated", ""),
+                    "summary": jira_issue["fields"].get("summary", ""),
                     }
                 if jira_issue["fields"]["status"]["name"] in self.transitions.closed:
                     result[jira_issue["key"]] |= {"status": "closed"}
