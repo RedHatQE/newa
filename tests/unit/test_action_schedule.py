@@ -81,10 +81,10 @@ class TestActionScheduleAttribute:
             )
         assert action.schedule is False
 
-    def test_create_jira_job_not_called_when_schedule_false(
+    def test_create_jira_job_called_with_save_recipe_false_when_schedule_false(
             self, mock_ctx, mock_artifact_job, mock_jira_handler, mock_issue_config,
             ):
-        """Test that _create_jira_job_from_action is not called when schedule=False."""
+        """Test _create_jira_job_from_action called with save_recipe=False."""
         action = IssueAction(
             id='test_action',
             summary='Test Action',
@@ -124,12 +124,15 @@ class TestActionScheduleAttribute:
                 rog=None,
                 )
 
-            # Verify that _create_jira_job_from_action was NOT called
-            mock_create_job.assert_not_called()
+            # Verify that _create_jira_job_from_action WAS called with save_recipe=False
+            mock_create_job.assert_called_once()
+            # Check the 6th positional argument (save_recipe)
+            call_args = mock_create_job.call_args[0]
+            assert call_args[5] is False  # save_recipe is the 6th arg (index 5)
 
             # Verify the log message was generated
             mock_ctx.logger.info.assert_any_call(
-                "Not scheduling action 'test_action' as requested.",
+                "Issue TEST-123 will not be scheduled automatically.",
                 )
 
     def test_create_jira_job_called_when_schedule_true(
@@ -222,13 +225,22 @@ class TestActionScheduleAttribute:
                 rog=None,
                 )
 
-            # Verify that _create_jira_job_from_action WAS called despite schedule=False
+            # Verify that _create_jira_job_from_action WAS called with
+            # save_recipe=True despite schedule=False
             mock_create_job.assert_called_once()
+            # Check the 6th positional argument (save_recipe)
+            call_args = mock_create_job.call_args[0]
+            assert call_args[5] is True  # save_recipe is the 6th arg (index 5)
 
-    def test_action_without_job_recipe_no_job_created(
+            # Verify the override log message
+            mock_ctx.logger.info.assert_any_call(
+                "Issue TEST-123 will be scheduled (overridden by filter).",
+                )
+
+    def test_action_without_job_recipe_creates_job_without_recipe(
             self, mock_ctx, mock_artifact_job,
             ):
-        """Test that no job is created when action has no job_recipe."""
+        """Test that a JiraJob is created even when action has no job_recipe."""
         action = IssueAction(
             id='test_action',
             summary='Test Action',
@@ -236,8 +248,9 @@ class TestActionScheduleAttribute:
             schedule=True,
             )
 
-        mock_issue = mock.MagicMock()
-        mock_issue.id = 'TEST-123'
+        from newa import Issue
+
+        mock_issue = Issue('TEST-123')
 
         # Call _create_jira_job_from_action directly
         _create_jira_job_from_action(
@@ -246,11 +259,17 @@ class TestActionScheduleAttribute:
             artifact_job=mock_artifact_job,
             jira_event_fields={},
             new_issue=mock_issue,
+            save_recipe=True,
             )
 
-        # Verify no jira job file was created
+        # Verify jira job file was created
         jira_job_files = list(Path(mock_ctx.state_dirpath).glob('jira-*'))
-        assert len(jira_job_files) == 0
+        assert len(jira_job_files) == 1
+
+        # Verify the job has no recipe
+        from newa import JiraJob
+        jira_job = JiraJob.from_yaml_file(jira_job_files[0])
+        assert jira_job.recipe is None
 
     def test_schedule_attribute_in_yaml_config(self, tmp_path):
         """Test that schedule attribute can be loaded from YAML config."""

@@ -361,6 +361,7 @@ def _find_or_create_issue(
                     Issue(
                         jira_issue_key,
                         group=config.group,
+                        summary=jira_issue.get("summary", ""),
                         closed=jira_issue["status"] == "closed",
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
@@ -370,6 +371,7 @@ def _find_or_create_issue(
                     Issue(
                         jira_issue_key,
                         group=config.group,
+                        summary=jira_issue.get("summary", ""),
                         closed=False,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
@@ -379,6 +381,7 @@ def _find_or_create_issue(
                     Issue(
                         jira_issue_key,
                         group=config.group,
+                        summary=jira_issue.get("summary", ""),
                         closed=True,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
@@ -573,17 +576,22 @@ def _create_jira_job_from_action(
         action: IssueAction,
         artifact_job: ArtifactJob,
         jira_event_fields: dict[str, Any],
-        new_issue: Issue) -> None:
-    """Create and save JiraJob with or without recipe."""
+        new_issue: Issue,
+        save_recipe: bool) -> None:
+    """Create and save JiraJob with or without recipe.
+
+    If save_recipe is False, the recipe is set to None so that
+    the schedule command will skip this issue.
+    """
     if action.erratum_comment_triggers:
         new_issue.erratum_comment_triggers = action.erratum_comment_triggers
     if action.rog_comment_triggers:
         new_issue.rog_comment_triggers = action.rog_comment_triggers
     new_issue.action_id = action.id
 
-    # Create recipe if job_recipe is specified
+    # Create recipe only if save_recipe is True and job_recipe is specified
     recipe = None
-    if action.job_recipe:
+    if save_recipe and action.job_recipe:
         recipe_url = render_template(
             action.job_recipe,
             EVENT=artifact_job.event,
@@ -745,15 +753,21 @@ def _process_issue_action(
             ctx, rog, artifact_job, action, new_issue,
             rendered_summary, trigger_comment)
 
-    # Create jira job if needed
-    # Job is not created for actions with schedule == False, unless
-    # we are using action_id_filter_pattern. In such a case, the action
-    # is matching a filter, otherwise it would be skipped already
-    if rendered_schedule or ctx.action_id_filter_pattern:
-        _create_jira_job_from_action(
-            ctx, action, artifact_job, jira_event_fields, new_issue)
-    else:
-        ctx.logger.info(f"Not scheduling action '{action.id}' as requested.")
+    # Create jira job
+    # If rendered_schedule is False, the recipe will be None and the schedule
+    # command will skip this issue, unless we are using action_id or issue_id filters.
+    # When filters are used, they override the schedule setting.
+    save_recipe = bool(
+        rendered_schedule or ctx.action_id_filter_pattern or ctx.issue_id_filter_pattern)
+    _create_jira_job_from_action(
+        ctx, action, artifact_job, jira_event_fields, new_issue, save_recipe)
+
+    if not rendered_schedule:
+        if save_recipe:
+            ctx.logger.info(
+                f"Issue {new_issue.id} will be scheduled (overridden by filter).")
+        else:
+            ctx.logger.info(f"Issue {new_issue.id} will not be scheduled automatically.")
 
     # Return issue and old_issues for further processing
     return new_issue, old_issues
