@@ -84,8 +84,9 @@ class JiraJob(ArtifactJob):
         converter=lambda x: x if isinstance(x, Issue) else Issue(**x),
         )
 
-    recipe: Recipe = field(  # type: ignore[var-annotated]
-        converter=lambda x: x if isinstance(x, Recipe) else Recipe(**x),
+    recipe: Optional[Recipe] = field(  # type: ignore[var-annotated]
+        converter=lambda x: None if x is None else x if isinstance(x, Recipe) else Recipe(**x),
+        default=None,
         )
 
     @property

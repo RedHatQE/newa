@@ -40,6 +40,9 @@ def _prepare_initial_config(
         jira_job: JiraJob,
         compose: Optional[str]) -> RawRecipeConfigDimension:
     """Prepare initial configuration from jira_job."""
+    # Recipe should never be None here (checked in _process_jira_job)
+    assert jira_job.recipe is not None, "Recipe must not be None"
+
     initial_config = RawRecipeConfigDimension(
         compose=compose,
         environment=jira_job.recipe.environment or {},
@@ -170,6 +173,11 @@ def _process_jira_job(
         no_reportportal: bool) -> None:
     """Process a single jira_job and create schedule jobs."""
     from newa import ScheduleJob
+
+    # Skip jira jobs without recipes
+    if not jira_job.recipe:
+        ctx.logger.info(f'Skipping jira job {jira_job.jira.id} - no recipe specified')
+        return
 
     # Determine compose and architectures
     compose = jira_job.compose.id if jira_job.compose else None
