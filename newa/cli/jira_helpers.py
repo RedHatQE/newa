@@ -907,9 +907,9 @@ def _get_prev_issue_id(ctx: CLIContext) -> str:
 def _create_simple_jira_job(
         ctx: CLIContext,
         artifact_job: ArtifactJob,
-        issue: Optional[str],
+        issue: tuple[str, ...],
         prev_issue: bool,
-        job_recipe: str,
+        job_recipe: tuple[str, ...],
         jira_none_id: Generator[str, int, None]) -> None:
     """Create a simple JiraJob without using issue-config."""
     if not job_recipe:
@@ -917,28 +917,53 @@ def _create_simple_jira_job(
 
     # Handle prev-issue option
     if prev_issue:
-        issue = _get_prev_issue_id(ctx)
+        prev_issue_id = _get_prev_issue_id(ctx)
+        # Validate: --prev-issue can only be used with a single --job-recipe
+        if len(job_recipe) > 1:
+            raise Exception(
+                "Option --prev-issue can only be used with a single --job-recipe")
+        issue = (prev_issue_id,)
 
-    # Handle issue option
+    # Validate --issue arguments
+    if issue:
+        if len(issue) != len(job_recipe):
+            raise Exception(
+                f"Number of --issue arguments ({len(issue)}) must match "
+                f"number of --job-recipe arguments ({len(job_recipe)})")
+        if len(issue) != len(set(issue)):
+            duplicates = [item for item in issue if issue.count(item) > 1]
+            raise Exception(
+                f"Duplicate Jira issue keys found: {set(duplicates)}. "
+                "All --issue values must be unique.")
+
+    # Get Jira connection once if we have issues to fetch
+    jira_connection = None
     if issue:
         jira_connection = ctx.get_jira_connection()
-        jira_issue = jira_connection.get_connection().issue(issue)
-        ctx.logger.info(f"Using issue {issue}")
-        new_issue = Issue(issue,
-                          summary=jira_issue.fields.summary,
-                          url=urllib.parse.urljoin(
-                              ctx.settings.jira_url, f'/browse/{jira_issue.key}'))
-    else:
-        # Use an empty string as ID so we skip Jira reporting later
-        new_issue = Issue(next(jira_none_id))
 
-    jira_job = JiraJob(event=artifact_job.event,
-                       erratum=artifact_job.erratum,
-                       compose=artifact_job.compose,
-                       rog=artifact_job.rog,
-                       jira=new_issue,
-                       recipe=Recipe(
-                           url=job_recipe,
-                           context=ctx.cli_context,
-                           environment=ctx.cli_environment))
-    ctx.save_jira_job(jira_job)
+    # Create JiraJob for each recipe
+    for idx, recipe_url in enumerate(job_recipe):
+        # Determine the issue for this recipe
+        if issue:
+            assert jira_connection is not None  # Already set if issue is truthy
+            issue_id = issue[idx]
+            jira_issue = jira_connection.get_connection().issue(issue_id)
+            ctx.logger.info(f"Using issue {issue_id}")
+            new_issue = Issue(issue_id,
+                              summary=jira_issue.fields.summary,
+                              url=urllib.parse.urljoin(
+                                  ctx.settings.jira_url, f'/browse/{jira_issue.key}'))
+        else:
+            # Generate a unique fake Jira ID for this recipe
+            new_issue = Issue(next(jira_none_id))
+
+        jira_job = JiraJob(event=artifact_job.event,
+                           erratum=artifact_job.erratum,
+                           compose=artifact_job.compose,
+                           rog=artifact_job.rog,
+                           jira=new_issue,
+                           recipe=Recipe(
+                               url=recipe_url,
+                               context=ctx.cli_context,
+                               environment=ctx.cli_environment))
+        ctx.save_jira_job(jira_job)

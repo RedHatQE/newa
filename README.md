@@ -1232,16 +1232,22 @@ $ newa ... jira --issue-config issue-config.yaml --recreate ...
 
 #### Option `--issue`
 
-This option works only when used together with `--job-recipe` option. It instructs NEWA which Jira issue to update with test results.
+This option works only when used together with `--job-recipe` option. It instructs NEWA which Jira issue to update with test results. Can be specified multiple times when using multiple `--job-recipe` options to create a 1:1 mapping between recipes and issues.
 
-Example:
+Examples:
 ```
+# Single recipe with single issue
 $ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml --issue RHEL-12345 schedule execute report
+
+# Multiple recipes with matching issues (1:1 mapping)
+$ newa event --compose CentOS-Stream-9 jira --job-recipe recipe1.yaml --issue RHEL-123 --job-recipe recipe2.yaml --issue RHEL-456 schedule execute report
 ```
+
+**Note:** When using multiple `--job-recipe` options with `--issue`, the number of `--issue` arguments must match the number of `--job-recipe` arguments, and all issue keys must be unique.
 
 #### Option `--prev-issue`
 
-This option works only when used together with `--job-recipe` option. Similarly to the `--issue` option, it instructs NEWA which Jira issue to update, however this time the previously used Jira issue key is automatically chosen. It works only if exactly one Jira issue key is found in the previous NEWA state-dir. See the `--prev-state-dir` option for details how the previous NEWA state-dir is identified.
+This option works only when used together with a single `--job-recipe` option. Similarly to the `--issue` option, it instructs NEWA which Jira issue to update, however this time the previously used Jira issue key is automatically chosen. It works only if exactly one Jira issue key is found in the previous NEWA state-dir. See the `--prev-state-dir` option for details how the previous NEWA state-dir is identified.
 
 Example:
 ```
@@ -1249,14 +1255,27 @@ $ newa event --compose CentOS-Stream-9 jira --issue-config testing.yaml
 $ newa event --prev-event jira --prev-issue --job-recipe testing_part2.yaml
 ```
 
+**Note:** The `--prev-issue` option cannot be used with multiple `--job-recipe` options.
+
 #### Option `--job-recipe`
 
-This option should not be used together with the `--issue-config` option. This option tells NEWA a location of the NEWA recipe YAML file (either a local path or URL) and completely bypasses issue-config file processing step. Instead, NEWA will use the provided recipe YAML for scheduling. Could be used together with `--issue` option.
+This option should not be used together with the `--issue-config` option. This option tells NEWA a location of the NEWA recipe YAML file (either a local path or URL) and completely bypasses issue-config file processing step. Instead, NEWA will use the provided recipe YAML for scheduling. Can be specified multiple times to schedule multiple recipes. Can be used together with `--issue` option.
 
-Example:
+Examples:
 ```
+# Single recipe with issue
 $ newa ... jira --job-recipe path/to/recipe.yaml --issue RHEL-12345 schedule execute report
+
+# Multiple recipes without issues (generates unique fake Jira IDs)
+$ newa ... jira --job-recipe recipe1.yaml --job-recipe recipe2.yaml --job-recipe recipe3.yaml schedule execute report
+
+# Multiple recipes with matching issues (1:1 mapping)
+$ newa ... jira --job-recipe recipe1.yaml --issue RHEL-123 --job-recipe recipe2.yaml --issue RHEL-456 schedule execute report
 ```
+
+**Note:** When using multiple `--job-recipe` options:
+- Without `--issue`: Each recipe gets a unique fake Jira ID (e.g., `_NO_ISSUE_1`, `_NO_ISSUE_2`, etc.)
+- With `--issue`: The number of `--issue` arguments must match the number of `--job-recipe` arguments, creating a 1:1 mapping
 
 ### Subcommand `schedule`
 
