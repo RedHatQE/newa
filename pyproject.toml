@@ -64,6 +64,7 @@ raw-options.version_scheme = "release-branch-semver"
 include = [
     "/newa",
     "/README.md",
+    "/newa-completion.bash",
     ]
 
 # TODO: man page?

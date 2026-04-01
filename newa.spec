@@ -30,12 +30,16 @@ export SETUPTOOLS_SCM_PRETEND_VERSION=%{version}
 %pyproject_install
 %pyproject_save_files newa
 
+# Install bash completion
+install -D -m 0644 newa-completion.bash %{buildroot}%{_datadir}/bash-completion/completions/newa
+
 %check
 %pyproject_check_import
 
 %files -n newa -f %{pyproject_files}
 %doc README.md
 %{_bindir}/newa
+%{_datadir}/bash-completion/completions/newa
 
 %changelog
 * Thu June 06 2024 Miroslav Vadkerti <mvadkert@redhat.com> - 0.1-1
