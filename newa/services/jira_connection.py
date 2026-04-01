@@ -354,15 +354,20 @@ class JiraConnection:
             max_results: int = 50,
             start_at: int = 0) -> dict[str, Any]:
         """
-        Search for issues using Jira Cloud API v3.
+        Search for issues using Jira API v3.
 
-        This method is specifically for Jira Cloud instances and uses the v3 API
-        endpoint /rest/api/3/search/jql which returns description and other rich
-        text fields in ADF (Atlassian Document Format). The ADF content is
-        automatically converted to plain text for compatibility with existing code.
+        This method uses the v3 API search endpoint which is supported by both
+        Jira Cloud and Server (Data Center). The endpoint path differs:
+        - Cloud: /rest/api/3/search/jql (required - /search is deprecated)
+        - Server: /rest/api/3/search (standard search endpoint)
 
-        Note: This should only be used for Jira Cloud. For Jira Server, use the
-        standard connection.search_issues() method which uses v2 API.
+        For Cloud instances, rich text fields are returned in ADF (Atlassian
+        Document Format) and automatically converted to plain text for compatibility
+        with existing code.
+
+        Authentication:
+        - Cloud: Basic auth with email + API token
+        - Server: Bearer token auth with Personal Access Token
 
         Args:
             jql: JQL query string
@@ -390,23 +395,33 @@ class JiraConnection:
             }
 
         Raises:
-            Exception: If not a Cloud instance, or if the API request fails
+            Exception: If the API request fails
         """
-        if not self.is_cloud:
-            raise Exception('search_issues_v3 is only available for Jira Cloud instances')
-
-        if not self.email:
+        # Jira Cloud requires email for authentication
+        if self.is_cloud and not self.email:
             raise Exception(
                 'Jira Cloud (atlassian.net) requires email to be configured. '
                 'Please set jira/email in config file or '
                 'NEWA_JIRA_EMAIL environment variable.')
 
         # Prepare request
-        url = f"{self.url}/rest/api/3/search/jql"
+        # Cloud requires /search/jql endpoint, Server uses /search
+        if self.is_cloud:
+            url = f"{self.url}/rest/api/3/search/jql"
+        else:
+            url = f"{self.url}/rest/api/3/search"
         headers = {
             'Accept': 'application/json',
             }
-        auth = (self.email, self.token)
+
+        # Use appropriate authentication method
+        if self.is_cloud:
+            # Cloud uses basic auth with email + API token
+            auth = (self.email or '', self.token)
+        else:
+            # Server uses Bearer token auth with Personal Access Token
+            headers['Authorization'] = f'Bearer {self.token}'
+            auth = None
 
         # Build query parameters
         params: dict[str, Any] = {
