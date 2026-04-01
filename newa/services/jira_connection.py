@@ -1,5 +1,6 @@
 """Jira connection management."""
 
+import re
 from typing import Any, Optional, Union, cast
 
 import jira
@@ -12,6 +13,9 @@ except ModuleNotFoundError:
     from attr import define, field
 
 from newa.utils.helpers import short_sleep
+
+# Compiled regex pattern for matching URLs in comments (used for sanitization)
+_URL_PATTERN = re.compile(r'(https?://[^\s]+)')
 
 
 def adf_to_text(adf_content: Any) -> str:
@@ -140,6 +144,49 @@ class JiraConnection:
             int: Maximum comment length (32000 for Cloud, 65000 for Server)
         """
         return 32000 if self.is_cloud else 65000
+
+    def sanitize_comment(self, text: str) -> str:
+        """
+        Sanitize text for Jira Cloud to prevent unwanted auto-linking.
+
+        Jira Cloud automatically converts patterns that look like issue keys
+        (e.g., "RHEL-12345") into hyperlinks. This can create broken links
+        for content that isn't actually a Jira issue reference. To prevent
+        this, we replace regular hyphens with non-breaking hyphens (U+2011)
+        which look identical but don't trigger Jira's auto-linking.
+
+        Preserves existing hyperlinks in the text (URLs starting with http:// or https://).
+
+        For Jira Server instances, returns the text unchanged.
+
+        Args:
+            text: The text to sanitize
+
+        Returns:
+            str: Sanitized text (Cloud) or original text (Server)
+        """
+        if not self.is_cloud:
+            return text
+
+        # Split text into parts: URLs and non-URLs
+        parts = []
+        last_end = 0
+
+        for match in _URL_PATTERN.finditer(text):
+            # Add non-URL text before this URL (with sanitization)
+            if match.start() > last_end:
+                non_url_text = text[last_end:match.start()]
+                parts.append(non_url_text.replace('-', '\u2011'))
+
+            # Add URL without sanitization
+            parts.append(match.group(0))
+            last_end = match.end()
+
+        # Add any remaining non-URL text after the last URL
+        if last_end < len(text):
+            parts.append(text[last_end:].replace('-', '\u2011'))
+
+        return ''.join(parts)
 
     def get_connection(self) -> jira.JIRA:
         """
