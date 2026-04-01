@@ -49,7 +49,9 @@ from newa.cli.utils import initialize_state_dir, test_file_presence
     )
 @click.option(
     '--issue',
-    help='Specifies Jira issue ID to be used.',
+    multiple=True,
+    help=('Specifies Jira issue ID to be used. '
+          'Can be specified multiple times to match --job-recipe.'),
     )
 @click.option(
     '--prev-issue',
@@ -59,7 +61,8 @@ from newa.cli.utils import initialize_state_dir, test_file_presence
     )
 @click.option(
     '--job-recipe',
-    help='Specifies job recipe file or URL to be used.',
+    multiple=True,
+    help='Specifies job recipe file or URL to be used. Can be specified multiple times.',
     )
 @click.option(
     '--assignee', 'assignee',
@@ -79,9 +82,9 @@ def cmd_jira(
         map_issue: list[str],
         no_newa_id: bool,
         recreate: bool,
-        issue: str,
+        issue: tuple[str, ...],
         prev_issue: bool,
-        job_recipe: str,
+        job_recipe: tuple[str, ...],
         assignee: str,
         unassigned: bool) -> None:
     """
