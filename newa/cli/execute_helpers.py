@@ -208,6 +208,10 @@ def _add_jira_comment_for_execution(
     if footer:
         comment += f'\n{footer}'
 
+    # Sanitize comment for Jira Cloud to prevent auto-linking
+    jira_conn = ctx.get_jira_connection()
+    comment = jira_conn.sanitize_comment(comment)
+
     try:
         jira_connection.add_comment(
             jira_id,

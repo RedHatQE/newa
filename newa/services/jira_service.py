@@ -93,11 +93,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
         Replaces regular hyphens with non-breaking hyphens (U+2011) which look identical
         but don't trigger Jira's issue key detection and auto-linking.
+
+        This method delegates to JiraConnection.sanitize_comment() for the actual
+        sanitization logic.
         """
-        # Replace regular hyphen (-) with non-breaking hyphen (-, U+2011)
-        # This prevents Jira from auto-linking issue keys like "RHELMISC-29371"
-        # while keeping the text visually identical
-        return text.replace('-', '\u2011')
+        return self.jira_connection.sanitize_comment(text)
 
     def newa_id_in_description(self, newa_id: str, description: str) -> Optional[str]:
         """
@@ -725,6 +725,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
 
     def comment_issue(self, issue: Issue, comment: str) -> None:
         """Add comment to issue"""
+
+        # Sanitize comment for Jira Cloud to prevent auto-linking
+        comment = self.jira_connection.sanitize_comment(comment)
 
         try:
             self.connection.add_comment(

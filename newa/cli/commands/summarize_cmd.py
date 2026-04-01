@@ -163,6 +163,10 @@ def process_execute_job_for_summary(
         click.echo(comment)
         return
 
+    # Sanitize comment for Jira Cloud to prevent auto-linking
+    jira_conn = ctx.get_jira_connection()
+    comment = jira_conn.sanitize_comment(comment)
+
     # Add comment to Jira issue
     ctx.logger.info(f'Adding AI summary comment to {jira_id}')
     try:

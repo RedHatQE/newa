@@ -226,6 +226,10 @@ def _add_jira_comment_for_report(
         execute_job: ExecuteJob,
         comment: str) -> None:
     """Add comment to Jira issue with test execution results."""
+    # Sanitize comment for Jira Cloud to prevent auto-linking
+    jira_conn = ctx.get_jira_connection()
+    comment = jira_conn.sanitize_comment(comment)
+
     try:
         jira_connection.add_comment(
             jira_id,
