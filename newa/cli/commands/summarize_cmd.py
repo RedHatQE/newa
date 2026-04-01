@@ -3,7 +3,6 @@
 from typing import Any
 
 import click
-from jira import JIRA
 
 from newa import CLIContext, ExecuteJob
 from newa.cli.constants import JIRA_NONE_ID
@@ -14,13 +13,15 @@ from newa.cli.summarize_helpers import (
     )
 from newa.cli.utils import initialize_state_dir
 from newa.services.ai_service import AIService
+from newa.services.jira_connection import JiraConnection
 
 
-def fetch_jira_issues_bulk(jira_client: JIRA, issue_keys: list[str]) -> dict[str, dict[str, Any]]:
+def fetch_jira_issues_bulk(jira_connection: JiraConnection,
+                           issue_keys: list[str]) -> dict[str, dict[str, Any]]:
     """Fetch detailed information for multiple Jira issues in a single query.
 
     Args:
-        jira_client: Authenticated Jira client
+        jira_connection: JiraConnection instance
         issue_keys: List of Jira issue keys (e.g., ['RHEL-12345', 'RHEL-67890'])
 
     Returns:
@@ -40,31 +41,46 @@ def fetch_jira_issues_bulk(jira_client: JIRA, issue_keys: list[str]) -> dict[str
     try:
         # Build JQL query to fetch all issues at once
         jql = f"key in ({','.join(valid_keys)})"
-        issues = jira_client.search_issues(jql, maxResults=len(valid_keys))
+
+        # Use v3 API for both Cloud and Server
+        search_result = jira_connection.search_issues_v3(
+            jql=jql,
+            fields=['summary', 'status', 'components', 'versions', 'fixVersions'],
+            max_results=len(valid_keys))
 
         result = {}
         found_keys = set()
 
-        for issue in issues:
-            # Extract component names
-            components = [
-                c.name for c in issue.fields.components] if issue.fields.components else []
+        for issue_data in search_result.get('issues', []):
+            key = issue_data['key']
+            fields = issue_data['fields']
 
-            # Extract version names
-            affects_versions = [
-                v.name for v in issue.fields.versions] if issue.fields.versions else []
-            fix_versions = [
-                v.name for v in issue.fields.fixVersions] if issue.fields.fixVersions else []
+            # Extract component names (v3 API returns dicts)
+            # Filter out entries without a name to avoid empty strings
+            components_raw = fields.get('components', [])
+            components = [c['name'] for c in components_raw if c.get('name')]
 
-            result[issue.key] = {
-                'key': issue.key,
-                'summary': issue.fields.summary,
-                'status': issue.fields.status.name,
+            # Extract version names (v3 API returns dicts)
+            # Filter out entries without a name to avoid empty strings
+            versions_raw = fields.get('versions', [])
+            affects_versions = [v['name'] for v in versions_raw if v.get('name')]
+
+            fix_versions_raw = fields.get('fixVersions', [])
+            fix_versions = [v['name'] for v in fix_versions_raw if v.get('name')]
+
+            # Extract status (v3 API returns dict)
+            status_raw = fields.get('status', {})
+            status = status_raw.get('name', '') if isinstance(status_raw, dict) else ''
+
+            result[key] = {
+                'key': key,
+                'summary': fields.get('summary', ''),
+                'status': status,
                 'components': components,
                 'affects_versions': affects_versions,
                 'fix_versions': fix_versions,
                 }
-            found_keys.add(issue.key)
+            found_keys.add(key)
 
         # Mark issues that weren't found as errors (non-existent or restricted)
         for key in valid_keys:
@@ -80,7 +96,7 @@ def process_execute_job_for_summary(
         ctx: CLIContext,
         execute_job: ExecuteJob,
         rp: Any,
-        jira_client: JIRA,
+        jira_connection: JiraConnection,
         ai_service: AIService,
         preview: bool = False) -> None:
     """Process a single execute job and add AI summary to its Jira issue.
@@ -89,7 +105,7 @@ def process_execute_job_for_summary(
         ctx: CLI context
         execute_job: The execute job to process
         rp: ReportPortal service instance
-        jira_client: Authenticated Jira client
+        jira_connection: JiraConnection instance
         ai_service: AI service instance
     """
     jira_id = execute_job.jira.id
@@ -97,6 +113,7 @@ def process_execute_job_for_summary(
     if not preview:
         # Check issue status - skip if Done or Closed
         try:
+            jira_client = jira_connection.get_connection()
             issue = jira_client.issue(jira_id)
             issue_status = issue.fields.status.name
 
@@ -142,7 +159,7 @@ def process_execute_job_for_summary(
     # Fetch and format Jira issue details
     if all_jira_issues:
         ctx.logger.info(f'Fetching details for {len(all_jira_issues)} Jira issues')
-        jira_issues_data = fetch_jira_issues_bulk(jira_client, list(all_jira_issues))
+        jira_issues_data = fetch_jira_issues_bulk(jira_connection, list(all_jira_issues))
         output_lines.extend(format_jira_issue_details(jira_issues_data))
 
     # Combine all output into a single string for AI processing
@@ -164,12 +181,12 @@ def process_execute_job_for_summary(
         return
 
     # Sanitize comment for Jira Cloud to prevent auto-linking
-    jira_conn = ctx.get_jira_connection()
-    comment = jira_conn.sanitize_comment(comment)
+    comment = jira_connection.sanitize_comment(comment)
 
     # Add comment to Jira issue
     ctx.logger.info(f'Adding AI summary comment to {jira_id}')
     try:
+        jira_client = jira_connection.get_connection()
         jira_client.add_comment(
             jira_id,
             comment,
@@ -225,7 +242,7 @@ def cmd_summarize(ctx: CLIContext, preview: bool) -> None:
         ctx.logger.error('ReportPortal URL must be configured to use summarize command')
         return
 
-    jira_connection = ctx.get_jira_connection().get_connection()
+    jira_connection = ctx.get_jira_connection()
 
     ai_service = AIService(
         api_url=ctx.settings.ai_api_url,
