@@ -1619,6 +1619,34 @@ $ newa -D /var/tmp/newa/run-123 list --refresh
 $ newa -P list --refresh-all
 ```
 
+## Bash Auto-Completion
+
+NEWA includes bash auto-completion support for all commands and options. When you install NEWA via the RPM package, bash completion is automatically installed.
+
+### Using bash completion
+
+After installing the RPM package, completion will be available in new shell sessions. To enable it immediately:
+
+```bash
+source /usr/share/bash-completion/completions/newa
+```
+
+### Examples
+
+```bash
+# Complete subcommands
+newa <TAB>
+event  jira  schedule  execute  report  cancel  summarize  list
+
+# Complete options
+newa event --<TAB>
+--erratum  --compose  --jira-issue  --rog-mr  --compose-mapping  ...
+
+# Complete architectures
+newa event --compose CentOS-Stream-9 jira --issue-config config.yaml schedule --arch <TAB>
+x86_64  aarch64  ppc64le  s390x
+```
+
 ## Contribute
 
 Currently the code expects a stable Fedora release.
