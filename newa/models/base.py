@@ -24,6 +24,7 @@ TF_REQUEST_FINISHED_STATES = {'complete', 'error', 'canceled', 'skipped'}
 class Arch(Enum):
     """Available system architectures."""
 
+    I386 = 'i386'
     I686 = 'i686'
     X86_64 = 'x86_64'
     AARCH64 = 'aarch64'
@@ -39,7 +40,7 @@ class Arch(Enum):
                       preset: Optional[list['Arch']] = None,
                       compose: Optional[str] = None) -> list['Arch']:
 
-        _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH, Arch.I686]
+        _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH, Arch.I386, Arch.I686]
         _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
         _default = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'aarch64']]
         _default_rhel7 = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'ppc64']]
