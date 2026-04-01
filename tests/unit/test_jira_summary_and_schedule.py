@@ -79,13 +79,15 @@ class TestSummaryFieldPopulation:
         from newa.services.jira_connection import JiraConnection
         from newa.services.jira_service import IssueHandler
 
-        # Create mock Jira connection and handler
-        mock_connection = mock.MagicMock(spec=JiraConnection)
-        mock_connection.is_cloud = False
+        # Create a real JiraConnection (won't connect since we mock the underlying connection)
+        # Use a non-Cloud URL so is_cloud=False and sanitize_comment returns text unchanged
+        real_connection = JiraConnection(
+            url='http://jira.example.com',
+            token='dummy_token',
+            )
 
+        # Mock the underlying _connection to avoid actual Jira connection
         mock_jira = mock.MagicMock()
-        mock_connection.get_connection.return_value = mock_jira
-
         # Mock search result
         search_result = {
             "issues": [{
@@ -100,6 +102,9 @@ class TestSummaryFieldPopulation:
             }
         mock_jira.search_issues.return_value = search_result
 
+        # Set the _connection directly to bypass lazy initialization
+        real_connection._connection = mock_jira
+
         # Create handler
         mock_artifact_job = mock.MagicMock()
         mock_artifact_job.id = "job_id"
@@ -108,7 +113,7 @@ class TestSummaryFieldPopulation:
 
         handler = IssueHandler(
             artifact_job=mock_artifact_job,
-            jira_connection=mock_connection,
+            jira_connection=real_connection,
             project='TEST',
             transitions={'closed': ['Closed'], 'dropped': ['Dropped']},
             )
