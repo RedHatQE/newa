@@ -65,6 +65,7 @@ include = [
     "/newa",
     "/README.md",
     "/newa-completion.bash",
+    "/docs",
     ]
 
 # TODO: man page?
