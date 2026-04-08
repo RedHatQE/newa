@@ -38,6 +38,7 @@ install -D -m 0644 newa-completion.bash %{buildroot}%{_datadir}/bash-completion/
 
 %files -n newa -f %{pyproject_files}
 %doc README.md
+%doc docs/agents/claude-newa.md
 %{_bindir}/newa
 %{_datadir}/bash-completion/completions/newa
 

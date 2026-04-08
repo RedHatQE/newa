@@ -1666,6 +1666,41 @@ newa event --compose CentOS-Stream-9 jira --issue-config config.yaml schedule --
 x86_64  aarch64  ppc64le  s390x
 ```
 
+## Claude Code Agent
+
+NEWA includes a specialized agent definition for [Claude Code](https://claude.com/claude-code) that enables AI-assisted test orchestration and workflow management. The agent understands NEWA's command structure and can help with:
+
+- Listing and monitoring test runs
+- Starting new test execution sessions for errata, composes, and merge requests
+- Checking test execution status
+- Rescheduling failed or errored tests
+- Finalizing test results and generating reports
+
+### Enabling the Agent Locally
+
+To use the NEWA agent with Claude Code:
+
+1. **Locate the agent definition**: The agent configuration is stored in `docs/agents/claude-newa.md`
+
+2. **Deploy to Claude Code**: Copy the agent definition to your Claude Code agents directory:
+   ```bash
+   mkdir -p ~/.claude/agents
+   cp docs/agents/claude-newa.md ~/.claude/agents/newa.md
+   ```
+
+3. **Configure Claude Code**: Claude Code will automatically detect and load the agent from the `~/.claude/agents/` directory
+
+### Using the Agent
+
+Once configured, you can interact with the NEWA agent by addressing it directly with `@agent-newa` followed by your request:
+
+- `@agent-newa list the most recent NEWA runs`
+- `@agent-newa start NEWA tests for erratum RHSA-2024:12345`
+- `@agent-newa what's the status of my NEWA tests?`
+- `@agent-newa reschedule all failed tests from the last run`
+
+The agent will execute appropriate NEWA commands and provide detailed status updates throughout the test execution workflow.
+
 ## Contribute
 
 Currently the code expects a stable Fedora release.
