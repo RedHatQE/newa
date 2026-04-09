@@ -1,0 +1,4 @@
+defaults:
+  assignee: enabled_assignee
+  fields:
+    "Environment": "production"

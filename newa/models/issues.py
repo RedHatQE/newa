@@ -16,6 +16,7 @@ except ModuleNotFoundError:
 from newa.models.base import ErratumCommentTrigger, RoGCommentTrigger, Serializable
 from newa.models.recipes import RecipeContext, RecipeEnvironment
 from newa.utils.http import ResponseContentType, get_request
+from newa.utils.templates import eval_test
 from newa.utils.yaml_utils import yaml_parser
 
 if TYPE_CHECKING:
@@ -154,10 +155,16 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
     board: Optional[Union[str, int]] = field(default=None)
 
     @classmethod
-    def from_yaml_with_include(cls: type['Self'], location: str) -> 'Self':
+    def from_yaml_with_include(
+            cls: type['Self'],
+            location: str,
+            variables: Optional[dict[str, Any]] = None,
+            logger: Optional[Any] = None) -> 'Self':
 
-        def load_data_from_location(location: str,
-                                    stack: Optional[list[str]] = None) -> dict[str, Any]:
+        def load_data_from_location(
+                location: str,
+                stack: Optional[list[str]] = None,
+                variables: Optional[dict[str, Any]] = None) -> dict[str, Any]:
             if stack and location in stack:
                 raise Exception(
                     'Duplicate location encountered while loading issue-config YAML '
@@ -181,15 +188,51 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
 
             # process 'include' attribute
             if 'include' in data:
-                locations = data['include']
+                includes = data['include']
                 # drop 'include' so it won't be processed again
                 del data['include']
                 # if 'include' list is empty, return data
-                if not locations:
+                if not includes:
                     return data
                 # processing files in reversed order so that later definition takes priority
-                for loc in reversed(locations):
-                    included_data = load_data_from_location(loc, stack)
+                for include_entry in reversed(includes):
+                    # Support both string format and dict format with 'when' condition
+                    loc: str
+                    if isinstance(include_entry, str):
+                        # Simple string URL/path
+                        loc = include_entry
+                        should_include = True
+                    elif isinstance(include_entry, dict):
+                        # Dict format with optional 'when' condition
+                        url_value = include_entry.get('url')
+                        if not url_value:
+                            raise Exception(
+                                f"Include entry must have 'url' key: {include_entry}")
+                        loc = str(url_value)
+                        condition = include_entry.get('when')
+                        if condition:
+                            # Evaluate the condition with contextual error handling
+                            try:
+                                should_include = eval_test(condition, **(variables or {}))
+                            except Exception as exc:
+                                raise Exception(
+                                    f"Failed to evaluate 'when' condition {condition!r} "
+                                    f"for include {include_entry!r} in location {location!r}",
+                                    ) from exc
+                        else:
+                            should_include = True
+                    else:
+                        entry_type = type(include_entry).__name__
+                        raise Exception(
+                            f"Include entry must be a string or dict, got {entry_type}")
+
+                    if not should_include:
+                        if logger:
+                            logger.info(
+                                f"Skipping include '{loc}' as condition evaluated to False")
+                        continue
+
+                    included_data = load_data_from_location(loc, stack, variables)
                     if included_data:
                         for key in included_data:
                             # special handing of 'issues'
@@ -220,13 +263,17 @@ class IssueConfig(Serializable):  # type: ignore[no-untyped-def]
 
             return data
 
-        data = load_data_from_location(location)
+        data = load_data_from_location(location, variables=variables)
         return cls(**data)
 
     @classmethod
-    def read_file(cls: type['Self'], location: str) -> 'Self':
+    def read_file(
+            cls: type['Self'],
+            location: str,
+            variables: Optional[dict[str, Any]] = None,
+            logger: Optional[Any] = None) -> 'Self':
 
-        config = cls.from_yaml_with_include(location)
+        config = cls.from_yaml_with_include(location, variables=variables, logger=logger)
 
         for action in config.issues:
             if config.defaults:

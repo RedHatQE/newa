@@ -1,0 +1,4 @@
+defaults:
+  fields:
+    "Unconditional Field": "always_loaded"
+    "Another Field": "also_loaded"

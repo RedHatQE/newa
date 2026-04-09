@@ -1,0 +1,34 @@
+include:
+  # Include based on COMPOSE
+  - url: tests/unit/data/issue-config-conditional-compose.yaml
+    when: COMPOSE and COMPOSE.id is match('CentOS-Stream-.*')
+
+  # Include based on ERRATUM
+  - url: tests/unit/data/issue-config-conditional-erratum.yaml
+    when: ERRATUM and ERRATUM.id is match('RHSA-.*')
+
+  # Include based on CONTEXT
+  - url: tests/unit/data/issue-config-conditional-context.yaml
+    when: CONTEXT.test_env is defined and CONTEXT.test_env is match('staging')
+
+  # Include based on ENVIRONMENT
+  - url: tests/unit/data/issue-config-conditional-environment.yaml
+    when: ENVIRONMENT.DEPLOY_MODE is defined and ENVIRONMENT.DEPLOY_MODE is match('production')
+
+project: MULTI_TEST_PROJECT
+
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Dropped
+
+defaults:
+  fields:
+    "Base Field": "base_value"
+
+issues:
+ - summary: "Test issue"
+   description: "Test"
+   type: task
+   id: test_issue
