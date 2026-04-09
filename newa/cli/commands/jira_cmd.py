@@ -142,7 +142,19 @@ def cmd_jira(
             # Mode 1: Using issue-config file
             # we are reading the issue config again for each artifact
             # because later we modify some objects
-            config = IssueConfig.read_file(os.path.expandvars(issue_config))
+            # Prepare variables for conditional includes in issue-config
+            config_variables = {
+                'EVENT': artifact_job.event,
+                'ERRATUM': artifact_job.erratum,
+                'COMPOSE': artifact_job.compose,
+                'ROG': artifact_job.rog,
+                'CONTEXT': ctx.cli_context,
+                'ENVIRONMENT': ctx.cli_environment,
+                }
+            config = IssueConfig.read_file(
+                os.path.expandvars(issue_config),
+                variables=config_variables,
+                logger=ctx.logger)
             issue_mapping = _parse_issue_mapping(map_issue, config)
 
             # Get or create Jira connection

@@ -1,0 +1,27 @@
+include:
+  # This should be included when ENABLE_FEATURE is true
+  - url: tests/unit/data/issue-config-conditional-child-enabled.yaml
+    when: ENABLE_FEATURE
+  # This should NOT be included when ENABLE_FEATURE is true
+  - url: tests/unit/data/issue-config-conditional-child-disabled.yaml
+    when: not ENABLE_FEATURE
+  # Always include this one (no condition)
+  - tests/unit/data/issue-config-include-child1.yaml
+
+project: PARENT_PROJECT
+
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Dropped
+
+defaults:
+  fields:
+    "Pool Team": "parent_team"
+
+issues:
+ - summary: "Parent issue"
+   description: "Parent issue"
+   type: epic
+   id: parent_conditional

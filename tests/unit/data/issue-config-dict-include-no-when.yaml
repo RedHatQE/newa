@@ -1,0 +1,21 @@
+include:
+  # Dict-style include without 'when' clause - should always be loaded
+  - url: tests/unit/data/issue-config-dict-include-child.yaml
+
+project: DICT_NO_WHEN_PROJECT
+
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Dropped
+
+defaults:
+  fields:
+    "Base Field": "from_parent"
+
+issues:
+  - summary: "Test issue"
+    description: "Test"
+    type: task
+    id: test_issue

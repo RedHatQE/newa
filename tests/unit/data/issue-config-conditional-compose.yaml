@@ -1,0 +1,4 @@
+defaults:
+  assignee: compose_assignee
+  fields:
+    "Compose Type": "compose-based"

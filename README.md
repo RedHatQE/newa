@@ -295,6 +295,70 @@ has lower priority and the whole section is replaced completely.
 The only exceptions are are `issues` and `defaults` which are merged.
 To unset a value defined in an included file one can set the value to `null`.
 
+The `include` attribute supports both simple and conditional includes:
+
+**Simple include** - Always includes the specified file:
+```yaml
+include:
+  - global_settings.yaml
+  - https://example.com/shared-config.yaml
+```
+
+**Conditional include** - Includes files based on evaluated conditions:
+```yaml
+include:
+  # Include only when condition evaluates to true
+  - url: production-settings.yaml
+    when: ENVIRONMENT.DEPLOY_ENV is match('prod.*')
+
+  # Include only for RHSA advisories
+  - url: security-config.yaml
+    when: ERRATUM.id is match('RHSA-.*')
+
+  # Always include (no condition)
+  - base-settings.yaml
+```
+
+The `when` condition uses the same syntax as in-config tests (see "In-config tests" section). Conditions are evaluated when the config file is loaded and have access to the following variables:
+
+- `EVENT` - The event object (type, id)
+- `ERRATUM` - Erratum data (if applicable)
+- `COMPOSE` - Compose data (if applicable)
+- `ROG` - RoG merge request data (if applicable)
+- `CONTEXT` - Command-line context variables (from `--context`)
+- `ENVIRONMENT` - Command-line environment variables (from `--environment`)
+
+Example:
+
+```yaml
+# issue-config.yaml
+include:
+  # Include different defaults based on erratum type
+  - url: security-team-defaults.yaml
+    when: ERRATUM.id is match('RHSA-.*')
+  - url: bugfix-team-defaults.yaml
+    when: ERRATUM.id is match('RHBA-.*')
+
+  # Conditional settings for different releases
+  - url: rhel9-specific.yaml
+    when: ERRATUM.release is match('RHEL-9.*')
+  - url: rhel8-specific.yaml
+    when: ERRATUM.release is match('RHEL-8.*')
+
+  # Include based on compose
+  - url: centos-stream-config.yaml
+    when: COMPOSE.id is match('CentOS-Stream-.*')
+
+  # Include based on CLI context
+  - url: production-settings.yaml
+    when: CONTEXT.env is match('prod.*')
+
+project: MYPROJECT
+# ... rest of config
+```
+
+This allows you to create modular, environment-specific configurations that are conditionally loaded based on the event being processed and command-line parameters.
+
 
 #### iterate
 

@@ -1,0 +1,4 @@
+defaults:
+  assignee: disabled_assignee
+  fields:
+    "Environment": "development"

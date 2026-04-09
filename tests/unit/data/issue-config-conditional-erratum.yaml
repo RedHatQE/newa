@@ -1,0 +1,4 @@
+defaults:
+  assignee: erratum_assignee
+  fields:
+    "Erratum Type": "security"
