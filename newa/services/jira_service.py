@@ -447,8 +447,12 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                      fields: Optional[dict[str, Union[str, float, list[str]]]] = None,
                      links: Optional[dict[str, list[str]]] = None) -> Issue:
         """Create issue"""
+        # Build complete description first, then sanitize once
         if use_newa_id:
-            description = f"{self._format_for_jira(self.newa_id(action))}\n\n{description}"
+            description = f"{self.newa_id(action)}\n\n{description}"
+
+        # Sanitize the complete description for Jira Cloud to prevent auto-linking
+        description = self._format_for_jira(description)
         data = {
             "project": {"key": self.project},
             "summary": summary,
@@ -659,8 +663,9 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             if self.logger:
                 self.logger.debug(f"Updating summary for issue {issue.id}")
 
-        # Update description with NEWA ID
-        new_description = f"{self._format_for_jira(self.newa_id(action))}\n\n{description}"
+        # Build complete description first, then sanitize once
+        new_description = f"{self.newa_id(action)}\n\n{description}"
+        new_description = self._format_for_jira(new_description)
         if current_description != new_description:
             update_fields["description"] = new_description
             if self.logger:
