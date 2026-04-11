@@ -48,12 +48,17 @@ def execute_jobs_summary(ctx: CLIContext,
     # prepare content with individual results
     results: dict[str, dict[str, str]] = {}
     for job in execute_jobs:
+        # Use artifacts_url if available, otherwise use API endpoint URL
+        url = job.execution.artifacts_url
+        if not url and job.execution.request_api:
+            url = job.execution.request_api
+
         results[job.request.id] = {
             'id': job.request.id,
             'state': job.execution.state,
             'result': str(job.execution.result.value),
             'uuid': job.execution.request_uuid,
-            'url': job.execution.artifacts_url,
+            'url': url,
             'plan': job.request.tmt.get('plan', '')}
         if job.request.reportportal:
             results[job.request.id]['suite_desc'] = job.request.reportportal.get(
@@ -202,16 +207,29 @@ def _build_jira_comment(
         launch_url: Optional[str],
         jira_description: str,
         footer: str = '',
-        first_comment: bool = True) -> str:
+        first_comment: bool = True,
+        progress_mode: bool = False) -> str:
     """Build Jira comment text with optional RP launch details."""
-    if launch_uuid:
-        if first_comment:
-            comment = ("NEWA has finished test execution and imported test results "
-                       f"to RP launch\n{launch_url}\n\n{jira_description}")
+    if progress_mode:
+        # Progress mode: report current execution status
+        if launch_uuid:
+            if first_comment:
+                comment = ("NEWA test execution is in progress "
+                           f"(RP launch: {launch_url})\n\n{jira_description}")
+            else:
+                comment = f"Continuation of the previous comment...\n\n{jira_description}"
         else:
-            comment = f"Continuation of the previous comment...\n\n{jira_description}"
+            comment = f"NEWA test execution is in progress\n\n{jira_description}"
     else:
-        comment = f"NEWA has finished test execution\n\n{jira_description}"
+        # Normal mode: report finished execution
+        if launch_uuid:
+            if first_comment:
+                comment = ("NEWA has finished test execution and imported test results "
+                           f"to RP launch\n{launch_url}\n\n{jira_description}")
+            else:
+                comment = f"Continuation of the previous comment...\n\n{jira_description}"
+        else:
+            comment = f"NEWA has finished test execution\n\n{jira_description}"
 
     if footer and first_comment:
         comment += f'\n{footer}'
@@ -327,13 +345,14 @@ def _process_jira_id_reports(
         jira_connection: Any,
         et: Optional[ErrataTool],
         rog: Optional[RoGTool],
-        jira_comment_limit: int) -> None:
+        jira_comment_limit: int,
+        progress_mode: bool = False) -> None:
     """Process reporting for a single Jira ID."""
     # Get RP launch details
     launch_uuid, launch_url = _get_rp_launch_details(execute_jobs)
 
-    # Check for empty launch
-    if launch_uuid and rp:
+    # Check for empty launch (skip in progress mode)
+    if launch_uuid and rp and not progress_mode:
         rp.check_for_empty_launch(launch_uuid, logger=ctx.logger)
 
     # Check test status
@@ -342,21 +361,29 @@ def _process_jira_id_reports(
     # save comment footer if configured
     footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
 
-    # Generate summaries
+    # Generate Jira summaries
     jira_descriptions = execute_jobs_summary(
         ctx,
         jira_id,
         execute_jobs,
         target='Jira',
         max_length=jira_comment_limit - len(footer))
-    launch_description = execute_jobs_summary(ctx, jira_id, execute_jobs, target='ReportPortal')[0]
 
-    # Finalize RP launch if needed
-    if launch_uuid and rp:
+    # Finalize RP launch if needed (skip in progress mode)
+    if launch_uuid and rp and not progress_mode:
+        # Generate ReportPortal launch description only when needed
+        launch_description = execute_jobs_summary(
+            ctx, jira_id, execute_jobs, target='ReportPortal')[0]
         _finalize_rp_launch(ctx, rp, launch_uuid, launch_url, launch_description)
 
     # Report to Jira (skip if JIRA_NONE_ID)
     if not jira_id.startswith(JIRA_NONE_ID):
+        # Log appropriate message based on mode
+        if progress_mode:
+            ctx.logger.info(f'Updating Jira issue {jira_id} with progress comment')
+        else:
+            ctx.logger.info(f'Updating Jira issue {jira_id} with test results')
+
         # Add Jira comments - more might be needed if we have exceeded comment length limit
         for jira_description in jira_descriptions:
             comment = _build_jira_comment(
@@ -364,22 +391,24 @@ def _process_jira_id_reports(
                 launch_url,
                 jira_description,
                 footer,
-                first_comment=jira_description == jira_descriptions[0])
+                first_comment=jira_description == jira_descriptions[0],
+                progress_mode=progress_mode)
             _add_jira_comment_for_report(
                 ctx, jira_connection, jira_id, execute_jobs[0], comment)
             short_sleep()
 
-        # Transition Jira issue if needed
-        _transition_jira_issue_based_on_results(
-            ctx, jira_connection, jira_id, execute_jobs[0],
-            all_tests_passed, all_tests_finished)
+        # Transition Jira issue if needed (skip in progress mode)
+        if not progress_mode:
+            _transition_jira_issue_based_on_results(
+                ctx, jira_connection, jira_id, execute_jobs[0],
+                all_tests_passed, all_tests_finished)
 
-        # Add Errata Tool comment if needed
-        if et:
+        # Add Errata Tool comment if needed (skip in progress mode)
+        if et and not progress_mode:
             _add_erratum_comment_for_report(
                 ctx, et, jira_connection, jira_id, execute_jobs[0], launch_url)
 
-        # Add RoG comment if needed
-        if rog:
+        # Add RoG comment if needed (skip in progress mode)
+        if rog and not progress_mode:
             _add_rog_comment_for_report(
                 ctx, rog, jira_connection, jira_id, execute_jobs[0], launch_url)

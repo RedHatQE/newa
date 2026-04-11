@@ -1532,6 +1532,30 @@ merging them into a single launch. Later, it updates the respective Jira issue
 with a note about test results availability and a link to ReportPortal launch.
 This subcommand doesn't produce any files.
 
+#### Option `--progress`
+
+Reports current test execution progress without finalizing results. This option is useful for providing intermediate status updates during long-running test executions.
+
+When `--progress` is used:
+- Updates Testing Farm request statuses to get current execution state
+- Adds Jira comments with "test execution is in progress" message
+- Uses Testing Farm API URLs for requests not yet scheduled/finished (e.g., `https://api.dev.testing-farm.io/v0.1/requests/UUID`)
+- Skips ReportPortal launch finalization and description updates
+- Skips Jira issue state transitions
+- Skips Errata Tool and RoG comments
+
+Example (report progress during execution):
+```
+$ newa event --compose CentOS-Stream-9 jira --issue-config config.yaml schedule execute --no-wait
+Using --state-dir=/var/tmp/newa/run-123
+...
+$ newa --state-dir=/var/tmp/newa/run-123 report --progress
+# Adds progress comment to Jira without finalizing
+
+# Later, when tests complete, finalize the results
+$ newa --state-dir=/var/tmp/newa/run-123 execute --continue report
+```
+
 ### Subcommand `summarize`
 
 This subcommand generates AI-powered summaries of ReportPortal launch test results and updates the corresponding Jira issues with these summaries as comments.
