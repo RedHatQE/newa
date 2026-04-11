@@ -18,17 +18,23 @@ from newa.cli.utils import initialize_state_dir
 
 
 @click.command(name='report')
+@click.option(
+    '--progress',
+    is_flag=True,
+    default=False,
+    help='Report current execution progress without finalizing ReportPortal launch')
 @click.pass_obj
-def cmd_report(ctx: CLIContext) -> None:
+def cmd_report(ctx: CLIContext, progress: bool) -> None:
     """
     Report test execution results to Jira, ReportPortal, and Errata Tool.
 
     This command:
     1. Loads execute jobs and checks TF request status
     2. Groups jobs by Jira ID
-    3. Finalizes ReportPortal launches
-    4. Updates Jira issues with comments and transitions
-    5. Updates Errata Tool with comments
+    3. Finalizes ReportPortal launches (unless --progress is used)
+    4. Updates Jira issues with comments
+    5. Transitions Jira issues (unless --progress is used)
+    6. Updates Errata Tool with comments (unless --progress is used)
     """
     ctx.enter_command('report')
 
@@ -73,4 +79,5 @@ def cmd_report(ctx: CLIContext) -> None:
     # Process reports for each Jira ID
     for jira_id, execute_jobs in jira_execute_job_mapping.items():
         _process_jira_id_reports(
-            ctx, jira_id, execute_jobs, rp, jira_connection, et, rog, jira_comment_limit)
+            ctx, jira_id, execute_jobs, rp, jira_connection, et, rog, jira_comment_limit,
+            progress_mode=progress)
