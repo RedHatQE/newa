@@ -1,14 +1,25 @@
 """AI service for generating ReportPortal launch summaries."""
 
 import json
+import os
+from pathlib import Path
 from typing import Any, Optional
 
 import requests
 
 try:
-    from attrs import define
+    from attrs import define, field
 except ModuleNotFoundError:
-    from attr import define
+    from attr import define, field
+
+# Optional OAuth2 dependencies
+try:
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    HAS_GOOGLE_AUTH = True
+except ImportError:
+    HAS_GOOGLE_AUTH = False
 
 
 # System prompt for AI model
@@ -115,9 +126,99 @@ class AIService:
     api_url: str
     api_token: str
     model: str
+    oauth2_client_secret_file: str = ''
+    oauth2_scopes: str = ''
+    oauth2_token_file: str = ''
+
+    # Cached OAuth2 credentials
+    _credentials: Optional[Any] = field(default=None, init=False, repr=False)
+
+    def _get_oauth2_credentials(self) -> Any:
+        """Get or refresh OAuth2 credentials for Google APIs.
+
+        Returns:
+            Google OAuth2 Credentials object
+
+        Raises:
+            Exception: If OAuth2 libraries are not available or authentication fails
+        """
+        if not HAS_GOOGLE_AUTH:
+            raise Exception(
+                "OAuth2 authentication requires google-auth-oauthlib and google-auth packages. "
+                "Install them with: pip install newa[oauth2]")
+
+        if self._credentials and self._credentials.valid:
+            return self._credentials
+
+        creds = None
+        # Expand ~ and environment variables in paths
+        if self.oauth2_token_file:
+            token_file = Path(os.path.expandvars(self.oauth2_token_file)).expanduser()
+        else:
+            token_file = Path.home() / '.newa_oauth2_token.json'
+        client_secret_file = Path(os.path.expandvars(
+            self.oauth2_client_secret_file)).expanduser()
+
+        # Load cached token if it exists
+        if token_file.exists():
+            try:
+                # Determine scopes for credentials validation
+                scopes = None
+                if self.oauth2_scopes:
+                    scopes = [s.strip() for s in self.oauth2_scopes.split(',') if s.strip()]
+                creds = Credentials.from_authorized_user_file(str(token_file), scopes)
+            except Exception:
+                # Token file is corrupted or invalid, will re-authenticate
+                pass
+
+        # Refresh or get new credentials
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                # Refresh expired token
+                try:
+                    creds.refresh(Request())
+                except Exception:
+                    # Refresh failed, need to re-authenticate
+                    creds = None
+
+            if not creds:
+                # Perform OAuth2 flow
+                if not client_secret_file.exists():
+                    raise Exception(
+                        f"OAuth2 client secret file not found: {client_secret_file}. "
+                        "Please download it from Google Cloud Console and save it to this path.")
+
+                # Default scopes for Gemini API
+                if self.oauth2_scopes:
+                    scopes = [s.strip() for s in self.oauth2_scopes.split(',') if s.strip()]
+                else:
+                    scopes = ['https://www.googleapis.com/auth/generative-language.retriever']
+
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(client_secret_file), scopes)
+                creds = flow.run_local_server(port=0)
+
+            # Save credentials for next run
+            token_file.parent.mkdir(parents=True, exist_ok=True)
+            token_file.write_text(creds.to_json())
+
+        self._credentials = creds
+        return creds
+
+    def _is_oauth2_configured(self) -> bool:
+        """Check if OAuth2 is configured (client secret file is specified)."""
+        if not self.oauth2_client_secret_file:
+            return False
+        # Expand ~ and environment variables in the path
+        expanded_path = Path(os.path.expandvars(
+            self.oauth2_client_secret_file)).expanduser()
+        return expanded_path.exists()
 
     def query_ai_model(self, user_message: str, system_prompt: Optional[str] = None) -> str:
         """Query the AI model with the given prompts.
+
+        Supports both API key and OAuth2 authentication.
+        OAuth2 is used if oauth2_client_secret_file is configured.
 
         Args:
             user_message: The user message/input data
@@ -132,14 +233,46 @@ class AIService:
         if not self.api_url:
             raise Exception("AI API URL is not configured")
 
-        if not self.api_token:
-            raise Exception("AI API token is not configured")
-
         # Detect API type based on URL
         is_gemini = 'generativelanguage.googleapis.com' in self.api_url
 
+        # Determine authentication method
+        use_oauth2 = is_gemini and self._is_oauth2_configured()
+
         payload: dict[str, Any]
-        if is_gemini:
+        if use_oauth2:
+            # OAuth2 authentication for Gemini
+            creds = self._get_oauth2_credentials()
+            access_token = creds.token
+
+            # Construct URL
+            if '/models/' in self.api_url and ':generateContent' in self.api_url:
+                url_with_key = self.api_url
+            else:
+                base_url = self.api_url.rstrip('/')
+                url_with_key = f"{base_url}/models/{self.model}:generateContent"
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}",
+                }
+
+            # Combine system prompt and user message for Gemini
+            combined_message = f"{system_prompt}\n\nThe report is below.\n\n{user_message}"
+
+            payload = {
+                "contents": [{
+                    "parts": [{
+                        "text": combined_message,
+                        }],
+                    }],
+                }
+
+        elif is_gemini:
+            # API key authentication for Gemini (existing code)
+            if not self.api_token:
+                raise Exception("AI API token is not configured")
+
             # Google Gemini API format
             # API key is passed as URL parameter
             # Support both full URL (with model embedded) and base URL + model
@@ -166,6 +299,9 @@ class AIService:
                 }
         else:
             # OpenAI-compatible API format
+            if not self.api_token:
+                raise Exception("AI API token is not configured")
+
             url_with_key = self.api_url
             headers = {
                 "Content-Type": "application/json",

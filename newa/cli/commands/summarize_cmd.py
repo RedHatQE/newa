@@ -230,10 +230,22 @@ def cmd_summarize(ctx: CLIContext, preview: bool) -> None:
         return
 
     # Check AI configuration
-    if not ctx.settings.ai_api_url or not ctx.settings.ai_api_token:
+    # Require either API token OR OAuth2 client secret file
+    has_api_token = bool(ctx.settings.ai_api_token)
+    has_oauth2 = bool(ctx.settings.ai_oauth2_client_secret_file)
+
+    if not ctx.settings.ai_api_url:
         ctx.logger.error(
-            'AI API URL and token must be configured in newa.conf [ai] section or '
-            'via NEWA_AI_API_URL and NEWA_AI_API_TOKEN environment variables')
+            'AI API URL must be configured in newa.conf [ai] section or '
+            'via NEWA_AI_API_URL environment variable')
+        return
+
+    if not has_api_token and not has_oauth2:
+        ctx.logger.error(
+            'AI authentication must be configured with either:\n'
+            '  - API token (api_token in [ai] section or NEWA_AI_API_TOKEN env var), or\n'
+            '  - OAuth2 (oauth2_client_secret_file in [ai] section or '
+            'NEWA_AI_OAUTH2_CLIENT_SECRET_FILE env var)')
         return
 
     # Initialize services
@@ -247,7 +259,10 @@ def cmd_summarize(ctx: CLIContext, preview: bool) -> None:
     ai_service = AIService(
         api_url=ctx.settings.ai_api_url,
         api_token=ctx.settings.ai_api_token,
-        model=ctx.settings.ai_api_model)
+        model=ctx.settings.ai_api_model,
+        oauth2_client_secret_file=ctx.settings.ai_oauth2_client_secret_file,
+        oauth2_scopes=ctx.settings.ai_oauth2_scopes,
+        oauth2_token_file=ctx.settings.ai_oauth2_token_file)
 
     # Track processed launch UUIDs to avoid duplicate summaries
     processed_launches: set[str] = set()

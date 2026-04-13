@@ -69,6 +69,9 @@ class Settings:  # type: ignore[no-untyped-def]
     ai_api_token: str = ''
     ai_api_model: str = ''
     ai_system_prompt: str = ''
+    ai_oauth2_client_secret_file: str = ''
+    ai_oauth2_scopes: str = ''
+    ai_oauth2_token_file: str = ''
 
     def get(self, key: str, default: str = '') -> str:
         return str(getattr(self, key, default))
@@ -187,6 +190,18 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'ai/system_prompt',
                 'NEWA_AI_SYSTEM_PROMPT'),
+            ai_oauth2_client_secret_file=_get(
+                cp,
+                'ai/oauth2_client_secret_file',
+                'NEWA_AI_OAUTH2_CLIENT_SECRET_FILE'),
+            ai_oauth2_scopes=_get(
+                cp,
+                'ai/oauth2_scopes',
+                'NEWA_AI_OAUTH2_SCOPES'),
+            ai_oauth2_token_file=_get(
+                cp,
+                'ai/oauth2_token_file',
+                'NEWA_AI_OAUTH2_TOKEN_FILE'),
             )
 
 
