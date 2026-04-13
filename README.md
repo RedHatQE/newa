@@ -1595,13 +1595,20 @@ The summarize command supports both OpenAI-compatible APIs and Google Gemini API
 
 **Configuration parameters:**
 - `api_url`: API endpoint URL
-- `api_token`: API authentication token or key
+- `api_token`: API authentication token or key (for API key authentication)
 - `api_model`: Model name to use (default: `gemini-2.0-flash-exp`)
 - `system_prompt`: Custom system prompt for AI model (optional, uses default prompt if not specified)
+- `oauth2_client_secret_file`: Path to OAuth2 client secret JSON file (for OAuth2 authentication)
+- `oauth2_scopes`: Comma-separated OAuth2 scopes (optional, defaults to `https://www.googleapis.com/auth/generative-language.retriever`)
+- `oauth2_token_file`: Path to cached OAuth2 token file (optional, defaults to `~/.newa_oauth2_token.json`)
 
 **Note:** The `system_prompt` parameter allows you to customize how the AI analyzes and summarizes test results. When not specified, NEWA uses a built-in prompt optimized for ReportPortal launch summaries in Jira format. You might want to customize this if you need different formatting, additional analysis criteria, or organization-specific requirements.
 
 **Google Gemini API Configuration:**
+
+For Gemini, you can use either **API key authentication** (simpler) or **OAuth2 authentication** (more secure).
+
+**Option 1: API Key Authentication**
 
 For Gemini, you can configure the URL in two ways:
 
@@ -1619,6 +1626,42 @@ api_model = gemini-2.0-flash-exp
 api_url = https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent
 api_token = YOUR_GEMINI_API_KEY
 ```
+
+**Option 2: OAuth2 Authentication (Google Gemini)**
+
+For enhanced security, you can use OAuth2 authentication instead of API keys with Google Gemini:
+
+1. **Install OAuth2 dependencies**:
+   ```bash
+   pip install newa[oauth2]
+   ```
+
+2. **Create OAuth2 credentials**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create or select a project
+   - Enable the Generative Language API
+   - Go to "Credentials" → "Create Credentials" → "OAuth client ID"
+   - Select "Desktop app" as application type
+   - Download the JSON file and save it as `~/.newa_client_secret.json`
+
+3. **Configure NEWA**:
+   ```
+   [ai]
+   api_url = https://generativelanguage.googleapis.com/v1beta
+   api_model = gemini-2.0-flash-exp
+   oauth2_client_secret_file = ~/.newa_client_secret.json
+   # Optional: customize scopes (default: https://www.googleapis.com/auth/generative-language.retriever)
+   # oauth2_scopes = https://www.googleapis.com/auth/generative-language.retriever
+   # Optional: customize token cache location (default: ~/.newa_oauth2_token.json)
+   # oauth2_token_file = ~/.newa_oauth2_token.json
+   ```
+
+4. **First run authentication**:
+   On the first run of `newa summarize`, a browser window will open for authentication.
+   After authorization, credentials are cached in `~/.newa_oauth2_token.json` (or your custom location).
+   Subsequent runs will use the cached credentials and automatically refresh them when needed.
+
+**Note**: If both `api_token` and `oauth2_client_secret_file` are configured, OAuth2 takes precedence for Gemini APIs.
 
 **OpenAI-compatible API Configuration:**
 
@@ -1646,6 +1689,10 @@ export NEWA_AI_API_URL="https://generativelanguage.googleapis.com/v1beta"
 export NEWA_AI_API_TOKEN="YOUR_API_KEY"
 export NEWA_AI_API_MODEL="gemini-2.0-flash-exp"
 export NEWA_AI_SYSTEM_PROMPT="Your custom system prompt here..."
+# OAuth2 specific environment variables
+export NEWA_AI_OAUTH2_CLIENT_SECRET_FILE="~/.newa_client_secret.json"
+export NEWA_AI_OAUTH2_SCOPES="https://www.googleapis.com/auth/generative-language.retriever"
+export NEWA_AI_OAUTH2_TOKEN_FILE="~/.newa_oauth2_token.json"
 ```
 
 #### Usage Examples

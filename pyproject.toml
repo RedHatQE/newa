@@ -48,6 +48,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+oauth2 = [
+    "google-auth>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+]
 
 [project.scripts]
 newa = "newa.cli.main:main"
@@ -137,6 +141,9 @@ module = [
     "jira.*",
     "gitlab",
     "ruamel.*",
+    "google.auth.*",
+    "google.oauth2.*",
+    "google_auth_oauthlib.*",
 ]
 ignore_missing_imports = true
 
