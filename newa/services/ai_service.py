@@ -196,7 +196,21 @@ class AIService:
 
                 flow = InstalledAppFlow.from_client_secrets_file(
                     str(client_secret_file), scopes)
-                creds = flow.run_local_server(port=0)
+
+                # Try local server flow first (for desktop/interactive environments)
+                # Fall back to containerized flow if it fails (for containers/headless
+                # environments)
+                try:
+                    creds = flow.run_local_server(port=0)
+                except Exception:
+                    # Local server failed (likely in container or headless environment)
+                    # Use local server without opening browser instead
+                    # Note: For containerized environments, port 6392 must be exposed
+                    # (6392 is 'NEWA' on keypad)
+                    print("\nBrowser-based authentication not available (container/headless environment).")
+                    print("Using local server flow with manual URL on port 6392...\n")
+                    print("NOTE: For containerized environments, ensure port 6392 is exposed.\n")
+                    creds = flow.run_local_server(port=6392, open_browser=False)
 
             # Save credentials for next run
             token_file.parent.mkdir(parents=True, exist_ok=True)

@@ -1657,9 +1657,19 @@ For enhanced security, you can use OAuth2 authentication instead of API keys wit
    ```
 
 4. **First run authentication**:
-   On the first run of `newa summarize`, a browser window will open for authentication.
+   On the first run of `newa summarize`, NEWA will automatically attempt to authenticate using the most appropriate method for your environment:
+   - **Interactive environments** (desktop/laptop): A browser window will open for authentication
+   - **Containerized/headless environments**: A local server flow will be used on port 6392 (6392 spells 'NEWA' on keypad). You'll be given a URL to open in a browser on your host machine to complete authentication.
+
    After authorization, credentials are cached in `~/.newa_oauth2_token.json` (or your custom location).
    Subsequent runs will use the cached credentials and automatically refresh them when needed.
+
+   The authentication method is automatically detected - no configuration needed. If browser-based authentication fails (e.g., in a container), NEWA will automatically fall back to the local server flow.
+
+   **For containerized environments**: Ensure port 6392 is exposed when running NEWA in a container. For example with Podman:
+   ```bash
+   podman run -p 6392:6392 ... your-newa-container
+   ```
 
 **Note**: If both `api_token` and `oauth2_client_secret_file` are configured, OAuth2 takes precedence for Gemini APIs.
 
