@@ -1,6 +1,7 @@
 """Schedule command for NEWA CLI."""
 
 import sys
+from typing import Optional
 
 import click
 
@@ -31,12 +32,17 @@ from newa.cli.utils import initialize_state_dir, test_file_presence
     default=False,
     help='Do not report test results to ReportPortal.',
     )
+@click.option(
+    '--rp-launch-uuid',
+    help='Reuse an existing ReportPortal launch UUID instead of creating a new one.',
+    )
 @click.pass_obj
 def cmd_schedule(
         ctx: CLIContext,
         arch: list[str],
         fixtures: list[str],
-        no_reportportal: bool) -> None:
+        no_reportportal: bool,
+        rp_launch_uuid: Optional[str] = None) -> None:
     """
     Schedule subcommand - creates schedule jobs from jira jobs.
 
@@ -47,6 +53,12 @@ def cmd_schedule(
     4. Creating and saving schedule job YAML files
     """
     ctx.enter_command('schedule')
+
+    # Validate mutually exclusive options
+    if no_reportportal and rp_launch_uuid:
+        ctx.logger.error(
+            'ERROR: --no-reportportal and --rp-launch-uuid are mutually exclusive options')
+        sys.exit(1)
 
     # Ensure state dir is present and initialized
     initialize_state_dir(ctx)
@@ -68,4 +80,4 @@ def cmd_schedule(
 
     # Process each jira job
     for jira_job in jira_jobs:
-        _process_jira_job(ctx, jira_job, arch, fixtures, no_reportportal)
+        _process_jira_job(ctx, jira_job, arch, fixtures, no_reportportal, rp_launch_uuid)

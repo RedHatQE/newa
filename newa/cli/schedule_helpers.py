@@ -2,6 +2,7 @@
 
 import os
 import re
+import sys
 from typing import Any, Optional
 
 from newa import (
@@ -170,7 +171,8 @@ def _process_jira_job(
         jira_job: JiraJob,
         arch_options: list[str],
         fixtures: list[str],
-        no_reportportal: bool) -> None:
+        no_reportportal: bool,
+        rp_launch_uuid: Optional[str] = None) -> None:
     """Process a single jira_job and create schedule jobs."""
     from newa import ScheduleJob
 
@@ -178,6 +180,35 @@ def _process_jira_job(
     if not jira_job.recipe:
         ctx.logger.info(f'Skipping jira job {jira_job.jira.id} - no recipe specified')
         return
+
+    # Initialize ReportPortal connection if --rp-launch-uuid is provided
+    rp = None
+    launch_metadata: Optional[RawRecipeReportPortalConfigDimension] = None
+    if rp_launch_uuid:
+        from newa.cli.initialization import initialize_rp_connection
+        rp = initialize_rp_connection(ctx)
+
+        # Fetch launch metadata once (outside the request loop)
+        ctx.logger.info(f'Fetching ReportPortal launch {rp_launch_uuid}')
+        launch_info = rp.get_launch_info(rp_launch_uuid)
+
+        if not launch_info:
+            ctx.logger.error(
+                f'ERROR: Could not find ReportPortal launch {rp_launch_uuid} '
+                f'in project {rp.project}')
+            sys.exit(1)
+
+        # Store metadata to apply to all requests
+        launch_metadata = RawRecipeReportPortalConfigDimension(
+            launch_uuid=rp_launch_uuid,
+            launch_url=rp.get_launch_url(rp_launch_uuid),
+            launch_name=launch_info['name'],
+            launch_description=launch_info.get('description', ''),
+            )
+
+        ctx.logger.info(
+            f'Configured to reuse existing ReportPortal launch: '
+            f'{launch_info["name"]} ({rp_launch_uuid})')
 
     # Determine compose and architectures
     compose = jira_job.compose.id if jira_job.compose else None
@@ -217,6 +248,20 @@ def _process_jira_job(
         # Prepare Jinja variables and render request attributes
         jinja_vars = _prepare_jinja_vars_for_request(jira_job, request, issue_fields)
         _render_request_attributes(request, jinja_vars)
+
+        # Apply cached launch metadata if --rp-launch-uuid was provided
+        if launch_metadata:
+            if not request.reportportal:
+                request.reportportal = RawRecipeReportPortalConfigDimension()
+            # Update individual fields to satisfy mypy TypedDict requirements
+            if 'launch_uuid' in launch_metadata:
+                request.reportportal['launch_uuid'] = launch_metadata['launch_uuid']
+            if 'launch_url' in launch_metadata:
+                request.reportportal['launch_url'] = launch_metadata['launch_url']
+            if 'launch_name' in launch_metadata:
+                request.reportportal['launch_name'] = launch_metadata['launch_name']
+            if 'launch_description' in launch_metadata:
+                request.reportportal['launch_description'] = launch_metadata['launch_description']
 
         # Create and save schedule job
         schedule_job = ScheduleJob(
