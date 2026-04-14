@@ -1431,6 +1431,28 @@ Example:
 $ newa event --compose CentOS-Stream-9 job-recipe path/to/recipe.yaml schedule --no-reportportal execute
 ```
 
+#### Option `--rp-launch-uuid`
+
+Allows you to reuse an existing ReportPortal launch instead of creating a new one during test execution. When this option is provided, NEWA fetches the launch metadata (name, description, URL) from ReportPortal and configures all scheduled jobs to use this existing launch.
+
+This option is mutually exclusive with `--no-reportportal`.
+
+The typical use case is when you want to add test results to an existing ReportPortal launch, for example:
+- Running additional tests for the same erratum or compose
+- Re-running tests with different configurations but keeping results in the same launch
+- Consolidating results from multiple NEWA runs into a single launch
+
+**Important notes:**
+- The launch UUID must exist in the configured ReportPortal project
+- NEWA will validate the launch exists before scheduling
+- All generated schedule jobs will use this launch UUID
+- The `execute` command will skip creating a new launch and use the provided one
+
+Example:
+```
+$ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml schedule --rp-launch-uuid 12345678-1234-1234-1234-123456789abc execute report
+```
+
 
 ### Subcommand `cancel`
 
