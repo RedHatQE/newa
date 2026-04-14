@@ -66,7 +66,7 @@ def _process_fixtures(
         return
 
     for fixture in fixtures:
-        r = re.fullmatch(r'([^\s=]+)=([^=]*)', fixture)
+        r = re.fullmatch(r'([^\s=]+)=(.*)', fixture)
         if not r:
             raise Exception(
                 f"Fixture {fixture} does not having expected format 'name=value'")
