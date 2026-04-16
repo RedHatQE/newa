@@ -1,3 +1,12 @@
+# Configure shebang options based on Python version
+# Python 3.11+: use -P flag only (safe path)
+# Python < 3.11: no flags (plain /usr/bin/python3)
+%if 0%{?python3_version_nodots} >= 311
+%global py3_shbang_opts -P
+%else
+%global py3_shbang_opts %{nil}
+%endif
+
 Name:           newa
 Version:        0.1
 Release:        %autorelease
@@ -43,5 +52,5 @@ install -D -m 0644 newa-completion.bash %{buildroot}%{_datadir}/bash-completion/
 %{_datadir}/bash-completion/completions/newa
 
 %changelog
-* Thu June 06 2024 Miroslav Vadkerti <mvadkert@redhat.com> - 0.1-1
+* Thu Jun 06 2024 Miroslav Vadkerti <mvadkert@redhat.com> - 0.1-1
 - Initial packaging
