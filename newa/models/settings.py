@@ -218,6 +218,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
     timestamp: str = ''
     continue_execution: bool = False
     no_wait: bool = False
+    rp_purge: bool = False
     restart_request: list[str] = field(factory=list)
     restart_result: list[RequestResult] = field(factory=list,  # type: ignore[var-annotated]
                                                 converter=lambda results: [

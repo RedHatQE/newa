@@ -1541,7 +1541,43 @@ newa --prev-state-dir execute -R REQ-1.2.1 -R REQ-2.2.2 report
 ```
 
 #### Option `--restart-result`, `-r`
-This option can be used to reschedule NEWA request that have ended with a particular result - `passed, failed, error`. For example, `--restart-result error`. Result can be either `passed`, `failed` or `error` where 'error' means that test execution hasn't been finished correctly. This option can be used multiple times. Implies `--continue`.
+This option can be used to reschedule NEWA requests that have ended with a particular result - `passed, failed, error`. For example, `--restart-result error`. Result can be either `passed`, `failed` or `error` where 'error' means that test execution hasn't been finished correctly. This option can be used multiple times. Implies `--continue`.
+
+#### Option `--rp-purge`, `-X`
+
+Removes previous test results from the ReportPortal launch before executing new Testing Farm requests. This option is particularly useful when restarting specific TF requests to avoid duplicate test results in the same ReportPortal launch.
+
+**How it works:**
+- Before initiating each Testing Farm request, NEWA identifies and removes the corresponding previous test results from ReportPortal
+- Test results are identified using the `newa_batch` tag that uniquely identifies each execution run
+- **Only the test results for requests being executed are removed** - other requests in the launch remain untouched
+- If no matching test results are found, execution continues normally without any messages
+- This operation happens per-worker, ensuring that only the requests being re-executed have their old results removed
+
+**Use cases:**
+- Restarting failed or errored test requests without accumulating duplicate results
+- Re-running specific tests with updated configurations while keeping other results intact
+- Maintaining clean ReportPortal launches when using `--restart-request`, `--restart-result`, or `--force`
+
+**Important notes:**
+- Only removes test results from existing ReportPortal launches (requires `launch_uuid` to be set)
+- Works with `--restart-request`, `--restart-result`, and `--force` options
+- If a request is not scheduled for execution, its old test results remain untouched
+
+Example (restart failed tests and remove previous results):
+```
+$ newa --prev-state-dir execute --restart-result error --rp-purge report
+```
+
+Example (restart specific request and remove previous results):
+```
+$ newa --prev-state-dir execute --restart-request REQ-2.2.14 --rp-purge report
+```
+
+Example (force re-execution and remove previous results):
+```
+$ newa --force execute --rp-purge report
+```
 
 
 ### Subcommand `report`

@@ -61,6 +61,13 @@ from newa.cli.utils import initialize_state_dir
     default=False,
     help='Do not wait for TF requests to finish.',
     )
+@click.option(
+    '--rp-purge',
+    '-X',
+    is_flag=True,
+    default=False,
+    help='Remove previous test result from ReportPortal launch before executing a request.',
+    )
 @click.pass_obj
 def cmd_execute(
         ctx: CLIContext,
@@ -68,7 +75,8 @@ def cmd_execute(
         _continue: bool,
         no_wait: bool,
         restart_request: list[str],
-        restart_result: list[str]) -> None:
+        restart_result: list[str],
+        rp_purge: bool) -> None:
     """
     Execute scheduled test jobs.
 
@@ -82,6 +90,9 @@ def cmd_execute(
 
     # Set no_wait flag
     ctx.no_wait = no_wait
+
+    # Set rp_purge flag
+    ctx.rp_purge = rp_purge
 
     # Validate parameters and configure execution mode
     _validate_execute_parameters(ctx, _continue, restart_request, restart_result)
