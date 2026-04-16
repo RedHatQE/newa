@@ -169,3 +169,107 @@ class ReportPortal:
         if req.status_code in HTTP_STATUS_CODES_OK:
             return req.json()
         return None
+
+    def delete_request(self,
+                       path: str,
+                       version: int = 1) -> bool:
+        from urllib.parse import quote as Q  # noqa: N812
+        url = urllib.parse.urljoin(
+            self.url,
+            f'/api/v{version}/{Q(self.project)}/{Q(path.lstrip("/"))}')
+        headers = {"Authorization": f"bearer {self.token}", "Content-Type": "application/json"}
+        req = requests.delete(url, headers=headers)
+        return req.status_code in HTTP_STATUS_CODES_OK
+
+    def remove_test_suite_by_tag(self,
+                                 launch_uuid: str,
+                                 newa_batch_id: str,
+                                 logger: Optional['logging.Logger'] = None) -> bool:
+        """
+        Remove a test suite from a ReportPortal launch by newa_batch tag.
+
+        Args:
+            launch_uuid: UUID of the ReportPortal launch
+            newa_batch_id: NEWA batch ID for precise targeting (unique per request execution)
+            logger: Optional logger for debug messages
+
+        Returns:
+            True if suite was found and removed, False otherwise
+        """
+        # First get launch info to retrieve numeric launch ID
+        launch_info = self.get_launch_info(launch_uuid)
+        if not launch_info:
+            if logger:
+                logger.warning(f'Could not find launch {launch_uuid} in ReportPortal')
+            return False
+
+        launch_id = launch_info['id']
+
+        # Search for test items (suites) with the newa_batch tag
+        # Using the search API with filter for attributes
+        # The correct syntax for filtering by attribute key:value is
+        # filter.has.compositeAttribute=key:value
+        params = {
+            'filter.eq.launchId': str(launch_id),
+            'filter.eq.type': 'suite',
+            'filter.has.compositeAttribute': f'newa_batch:{newa_batch_id}',
+            }
+
+        # Get test items matching the criteria (with pagination support)
+        # ReportPortal API returns paginated results, so we need to iterate through all pages
+        page = 1
+        page_size = 50  # ReportPortal default page size
+        deleted_items = []
+        failed_items = []
+
+        while True:
+            # Add pagination parameters
+            paginated_params = params.copy()
+            paginated_params['page.page'] = str(page)
+            paginated_params['page.size'] = str(page_size)
+
+            items = self.get_request('/item', params=paginated_params, version=1)
+
+            if not items or not items.get('content'):
+                # No more items on this page
+                break
+
+            # Delete each matching suite on this page
+            for item in items['content']:
+                item_id = item['id']
+                if logger:
+                    logger.info(
+                        f'Removing test suite {item_id} with tag newa_batch={newa_batch_id} '
+                        f'from launch {launch_uuid}')
+                success = self.delete_request(f'/item/{item_id}', version=1)
+                if success:
+                    deleted_items.append(item_id)
+                else:
+                    failed_items.append(item_id)
+                    if logger:
+                        logger.warning(
+                            f'Failed to remove test suite {item_id} from launch {launch_uuid}')
+
+            # Check if there are more pages
+            page_metadata = items.get('page', {})
+            total_pages = page_metadata.get('totalPages', 1)
+            if page >= total_pages:
+                break
+
+            page += 1
+
+        # Log summary
+        if not deleted_items and not failed_items:
+            if logger:
+                logger.debug(
+                    f'No test suite found with tag newa_batch={newa_batch_id} '
+                    f'in launch {launch_uuid}')
+            return False
+
+        if failed_items and logger:
+            logger.warning(
+                f'Failed to remove {len(failed_items)} test suite(s) from launch {launch_uuid}: '
+                f'{", ".join(str(i) for i in failed_items)}')
+
+        # Return True if at least one item was successfully deleted
+        return len(deleted_items) > 0

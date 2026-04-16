@@ -41,8 +41,10 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
 
     start_new_request = True
     skip_initial_sleep = False
-    # if --continue, then read ExecuteJob details as well
-    if ctx.continue_execution:
+    execute_job = None
+
+    # Load former execute_job only if --continue or --rp-purge will need it
+    if ctx.continue_execution or ctx.rp_purge:
         parent = schedule_file.parent
         name = schedule_file.name
         from newa import EXECUTE_FILE_PREFIX, SCHEDULE_FILE_PREFIX
@@ -55,19 +57,39 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
                     1)))
         if execute_job_file.exists():
             execute_job = ExecuteJob.from_yaml_file(execute_job_file)
-            if execute_job.execution.result in ctx.restart_result:
-                log(f'Restarting request {execute_job.request.id}'
-                    f' with result {execute_job.execution.result.value}')
-            elif ctx.restart_request:
-                (match, pattern) = test_patterns_match(execute_job.request.id, ctx.restart_request)
-                if match:
-                    log(f'Restarting request {execute_job.request.id} with ID matching {pattern}')
+            if ctx.continue_execution:
+                if execute_job.execution.result in ctx.restart_result:
+                    log(f'Restarting request {execute_job.request.id}'
+                        f' with result {execute_job.execution.result.value}')
+                elif ctx.restart_request:
+                    (match, pattern) = test_patterns_match(
+                        execute_job.request.id, ctx.restart_request)
+                    if match:
+                        log(f'Restarting request {execute_job.request.id} '
+                            f'with ID matching {pattern}')
+                    else:
+                        start_new_request = False
                 else:
                     start_new_request = False
-            else:
-                start_new_request = False
 
     if start_new_request:
+        # Remove old test suite from ReportPortal if --rp-purge is set
+        if ctx.rp_purge and schedule_job.request.reportportal:
+            launch_uuid = schedule_job.request.reportportal.get('launch_uuid')
+            if launch_uuid and execute_job:
+                newa_batch_id = execute_job.execution.batch_id
+                newa_req_id = schedule_job.request.id
+                from newa.cli.initialization import initialize_rp_connection
+                rp = initialize_rp_connection(ctx)
+                removed = rp.remove_test_suite_by_tag(
+                    launch_uuid=launch_uuid,
+                    newa_batch_id=newa_batch_id,
+                    logger=ctx.logger)
+                if removed:
+                    ctx.logger.debug(
+                        f'{schedule_file.name}: Removed old test results for request '
+                        f'{newa_req_id} from launch {launch_uuid}')
+
         log('initiating TF request')
         tf_request = schedule_job.request.initiate_tf_request(ctx)
         log(f'TF request filed with uuid {tf_request.uuid}')
@@ -95,6 +117,9 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
             )
         ctx.save_execute_job(execute_job)
     else:
+        # execute_job must exist here because start_new_request is only False
+        # when we loaded execute_job in the continue_execution block
+        assert execute_job is not None
         log(f'Re-using existing request {execute_job.request.id}')
         tf_request = TFRequest(api=execute_job.execution.request_api,
                                uuid=execute_job.execution.request_uuid)
