@@ -75,10 +75,6 @@ include = [
 # TODO: man page?
 # artifacts = ["newa.1"]
 
-[tool.hatch.build.targets.wheel.scripts]
-python-tag = "py3"
-shebang = "/usr/bin/python3 -P"
-
 [tool.hatch.envs.default]
 platforms = ["linux"]
 
