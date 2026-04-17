@@ -163,6 +163,103 @@ For Jira Cloud, you need to:
 1. Generate an API token at https://id.atlassian.com/manage-profile/security/api-tokens
 2. Configure both `email` and `token` in the `[jira]` section
 
+### Color configuration
+
+NEWA's `list` command supports colored output with automatic terminal detection and customizable color schemes.
+
+#### Default behavior
+
+Colors are automatically enabled when **any** of the following is true:
+- The `FORCE_COLOR` environment variable is set (forces colors regardless of terminal), OR
+- All of the following conditions are met:
+  - The `NO_COLOR` environment variable is not set
+  - Output is directed to a terminal (TTY)
+  - The `TERM` environment variable is set to a value other than `dumb`
+
+#### Environment variables
+
+- `NO_COLOR` - Disables all colored output (highest priority, overrides everything)
+- `FORCE_COLOR` - Forces colored output even when not in a TTY (overrides auto-detection)
+- `NEWA_COLOR_CONFIG` - Path to a custom color configuration file
+
+#### Customizing colors
+
+To customize the color scheme, create a YAML configuration file and reference it in your NEWA configuration:
+
+```
+[newa]
+color_config = /path/to/colors.yaml
+```
+
+Or use the environment variable:
+```bash
+export NEWA_COLOR_CONFIG=/path/to/colors.yaml
+```
+
+#### Color configuration file format
+
+The color configuration file uses ANSI escape codes to define colors for different output elements:
+
+```yaml
+# Palette colors - for structural output elements
+palette:
+  state_dir: '\033[38;5;208m'      # Orange - state directory path
+  event: '\033[38;5;203m'          # Light red - event lines
+  issue: '\033[38;5;75m'           # Medium blue - issue lines
+  request_id: '\033[32m'           # Green - request IDs (REQ-*)
+  reportportal: '\033[38;5;141m'   # Purple - ReportPortal launch lines
+
+# State colors - for request execution states
+states:
+  not_executed: '\033[33m'         # Yellow - not executed
+  running: '\033[38;5;75m'         # Medium blue - running
+  complete: '\033[32m'             # Green - complete/finished
+  error: '\033[38;5;203m'          # Light red - error state
+  default: '\033[38;5;208m'        # Orange - other states (cancelled, etc.)
+
+# Result colors - for request execution results
+results:
+  passed: '\033[32m'               # Green - tests passed
+  failed: '\033[38;5;203m'         # Light red - tests failed
+  none: '\033[38;5;75m'            # Medium blue - no result yet
+  cancelled: '\033[38;5;208m'      # Orange - cancelled
+  default: '\033[38;5;208m'        # Orange - other results (error, skipped, etc.)
+```
+
+**Important notes:**
+- If a color is not specified in the configuration file, the built-in default color will be used
+- To disable color for a specific element, simply omit it from the configuration file
+- All values must be valid ANSI escape codes
+
+An example configuration file is available at `examples/colors.yaml` in the NEWA repository.
+
+#### Common ANSI color codes
+
+**Basic colors:**
+```
+Red:     '\033[31m'
+Green:   '\033[32m'
+Yellow:  '\033[33m'
+Blue:    '\033[34m'
+Magenta: '\033[35m'
+Cyan:    '\033[36m'
+White:   '\033[37m'
+```
+
+**256-color palette** (use `'\033[38;5;Nm'` where N is 0-255):
+```
+75  - Sky blue
+141 - Purple/violet
+203 - Light red/salmon pink
+208 - Orange
+226 - Bright yellow
+```
+
+**RGB colors** (use `'\033[38;2;R;G;Bm'`):
+```
+'\033[38;2;255;100;50m'  - Custom orange
+```
+
 ### Jira issue configuration file
 
 This is a configuration for the `newa jira` subcommand and typically it targets a particular package and event, e.g. it prescribes which Jira issues should be created for an advisory.
