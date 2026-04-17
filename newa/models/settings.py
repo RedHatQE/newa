@@ -49,6 +49,7 @@ class Settings:  # type: ignore[no-untyped-def]
     newa_statedir_topdir: Path = field(  # type: ignore[var-annotated]
         factory=Path, converter=lambda p: Path(p) if p else STATEDIR_TOPDIR)
     newa_clear_on_subcommand: bool = False
+    newa_color_config: str = ''
     et_url: str = ''
     et_enable_comments: bool = False
     et_deduplicate_releases: bool = False
@@ -105,6 +106,10 @@ class Settings:  # type: ignore[no-untyped-def]
                     cp,
                     'newa/clear_on_subcommand',
                     'NEWA_CLEAR_ON_SUBCOMMAND')),
+            newa_color_config=_get(
+                cp,
+                'newa/color_config',
+                'NEWA_COLOR_CONFIG'),
             et_url=_get(
                 cp,
                 'erratatool/url',

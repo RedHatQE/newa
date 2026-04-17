@@ -1,0 +1,59 @@
+# NEWA Color Configuration Example
+#
+# This file allows you to customize colors for 'newa list' output.
+# To use this file, add the following to your newa.conf:
+#
+#   [newa]
+#   color_config = /path/to/colors.yaml
+#
+# Or set the environment variable:
+#   export NEWA_COLOR_CONFIG=/path/to/colors.yaml
+#
+# Color values should be ANSI escape codes.
+# If a color is not specified, the default color will be used.
+# If you don't want any color for a specific item, omit it from this file.
+
+# Palette colors - for structural output elements
+palette:
+  state_dir: '\033[38;5;208m'      # Orange - state directory path
+  event: '\033[38;5;203m'          # Light red - event lines
+  issue: '\033[38;5;75m'           # Medium blue - issue lines
+  request_id: '\033[32m'           # Green - request IDs (REQ-*)
+  reportportal: '\033[38;5;141m'   # Purple - ReportPortal launch lines
+
+# State colors - for request execution states
+states:
+  not_executed: '\033[33m'         # Yellow - not executed
+  running: '\033[38;5;75m'         # Medium blue - running
+  complete: '\033[32m'             # Green - complete/finished
+  error: '\033[38;5;203m'          # Light red - error state
+  default: '\033[38;5;208m'        # Orange - other states (cancelled, etc.)
+
+# Result colors - for request execution results
+results:
+  passed: '\033[32m'               # Green - tests passed
+  failed: '\033[38;5;203m'         # Light red - tests failed
+  none: '\033[38;5;75m'            # Medium blue - no result yet
+  cancelled: '\033[38;5;208m'      # Orange - cancelled
+  default: '\033[38;5;208m'        # Orange - other results (error, skipped, etc.)
+
+# Common ANSI 256-color codes for reference:
+#
+# Basic colors:
+#   Red:     '\033[31m'
+#   Green:   '\033[32m'
+#   Yellow:  '\033[33m'
+#   Blue:    '\033[34m'
+#   Magenta: '\033[35m'
+#   Cyan:    '\033[36m'
+#   White:   '\033[37m'
+#
+# 256-color palette (use '\033[38;5;Nm' where N is 0-255):
+#   75  - Sky blue
+#   141 - Purple/violet
+#   203 - Light red/salmon pink
+#   208 - Orange
+#   226 - Bright yellow
+#
+# You can also use RGB colors: '\033[38;2;R;G;Bm'
+# Example: '\033[38;2;255;100;50m' for a custom orange
