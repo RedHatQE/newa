@@ -1,0 +1,11 @@
+fixtures:
+    tmt:
+        url: https://github.com/RedHatQE/newa.git
+        ref: main
+        path: demodata
+        plan: /plan/plan1
+    context:
+        tier: 1
+    environment:
+        TEST: "value"
+    compose: RHEL-9.0

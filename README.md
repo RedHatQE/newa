@@ -1512,6 +1512,31 @@ Example: Changing TF CLI arguments.
 $ newa ... schedule --fixture testingfarm.cli_args="--repository-file URL" ...
 ```
 
+#### Option `--extra-tf-cli-args`
+
+Appends additional arguments to the Testing Farm CLI command for all scheduled requests. This option allows you to safely extend Testing Farm arguments when `testingfarm.cli_args` is already configured in the NEWA recipe.
+
+**Key features:**
+- When the recipe already contains `testingfarm.cli_args`, the extra arguments are appended to the existing ones
+- When the recipe doesn't have `testingfarm.cli_args`, the extra arguments are used as-is
+
+**Use cases:**
+- Adding temporary Testing Farm options without modifying the recipe
+- Passing environment-specific arguments at runtime
+- Extending recipe-defined arguments with additional options
+
+Example: Adding a repository file to Testing Farm requests while preserving recipe args.
+```
+$ newa event --compose CentOS-Stream-9 jira --job-recipe recipe.yaml schedule --extra-tf-cli-args "--repository-file URL" execute report
+```
+
+Example: Adding multiple Testing Farm options.
+```
+$ newa ... schedule --extra-tf-cli-args "--pipeline-type tmt-multihost --debug" execute
+```
+
+**Note:** Unlike `--fixture testingfarm.cli_args="..."` which replaces the entire `testingfarm.cli_args` value from the recipe, `--extra-tf-cli-args` always appends to existing arguments, making it safer for extending recipe configurations without breaking existing functionality.
+
 #### Option `--no-reportportal`
 
 If a recipe contains `reportportal` launch configuration, NEWA will create a RP launch and instruct `tmt` to report test results to it. With `schedule --no-reportportal` option NEWA will ignore `reportportal` section from the recipe and test results won't be reported to ReportPortal. Please note that when `how: reportportal` reporting is enabled in a `tmt` plan then both `tmt` and TestinFarm request may finish with an error. Therefore, when disabling ReportPortal reporting in NEWA a user should also ensure that it is not enabled in the `tmt` plan itself. You can use `newa_report_rp` context to enable ReportPortal reporting in a `tmt` plan conditionally. Use

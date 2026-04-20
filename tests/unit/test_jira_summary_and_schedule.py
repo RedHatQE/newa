@@ -461,3 +461,77 @@ class TestScheduleAndRecipeFunctionality:
         # Load and verify the jira job has NO recipe
         jira_job = JiraJob.from_yaml_file(jira_job_files[0])
         assert jira_job.recipe is None
+
+    def test_extra_tf_cli_args_appends_to_existing_cli_args(self, mock_ctx):
+        """Test that --extra-tf-cli-args appends to existing testingfarm.cli_args."""
+        from newa import Compose, Recipe, ScheduleJob
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        # Create a jira job with recipe that HAS testingfarm.cli_args
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml'),
+            )
+
+        # Process with extra_tf_cli_args
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            extra_tf_cli_args='--extra-arg value',
+            )
+
+        # Verify schedule job files were created
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) > 0
+
+        # Load and verify ALL schedule jobs have appended cli_args
+        for schedule_file in schedule_job_files:
+            schedule_job = ScheduleJob.from_yaml_file(schedule_file)
+            assert schedule_job.request.testingfarm is not None
+            # Original recipe has "-c trigger=newa", we append "--extra-arg value"
+            expected = '-c trigger=newa --extra-arg value'
+            assert schedule_job.request.testingfarm['cli_args'] == expected
+
+    def test_extra_tf_cli_args_creates_testingfarm_dict_when_missing(self, mock_ctx):
+        """Test that --extra-tf-cli-args creates testingfarm dict when it doesn't exist."""
+        from newa import Compose, Recipe, ScheduleJob
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        # Create a jira job with recipe that does NOT have testingfarm.cli_args
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-456', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/recipe_no_cli_args.yaml'),
+            )
+
+        # Process with extra_tf_cli_args
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=[],
+            fixtures=[],
+            no_reportportal=True,
+            extra_tf_cli_args='--new-arg value',
+            )
+
+        # Verify schedule job files were created
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) > 0
+
+        # Load and verify ALL schedule jobs have new cli_args
+        for schedule_file in schedule_job_files:
+            schedule_job = ScheduleJob.from_yaml_file(schedule_file)
+            assert schedule_job.request.testingfarm is not None
+            assert schedule_job.request.testingfarm['cli_args'] == '--new-arg value'
