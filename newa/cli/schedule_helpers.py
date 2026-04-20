@@ -11,6 +11,7 @@ from newa import (
     JiraJob,
     RawRecipeConfigDimension,
     RawRecipeReportPortalConfigDimension,
+    RawRecipeTFConfigDimension,
     RecipeConfig,
     Request,
     get_url_basename,
@@ -172,7 +173,8 @@ def _process_jira_job(
         arch_options: list[str],
         fixtures: list[str],
         no_reportportal: bool,
-        rp_launch_uuid: Optional[str] = None) -> None:
+        rp_launch_uuid: Optional[str] = None,
+        extra_tf_cli_args: Optional[str] = None) -> None:
     """Process a single jira_job and create schedule jobs."""
     from newa import ScheduleJob
 
@@ -248,6 +250,17 @@ def _process_jira_job(
         # Prepare Jinja variables and render request attributes
         jinja_vars = _prepare_jinja_vars_for_request(jira_job, request, issue_fields)
         _render_request_attributes(request, jinja_vars)
+
+        # Append extra testing-farm args if provided
+        if extra_tf_cli_args:
+            if not request.testingfarm:
+                request.testingfarm = RawRecipeTFConfigDimension()
+            existing_args = (request.testingfarm.get('cli_args') or '').strip()
+            extra_args_stripped = extra_tf_cli_args.strip()
+            if existing_args:
+                request.testingfarm['cli_args'] = f"{existing_args} {extra_args_stripped}"
+            else:
+                request.testingfarm['cli_args'] = extra_args_stripped
 
         # Apply cached launch metadata if --rp-launch-uuid was provided
         if launch_metadata:
