@@ -1975,6 +1975,28 @@ After installing the RPM package, completion will be available in new shell sess
 source /usr/share/bash-completion/completions/newa
 ```
 
+### Enabling completion for aliases
+
+If you create custom aliases for the `newa` command (e.g., `newa-stage`, `newa-prod`), you can easily enable the same bash completion for them. After sourcing the completion script, add a `complete` command for each alias in your `~/.bashrc`:
+
+```bash
+# Create your alias
+alias newa-stage='newa --conf-file=/path/to/stage.conf'
+
+# Source the completion script
+source /usr/share/bash-completion/completions/newa
+
+# Enable completion for the alias
+complete -o filenames -F _newa_completion newa-stage
+```
+
+You can add this for as many aliases as you need:
+
+```bash
+alias newa-prod='newa --conf-file=/path/to/prod.conf'
+complete -o filenames -F _newa_completion newa-prod
+```
+
 ### Examples
 
 ```bash
