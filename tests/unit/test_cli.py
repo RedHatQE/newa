@@ -849,3 +849,127 @@ def test_erratum_jira_issues_populated():
 # Mark the last test to use the mock fixture
 test_erratum_jira_issues_populated = pytest.mark.usefixtures('_mock_errata_tool')(
     test_erratum_jira_issues_populated)
+
+
+def test_default_subcommand_is_list(tmp_path):
+    """Test that running newa without a subcommand defaults to the list command."""
+    runner = CliRunner()
+
+    # Create a topdir with some state directories
+    topdir = tmp_path / "topdir"
+    topdir.mkdir()
+
+    # Create a state directory with a YAML file
+    state_dir = topdir / "run-2024-01-01-12-00-00"
+    state_dir.mkdir()
+    (state_dir / "event-12345-RHEL-9.yaml").write_text("""
+event:
+  id: '12345'
+  type_: erratum
+erratum:
+  id: '12345'
+  content_type: rpm
+  respin_count: 1
+  summary: Test erratum
+  url: https://errata.example.com/12345
+  builds: []
+  release: RHEL-9.4.0
+compose:
+  id: RHEL-9.4.0-Nightly
+""")
+
+    # Run newa without any subcommand
+    result = runner.invoke(
+        cli.main,
+        [],
+        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
+
+    # Should succeed and invoke the list command
+    assert result.exit_code == 0
+
+    # Output should contain the state directory path (from list command)
+    assert str(state_dir) in result.output
+
+
+def test_default_subcommand_with_options(tmp_path):
+    """Test that global options work with the default list subcommand."""
+    runner = CliRunner()
+
+    # Create a topdir with multiple state directories
+    topdir = tmp_path / "topdir"
+    topdir.mkdir()
+
+    # Create two state directories
+    state_dir1 = topdir / "run-2024-01-01-12-00-00"
+    state_dir1.mkdir()
+    state_dir2 = topdir / "run-2024-01-02-12-00-00"
+    state_dir2.mkdir()
+
+    # Create YAML files in both
+    (state_dir1 / "event-1.yaml").write_text("""
+event:
+  id: '1'
+  type_: erratum
+erratum:
+  id: '1'
+  content_type: rpm
+  respin_count: 1
+  summary: Test erratum 1
+  url: https://errata.example.com/1
+  builds: []
+  release: RHEL-9.4.0
+compose:
+  id: RHEL-9.4.0-Nightly
+""")
+    (state_dir2 / "event-2.yaml").write_text("""
+event:
+  id: '2'
+  type_: erratum
+erratum:
+  id: '2'
+  content_type: rpm
+  respin_count: 1
+  summary: Test erratum 2
+  url: https://errata.example.com/2
+  builds: []
+  release: RHEL-9.4.0
+compose:
+  id: RHEL-9.4.0-Nightly
+""")
+
+    # Run newa with --state-dir option but no subcommand
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(state_dir1)],
+        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
+
+    # Should succeed
+    assert result.exit_code == 0
+
+    # Output should contain only the specified state directory
+    assert str(state_dir1) in result.output
+    # Should not contain the other state directory
+    assert str(state_dir2) not in result.output
+
+
+def test_explicit_subcommand_still_works(tmp_path):
+    """Test that explicit subcommands still work as expected."""
+    runner = CliRunner()
+
+    # Create a topdir with a state directory
+    topdir = tmp_path / "topdir"
+    topdir.mkdir()
+    state_dir = topdir / "run-2024-01-01-12-00-00"
+    state_dir.mkdir()
+
+    # Run newa with explicit list subcommand
+    result = runner.invoke(
+        cli.main,
+        ['--state-dir', str(state_dir), 'list'],
+        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
+
+    # Should succeed
+    assert result.exit_code == 0
+
+    # Output should contain the state directory path
+    assert str(state_dir) in result.output

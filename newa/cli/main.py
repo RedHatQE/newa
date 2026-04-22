@@ -96,7 +96,7 @@ def _should_filter_yaml_file(
     return False  # File matches all filters, keep it
 
 
-@click.group(chain=True)
+@click.group(chain=True, invoke_without_command=True)
 @click.option(
     '--state-dir',
     '-D',
@@ -384,6 +384,10 @@ def main(click_context: click.Context,
     # store environment variables and context provided on a cmdline
     ctx.cli_environment.update(dict(_split(s) for s in envvars))
     ctx.cli_context.update(dict(_split(s) for s in contexts))
+
+    # If no subcommand was specified, invoke the list command by default
+    if click_context.invoked_subcommand is None:
+        click_context.invoke(cmd_list)
 
 
 # Register commands
