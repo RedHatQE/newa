@@ -385,8 +385,10 @@ def main(click_context: click.Context,
     ctx.cli_environment.update(dict(_split(s) for s in envvars))
     ctx.cli_context.update(dict(_split(s) for s in contexts))
 
-    # If no subcommand was specified, invoke the list command by default
-    if click_context.invoked_subcommand is None:
+    # If no subcommand was specified, invoke the list command by default.
+    # Avoid doing this during resilient parsing (e.g., shell completion).
+    if (not click_context.resilient_parsing
+            and click_context.invoked_subcommand is None):
         click_context.invoke(cmd_list)
 
 

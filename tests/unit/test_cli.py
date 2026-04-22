@@ -882,7 +882,7 @@ compose:
     result = runner.invoke(
         cli.main,
         [],
-        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
+        env={'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     # Should succeed and invoke the list command
     assert result.exit_code == 0
@@ -941,7 +941,7 @@ compose:
     result = runner.invoke(
         cli.main,
         ['--state-dir', str(state_dir1)],
-        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
+        env={'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     # Should succeed
     assert result.exit_code == 0
@@ -966,7 +966,7 @@ def test_explicit_subcommand_still_works(tmp_path):
     result = runner.invoke(
         cli.main,
         ['--state-dir', str(state_dir), 'list'],
-        env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
+        env={'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     # Should succeed
     assert result.exit_code == 0
