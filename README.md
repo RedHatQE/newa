@@ -919,6 +919,32 @@ $ REQUESTS_CA_BUNDLE=/etc/pki/tls/cert.pem newa event --erratum 124115 jira --is
 
 ## NEWA options and subcommands
 
+### Default behavior
+
+When you run `newa` without specifying any subcommand, it defaults to the `list` subcommand with its default options. This allows for quick inspection of recent NEWA test runs without typing the full command.
+
+Examples:
+```bash
+# These are equivalent - both list the last 10 state directories
+$ newa
+$ newa list
+
+# These are also equivalent - both list a specific state directory
+$ newa --state-dir /var/tmp/newa/run-123
+$ newa --state-dir /var/tmp/newa/run-123 list
+
+# Global options work with the default subcommand
+$ newa -P
+$ newa --prev-state-dir
+
+# To use list-specific options, you must explicitly specify 'list'
+$ newa list --last 20
+$ newa list --all
+$ newa -P list --refresh
+```
+
+This default behavior makes it convenient to check the status of your NEWA runs without having to remember the `list` subcommand each time. Note that list-specific options (like `--last`, `--all`, `--events`, `--issues`, `--refresh`) require you to explicitly specify the `list` subcommand.
+
 ### NEWA options
 
 #### Option `--clear`
