@@ -421,6 +421,23 @@ def _find_or_create_issue(
             selected_issue.closed = False
             new_issues.append(selected_issue)
             old_closed_issues = []
+    else:
+        # We found new issues with current newa_id, so clear old issues for KEEP and UPDATE
+        if action.on_respin in (OnRespinAction.KEEP, OnRespinAction.UPDATE):
+            if old_opened_issues:
+                old_issue_ids = ', '.join([i.id for i in old_opened_issues])
+                ctx.logger.warning(
+                    f"Found old open issue(s) {old_issue_ids} from previous respin(s) "
+                    f"with outdated newa_id. These will be ignored since we are re-using "
+                    f"issue(s) with current newa_id. Consider closing them manually or "
+                    f"using on_respin: close.")
+                old_opened_issues = []
+            if old_closed_issues:
+                old_issue_ids = ', '.join([i.id for i in old_closed_issues])
+                ctx.logger.debug(
+                    f"Ignoring old closed issue(s) {old_issue_ids} with outdated newa_id "
+                    f"since we found issue(s) with current newa_id")
+                old_closed_issues = []
 
     # Unless we want recreate closed issues we would stop processing
     if new_issues and (not recreate):
