@@ -973,3 +973,30 @@ def test_explicit_subcommand_still_works(tmp_path):
 
     # Output should contain the state directory path
     assert str(state_dir) in result.output
+
+
+def test_normalize_request_ids():
+    """Test that request IDs with non-breaking hyphens are normalized to regular hyphens."""
+    from newa.cli.execute_helpers import normalize_request_ids
+
+    # Test with regular hyphens (should remain unchanged)
+    regular_ids = ['REQ-1.2.1', 'REQ-2.2.2', 'REQ-3.4.5']
+    assert normalize_request_ids(regular_ids) == regular_ids
+
+    # Test with non-breaking hyphens (U+2011) - simulates copying from Jira Cloud
+    nonbreaking_ids = ['REQ\u20111.2.1', 'REQ\u20112.2.2', 'REQ\u20113.4.5']
+    expected = ['REQ-1.2.1', 'REQ-2.2.2', 'REQ-3.4.5']
+    assert normalize_request_ids(nonbreaking_ids) == expected
+
+    # Test with multiple non-breaking hyphens in a single ID
+    multiple_nonbreaking = ['REQ\u20111\u20112.1', 'REQ\u20112\u20114\u20116']
+    expected_multiple = ['REQ-1-2.1', 'REQ-2-4-6']
+    assert normalize_request_ids(multiple_nonbreaking) == expected_multiple
+
+    # Test with mixed hyphens
+    mixed_ids = ['REQ-1.2.1', 'REQ\u20112.2.2', 'REQ-3.4.5']
+    expected_mixed = ['REQ-1.2.1', 'REQ-2.2.2', 'REQ-3.4.5']
+    assert normalize_request_ids(mixed_ids) == expected_mixed
+
+    # Test empty list
+    assert normalize_request_ids([]) == []

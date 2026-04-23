@@ -24,6 +24,22 @@ from newa.cli.constants import JIRA_NONE_ID, RP_LAUNCH_DESCR_CHARS_LIMIT
 from newa.cli.utils import test_file_presence
 
 
+def normalize_request_ids(request_ids: list[str]) -> list[str]:
+    """
+    Normalize request IDs by replacing non-breaking hyphens with regular hyphens.
+
+    This handles cases where users copy request IDs from Jira Cloud comments,
+    which use non-breaking hyphens (U+2011) to prevent auto-linking.
+
+    Args:
+        request_ids: List of request IDs to normalize
+
+    Returns:
+        List of normalized request IDs with regular hyphens
+    """
+    return [req_id.replace('\u2011', '-') for req_id in request_ids]
+
+
 def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[RequestResult]:
     """Validate and sanitize restart result values."""
     sanitized = []
@@ -64,7 +80,8 @@ def _validate_execute_parameters(
     ctx.continue_execution = _continue
 
     if restart_request:
-        ctx.restart_request = restart_request
+        # Normalize request IDs to handle non-breaking hyphens from Jira Cloud
+        ctx.restart_request = normalize_request_ids(restart_request)
         ctx.continue_execution = True
 
     if restart_result:
