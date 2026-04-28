@@ -551,8 +551,9 @@ The following options are available:
    - `update` - Reuses the existing open issue and updates its summary, description, and custom fields. If no open issue exists but a closed issue with an old NEWA ID is found, it will be reopened and updated. When multiple old closed issues exist, the most recently updated one is selected. If the `updated` transition is configured, it will be applied after the update.
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
  - `schedule`: Controls whether a job should be automatically scheduled for this action (default: `True`). Can be either a boolean value or a Jinja template string that evaluates to a boolean:
-   - **Boolean value**: When set to `False`, NEWA will create or update the Jira issue but will not schedule any associated job (even if `job_recipe` is defined), unless the action is explicitly selected using the `--action-id-filter` option.
-   - **Jinja template**: When set to a string template (e.g., `"{{ ERRATUM.id != 'RHBA-1234' }}"`), NEWA will render the template and evaluate it to a boolean. The template has access to the same variables as other fields: `EVENT`, `ERRATUM`, `COMPOSE`, `JIRA`, `ROG`, `CONTEXT`, and `ENVIRONMENT`. The rendered string is converted to boolean where 'true', '1', or 'yes' (case-insensitive) are considered `True`, and all other values are considered `False`.
+   - **Boolean value**: When set to `False`, NEWA will create or update the Jira issue and save the recipe information, but will NOT automatically schedule the job during the `schedule` command. The job can be manually scheduled later using `schedule --schedule-all` or by using filters (`--action-id-filter` or `--issue-id-filter`).
+   - **Jinja template**: When set to a string template (e.g., `"{{ ERRATUM.id is match('RHSA-.*') }}"`), NEWA will render the template and evaluate it to a boolean. The template has access to the same variables as other fields: `EVENT`, `ERRATUM`, `COMPOSE`, `JIRA`, `ROG`, `CONTEXT`, and `ENVIRONMENT`. The rendered string is converted to boolean where 'true', '1', or 'yes' (case-insensitive) are considered `True`, and all other values are considered `False`.
+   - **Important**: Recipe information is ALWAYS saved to jira-* YAML files when `job_recipe` is specified, regardless of the `schedule` setting. This enables manual scheduling later without requiring access to the original issue-config file.
    - This is useful for creating tracking issues that don't require automated testing, for actions that should only be triggered on-demand, or for conditionally scheduling jobs based on event properties.
  - `erratum_comment_triggers` - For specified triggers, provides an update in an erratum through a comment. This functionality needs to be enabled also in the `newa` configuration file through `enable_comments = 1`. The following triggers are currently supported:
    - `jira` - Adds a comment when a Jira issue is initially 'adopted' by NEWA (either created or taken over due to `jira --map-issue` parameter).
@@ -1599,6 +1600,41 @@ The typical use case is when you want to add test results to an existing ReportP
 Example:
 ```
 $ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml schedule --rp-launch-uuid 12345678-1234-1234-1234-123456789abc execute report
+```
+
+#### Option `--schedule-all`
+
+Forces scheduling of all jobs, including those with `schedule: false` in the issue-config. This option overrides the `auto_schedule` attribute from jira-* YAML files.
+
+**Behavior and priority:**
+
+The schedule subcommand follows this priority order when deciding whether to schedule a job:
+1. **Filters** (`--action-id-filter`, `--issue-id-filter`) - Highest priority, always schedules matching jobs
+2. **`--schedule-all` flag** - Overrides `auto_schedule` attribute from jira-* files
+3. **`auto_schedule` attribute** - Default behavior based on the `schedule` attribute from issue-config
+
+**Use cases:**
+- Manually triggering performance or stress tests that are normally disabled (`schedule: false`)
+- Re-running all tests after infrastructure changes
+- Forcing execution of conditionally scheduled jobs regardless of their evaluation results
+
+**Important notes:**
+- When using filters (`--action-id-filter` or `--issue-id-filter`), jobs are scheduled even if `schedule: false`, making `--schedule-all` unnecessary unless you want to schedule ALL jobs
+- Recipe information is always saved to jira-* YAML files during the `jira` subcommand, regardless of the `schedule` setting, enabling manual scheduling at any time
+
+Example (schedule all jobs including those with schedule: false):
+```
+$ newa event --erratum 12345 --prev-state-dir schedule --schedule-all execute report
+```
+
+Example (schedule performance tests that have schedule: false):
+```
+$ newa event --erratum 12345 --prev-state-dir schedule --schedule-all --action-id-filter 'task_performance' execute report
+```
+
+Example (force all tests to run):
+```
+$ newa --prev-state-dir --clear schedule --schedule-all execute report
 ```
 
 

@@ -81,7 +81,9 @@ class JiraJob(ArtifactJob):
     """A single *jira* job"""
 
     jira: Issue = field(  # type: ignore[var-annotated]
-        converter=lambda x: x if isinstance(x, Issue) else Issue(**x),
+        converter=lambda x: x if isinstance(
+            x, Issue) else Issue(
+            **x),
         )
 
     recipe: Optional[Recipe] = field(  # type: ignore[var-annotated]
@@ -99,7 +101,9 @@ class ScheduleJob(JiraJob):
     """A single *request* to be scheduled for execution"""
 
     request = field(  # type: ignore[var-annotated]
-        converter=lambda x: x if isinstance(x, Request) else Request(**x),
+        converter=lambda x: x if isinstance(
+            x, Request) else Request(
+            **x),
         )
 
     @property
@@ -112,7 +116,9 @@ class ExecuteJob(ScheduleJob):
     """A single *request* to be scheduled for execution"""
 
     execution = field(  # type: ignore[var-annotated]
-        converter=lambda x: x if isinstance(x, Execution) else Execution(**x),
+        converter=lambda x: x if isinstance(
+            x, Execution) else Execution(
+            **x),
         )
 
     @property

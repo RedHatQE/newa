@@ -594,11 +594,15 @@ def _create_jira_job_from_action(
         artifact_job: ArtifactJob,
         jira_event_fields: dict[str, Any],
         new_issue: Issue,
-        save_recipe: bool) -> None:
-    """Create and save JiraJob with or without recipe.
+        auto_schedule: bool) -> None:
+    """Create and save JiraJob with recipe information.
 
-    If save_recipe is False, the recipe is set to None so that
-    the schedule command will skip this issue.
+    The recipe is always saved if job_recipe is specified, regardless of the
+    schedule attribute. The auto_schedule value is preserved in the Recipe's
+    auto_schedule field for later use by the schedule command.
+
+    The schedule command will respect auto_schedule unless overridden by
+    --schedule-all or filters (--action-id-filter, --issue-id-filter).
     """
     if action.erratum_comment_triggers:
         new_issue.erratum_comment_triggers = action.erratum_comment_triggers
@@ -606,9 +610,10 @@ def _create_jira_job_from_action(
         new_issue.rog_comment_triggers = action.rog_comment_triggers
     new_issue.action_id = action.id
 
-    # Create recipe only if save_recipe is True and job_recipe is specified
+    # Always create recipe if job_recipe is specified
+    # The schedule command will decide whether to actually schedule it
     recipe = None
-    if save_recipe and action.job_recipe:
+    if action.job_recipe:
         recipe_url = render_template(
             action.job_recipe,
             EVENT=artifact_job.event,
@@ -621,9 +626,10 @@ def _create_jira_job_from_action(
         recipe = Recipe(
             url=recipe_url,
             context=action.context,
-            environment=action.environment)
+            environment=action.environment,
+            auto_schedule=auto_schedule)
 
-    # Create JiraJob with or without recipe
+    # Create JiraJob
     jira_job = JiraJob(
         event=artifact_job.event,
         erratum=artifact_job.erratum,
@@ -770,21 +776,22 @@ def _process_issue_action(
             ctx, rog, artifact_job, action, new_issue,
             rendered_summary, trigger_comment)
 
-    # Create jira job
-    # If rendered_schedule is False, the recipe will be None and the schedule
-    # command will skip this issue, unless we are using action_id or issue_id filters.
-    # When filters are used, they override the schedule setting.
-    save_recipe = bool(
-        rendered_schedule or ctx.action_id_filter_pattern or ctx.issue_id_filter_pattern)
+    # Create jira job with recipe information
+    # The auto_schedule attribute is preserved for the schedule command to use
     _create_jira_job_from_action(
-        ctx, action, artifact_job, jira_event_fields, new_issue, save_recipe)
+        ctx, action, artifact_job, jira_event_fields, new_issue,
+        auto_schedule=rendered_schedule)
 
-    if not rendered_schedule:
-        if save_recipe:
-            ctx.logger.info(
-                f"Issue {new_issue.id} will be scheduled (overridden by filter).")
+    # Log scheduling status
+    if action.job_recipe:
+        if rendered_schedule:
+            ctx.logger.info(f"Issue {new_issue.id} has a recipe and will be auto-scheduled.")
         else:
-            ctx.logger.info(f"Issue {new_issue.id} will not be scheduled automatically.")
+            ctx.logger.info(
+                f"Issue {new_issue.id} has a recipe but auto-schedule is disabled. "
+                f"Use 'schedule --schedule-all' or filters to schedule it manually.")
+    else:
+        ctx.logger.info(f"Issue {new_issue.id} has no recipe (manual tracking only).")
 
     # Return issue and old_issues for further processing
     return new_issue, old_issues

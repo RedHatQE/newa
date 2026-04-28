@@ -152,7 +152,10 @@ def cmd_list(
                 if jira_job.jira.url:
                     _print(4, jira_job.jira.url)
                 if jira_job.recipe and jira_job.recipe.url:
-                    _print(6, f'recipe: {jira_job.recipe.url}')
+                    # Show indicator only when auto_schedule is false
+                    auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)
+                    auto_schedule_indicator = ' [no-auto-schedule]' if not auto_schedule else ''
+                    _print(6, f'recipe: {jira_job.recipe.url}{auto_schedule_indicator}')
                 # Skip schedule/execute details if --issues flag is set
                 if issues:
                     continue

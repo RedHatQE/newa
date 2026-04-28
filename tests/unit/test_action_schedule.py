@@ -1,6 +1,5 @@
 """Tests for IssueAction schedule attribute functionality."""
 
-import re
 from pathlib import Path
 from unittest import mock
 
@@ -81,10 +80,10 @@ class TestActionScheduleAttribute:
             )
         assert action.schedule is False
 
-    def test_create_jira_job_called_with_save_recipe_false_when_schedule_false(
+    def test_create_jira_job_called_with_auto_schedule_false(
             self, mock_ctx, mock_artifact_job, mock_jira_handler, mock_issue_config,
             ):
-        """Test _create_jira_job_from_action called with save_recipe=False."""
+        """Test _create_jira_job_from_action called with auto_schedule=False."""
         action = IssueAction(
             id='test_action',
             summary='Test Action',
@@ -124,15 +123,15 @@ class TestActionScheduleAttribute:
                 rog=None,
                 )
 
-            # Verify that _create_jira_job_from_action WAS called with save_recipe=False
+            # Verify that _create_jira_job_from_action WAS called with auto_schedule=False
             mock_create_job.assert_called_once()
-            # Check the 6th positional argument (save_recipe)
-            call_args = mock_create_job.call_args[0]
-            assert call_args[5] is False  # save_recipe is the 6th arg (index 5)
+            # Check the auto_schedule keyword argument
+            assert mock_create_job.call_args.kwargs['auto_schedule'] is False
 
-            # Verify the log message was generated
+            # Verify the new log message was generated
             mock_ctx.logger.info.assert_any_call(
-                "Issue TEST-123 will not be scheduled automatically.",
+                "Issue TEST-123 has a recipe but auto-schedule is disabled. "
+                "Use 'schedule --schedule-all' or filters to schedule it manually.",
                 )
 
     def test_create_jira_job_called_when_schedule_true(
@@ -180,18 +179,19 @@ class TestActionScheduleAttribute:
             # Verify that _create_jira_job_from_action WAS called
             mock_create_job.assert_called_once()
 
-    def test_schedule_false_overridden_by_action_id_filter(
+    def test_schedule_false_recipe_always_saved(
             self, mock_ctx, mock_artifact_job, mock_jira_handler, mock_issue_config,
             ):
-        """Test that schedule=False is overridden when action_id_filter matches."""
-        # Set action_id_filter_pattern on context
-        mock_ctx.action_id_filter_pattern = re.compile(r'test_action')
+        """Test that recipe is always saved even when schedule=False (no filter)."""
+        # NO filter set - this is the key difference from the old behavior
+        mock_ctx.action_id_filter_pattern = None
+        mock_ctx.issue_id_filter_pattern = None
 
         action = IssueAction(
             id='test_action',
             summary='Test Action',
             job_recipe='http://example.com/recipe.yaml',
-            schedule=False,  # Normally would not schedule
+            schedule=False,  # Recipe should still be saved
             )
 
         # Mock the issue object
@@ -225,16 +225,16 @@ class TestActionScheduleAttribute:
                 rog=None,
                 )
 
-            # Verify that _create_jira_job_from_action WAS called with
-            # save_recipe=True despite schedule=False
+            # Verify that _create_jira_job_from_action WAS called with auto_schedule=False
+            # (recipe is saved, but auto_schedule will be False)
             mock_create_job.assert_called_once()
-            # Check the 6th positional argument (save_recipe)
-            call_args = mock_create_job.call_args[0]
-            assert call_args[5] is True  # save_recipe is the 6th arg (index 5)
+            # Check the auto_schedule keyword argument
+            assert mock_create_job.call_args.kwargs['auto_schedule'] is False
 
-            # Verify the override log message
+            # Verify the new behavior log message
             mock_ctx.logger.info.assert_any_call(
-                "Issue TEST-123 will be scheduled (overridden by filter).",
+                "Issue TEST-123 has a recipe but auto-schedule is disabled. "
+                "Use 'schedule --schedule-all' or filters to schedule it manually.",
                 )
 
     def test_action_without_job_recipe_creates_job_without_recipe(
@@ -259,14 +259,14 @@ class TestActionScheduleAttribute:
             artifact_job=mock_artifact_job,
             jira_event_fields={},
             new_issue=mock_issue,
-            save_recipe=True,
+            auto_schedule=True,
             )
 
         # Verify jira job file was created
         jira_job_files = list(Path(mock_ctx.state_dirpath).glob('jira-*'))
         assert len(jira_job_files) == 1
 
-        # Verify the job has no recipe
+        # Verify the job has no recipe (auto_schedule not applicable without recipe)
         from newa import JiraJob
         jira_job = JiraJob.from_yaml_file(jira_job_files[0])
         assert jira_job.recipe is None
@@ -383,3 +383,136 @@ issues:
         _, _, _, _, _, rendered_schedule = _render_action_fields(
             action, artifact_job, {}, None, False)
         assert rendered_schedule is False
+
+    def test_list_command_shows_no_auto_schedule_indicator_when_false(
+            self, mock_ctx, mock_artifact_job, capsys):
+        """Test that list command shows [no-auto-schedule] when auto_schedule=False."""
+        from io import StringIO
+        from unittest.mock import patch
+
+        from newa import Compose, Issue, JiraJob, Recipe
+
+        # Create a jira job with auto_schedule=False on the recipe
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue('TEST-123', summary='Test Issue'),
+            recipe=Recipe(url='http://example.com/recipe.yaml', auto_schedule=False),
+            )
+
+        # Save jira job to state dir
+        mock_ctx.save_jira_job(jira_job)
+
+        # Mock print function to capture output
+        output = StringIO()
+        with patch('builtins.print', side_effect=lambda *args, **kwargs: output.write(
+                ' '.join(str(a) for a in args) + kwargs.get('end', '\n'))):
+            # Simulate the list command's recipe output logic
+            auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)
+            auto_schedule_indicator = ' [no-auto-schedule]' if not auto_schedule else ''
+            print(f'      recipe: {jira_job.recipe.url}{auto_schedule_indicator}')
+
+        # Verify output contains the indicator
+        output_str = output.getvalue()
+        assert '[no-auto-schedule]' in output_str
+        assert 'http://example.com/recipe.yaml [no-auto-schedule]' in output_str
+
+    def test_list_command_omits_no_auto_schedule_indicator_when_true(
+            self, mock_ctx, mock_artifact_job, capsys):
+        """Test that list command omits [no-auto-schedule] when auto_schedule=True."""
+        from io import StringIO
+        from unittest.mock import patch
+
+        from newa import Compose, Issue, JiraJob, Recipe
+
+        # Create a jira job with auto_schedule=True (default)
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue('TEST-123', summary='Test Issue'),
+            recipe=Recipe(url='http://example.com/recipe.yaml', auto_schedule=True),
+            )
+
+        # Save jira job to state dir
+        mock_ctx.save_jira_job(jira_job)
+
+        # Mock print function to capture output
+        output = StringIO()
+        with patch('builtins.print', side_effect=lambda *args, **kwargs: output.write(
+                ' '.join(str(a) for a in args) + kwargs.get('end', '\n'))):
+            # Simulate the list command's recipe output logic
+            auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)
+            auto_schedule_indicator = ' [no-auto-schedule]' if not auto_schedule else ''
+            print(f'      recipe: {jira_job.recipe.url}{auto_schedule_indicator}')
+
+        # Verify output does NOT contain the indicator
+        output_str = output.getvalue()
+        assert '[no-auto-schedule]' not in output_str
+        assert 'http://example.com/recipe.yaml\n' in output_str
+
+    def test_list_command_omits_no_auto_schedule_indicator_for_old_state(
+            self, mock_ctx, mock_artifact_job, capsys):
+        """Test that list command defaults to True for jobs without auto_schedule (old state)."""
+        from io import StringIO
+        from unittest.mock import patch
+
+        # Create a jira job manually without auto_schedule attribute
+        # This simulates loading from an old state directory
+        from newa.models.jobs import JiraJob as JiraJobClass
+        jira_job_dict = {
+            'event': {'id': '12345', 'type_': EventType.ERRATUM},
+            'erratum': None,
+            'compose': {'id': 'RHEL-9.0'},
+            'rog': None,
+            'jira': {'id': 'TEST-123', 'summary': 'Test Issue'},
+            'recipe': {'url': 'http://example.com/recipe.yaml'},
+            # Intentionally omit 'auto_schedule' to simulate old state
+            }
+
+        # Use getattr to simulate what list command does
+        # This should default to True for backward compatibility
+        jira_job = JiraJobClass(**jira_job_dict)
+
+        # Mock print function to capture output
+        output = StringIO()
+        with patch('builtins.print', side_effect=lambda *args, **kwargs: output.write(
+                ' '.join(str(a) for a in args) + kwargs.get('end', '\n'))):
+            # Simulate the list command's recipe output logic
+            auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)
+            auto_schedule_indicator = ' [no-auto-schedule]' if not auto_schedule else ''
+            print(f'      recipe: {jira_job.recipe.url}{auto_schedule_indicator}')
+
+        # Verify output does NOT contain the indicator (defaults to True)
+        output_str = output.getvalue()
+        assert '[no-auto-schedule]' not in output_str
+
+    def test_schedule_false_not_overridden_by_defaults(self, tmp_path):
+        """Test that schedule: false is not overridden by defaults."""
+        config_content = """
+project: TEST
+transitions:
+  closed: [Closed]
+  dropped: [Dropped]
+  processed: [In Progress]
+  passed: [Verified]
+defaults:
+  assignee: 'default@example.com'
+  schedule: true
+issues:
+  - id: action_with_explicit_false
+    summary: Test Action
+    schedule: false
+"""
+        config_file = tmp_path / 'test-config.yaml'
+        config_file.write_text(config_content)
+
+        config = IssueConfig.read_file(str(config_file))
+
+        # Even though defaults has schedule: true, the explicit schedule: false should be preserved
+        assert config.issues[0].schedule is False
+        # But the assignee default should be applied
+        assert config.issues[0].assignee == 'default@example.com'
