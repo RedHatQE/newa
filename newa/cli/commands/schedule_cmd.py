@@ -40,6 +40,13 @@ from newa.cli.utils import initialize_state_dir, test_file_presence
     '--extra-tf-cli-args',
     help='Extra arguments to append to testing-farm CLI args.',
     )
+@click.option(
+    '--schedule-all',
+    is_flag=True,
+    default=False,
+    help=('Schedule all jobs including those with schedule: false. '
+          'This overrides the auto_schedule attribute from issue-config.'),
+    )
 @click.pass_obj
 def cmd_schedule(
         ctx: CLIContext,
@@ -47,7 +54,8 @@ def cmd_schedule(
         fixtures: list[str],
         no_reportportal: bool,
         rp_launch_uuid: Optional[str] = None,
-        extra_tf_cli_args: Optional[str] = None) -> None:
+        extra_tf_cli_args: Optional[str] = None,
+        schedule_all: bool = False) -> None:
     """
     Schedule subcommand - creates schedule jobs from jira jobs.
 
@@ -92,4 +100,5 @@ def cmd_schedule(
             fixtures=fixtures,
             no_reportportal=no_reportportal,
             rp_launch_uuid=rp_launch_uuid,
-            extra_tf_cli_args=extra_tf_cli_args)
+            extra_tf_cli_args=extra_tf_cli_args,
+            schedule_all=schedule_all)

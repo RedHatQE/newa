@@ -246,6 +246,7 @@ class Recipe(Cloneable, Serializable):
     url: str
     context: Optional[RecipeContext] = None
     environment: Optional[RecipeEnvironment] = None
+    auto_schedule: Optional[bool] = True
 
 
 @define

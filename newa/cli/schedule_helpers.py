@@ -174,7 +174,8 @@ def _process_jira_job(
         fixtures: list[str],
         no_reportportal: bool,
         rp_launch_uuid: Optional[str] = None,
-        extra_tf_cli_args: Optional[str] = None) -> None:
+        extra_tf_cli_args: Optional[str] = None,
+        schedule_all: bool = False) -> None:
     """Process a single jira_job and create schedule jobs."""
     from newa import ScheduleJob
 
@@ -182,6 +183,31 @@ def _process_jira_job(
     if not jira_job.recipe:
         ctx.logger.info(f'Skipping jira job {jira_job.jira.id} - no recipe specified')
         return
+
+    # Check auto_schedule setting unless overridden by filters or --schedule-all
+    #
+    # Priority order for scheduling decisions:
+    # 1. Filters (--action-id-filter, --issue-id-filter)
+    #    - If present, load_jira_jobs() only loads matching jobs
+    #    - We then override auto_schedule=False for those matching jobs
+    # 2. --schedule-all flag
+    #    - Overrides auto_schedule=False for all loaded jobs
+    # 3. auto_schedule attribute from recipe
+    #    - Default behavior when no filters or --schedule-all
+    auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)
+    if not schedule_all and not auto_schedule:
+        # Check if filters are being used - they override auto_schedule
+        if not (ctx.action_id_filter_pattern or ctx.issue_id_filter_pattern):
+            ctx.logger.info(
+                f'Skipping jira job {jira_job.jira.id} - auto_schedule is disabled. '
+                f'Use --schedule-all or --action-id-filter/--issue-id-filter to override.')
+            return
+        # Filters are present, so we override auto_schedule
+        ctx.logger.info(
+            f'Scheduling jira job {jira_job.jira.id} - overridden by filter.')
+    elif schedule_all and not auto_schedule:
+        ctx.logger.info(
+            f'Scheduling jira job {jira_job.jira.id} - overridden by --schedule-all.')
 
     # Initialize ReportPortal connection if --rp-launch-uuid is provided
     rp = None

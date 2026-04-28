@@ -127,6 +127,11 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
                                 self.links[relation].extend(defaults.links[relation])
                             elif defaults.links[relation]:
                                 self.links[relation] = copy.deepcopy(defaults.links[relation])
+                # For boolean attributes (schedule, auto_transition), check if value is None
+                # rather than falsy, since False is a valid explicit value
+                elif attr_name in ('schedule', 'auto_transition'):
+                    if getattr(self, attr_name, None) is None:
+                        setattr(self, attr_name, copy.deepcopy(attr))
                 elif not getattr(self, attr_name, None):
                     setattr(self, attr_name, copy.deepcopy(attr))
         return

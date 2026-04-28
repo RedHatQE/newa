@@ -167,14 +167,14 @@ class TestScheduleAndRecipeFunctionality:
 
         mock_issue = Issue('TEST-123')
 
-        # Call _create_jira_job_from_action with save_recipe=True
+        # Call _create_jira_job_from_action with auto_schedule=True
         _create_jira_job_from_action(
             ctx=mock_ctx,
             action=action,
             artifact_job=mock_artifact_job,
             jira_event_fields={},
             new_issue=mock_issue,
-            save_recipe=True,
+            auto_schedule=True,
             )
 
         # Verify jira job file was created
@@ -185,10 +185,11 @@ class TestScheduleAndRecipeFunctionality:
         jira_job = JiraJob.from_yaml_file(jira_job_files[0])
         assert jira_job.recipe is not None
         assert jira_job.recipe.url == 'http://example.com/recipe.yaml'
+        assert jira_job.recipe.auto_schedule is True
 
-    def test_jira_job_created_without_recipe_when_schedule_false(
+    def test_jira_job_created_with_recipe_and_auto_schedule_false(
             self, mock_ctx, mock_artifact_job):
-        """Test that JiraJob is created without recipe when schedule=False."""
+        """Test JiraJob created with recipe and auto_schedule=False."""
         action = IssueAction(
             id='test_action',
             summary='Test Action',
@@ -198,23 +199,25 @@ class TestScheduleAndRecipeFunctionality:
 
         mock_issue = Issue('TEST-123')
 
-        # Call _create_jira_job_from_action with save_recipe=False
+        # Call _create_jira_job_from_action with auto_schedule=False
         _create_jira_job_from_action(
             ctx=mock_ctx,
             action=action,
             artifact_job=mock_artifact_job,
             jira_event_fields={},
             new_issue=mock_issue,
-            save_recipe=False,
+            auto_schedule=False,
             )
 
         # Verify jira job file was created
         jira_job_files = list(Path(mock_ctx.state_dirpath).glob('jira-*'))
         assert len(jira_job_files) == 1
 
-        # Load and verify the jira job has NO recipe
+        # Load and verify the jira job HAS recipe but auto_schedule is False
         jira_job = JiraJob.from_yaml_file(jira_job_files[0])
-        assert jira_job.recipe is None
+        assert jira_job.recipe is not None
+        assert jira_job.recipe.url == 'http://example.com/recipe.yaml'
+        assert jira_job.recipe.auto_schedule is False
 
     def test_schedule_false_logs_correct_message(
             self, mock_ctx, mock_artifact_job, mock_jira_handler, mock_issue_config):
@@ -255,12 +258,13 @@ class TestScheduleAndRecipeFunctionality:
 
             # Verify the correct log message
             mock_ctx.logger.info.assert_any_call(
-                "Issue TEST-123 will not be scheduled automatically.",
+                "Issue TEST-123 has a recipe but auto-schedule is disabled. "
+                "Use 'schedule --schedule-all' or filters to schedule it manually.",
                 )
 
     def test_schedule_false_overridden_by_action_id_filter(
             self, mock_ctx, mock_artifact_job, mock_jira_handler, mock_issue_config):
-        """Test that schedule=False is overridden when action_id_filter matches."""
+        """Test that schedule=False still saves recipe when action_id_filter matches."""
         # Set action_id_filter_pattern on context
         mock_ctx.action_id_filter_pattern = re.compile(r'test_action')
 
@@ -276,7 +280,8 @@ class TestScheduleAndRecipeFunctionality:
         with mock.patch('newa.cli.jira_helpers._render_action_fields') as mock_render, \
                 mock.patch('newa.cli.jira_helpers._find_or_create_issue') as mock_find_create:
 
-            mock_render.return_value = ('summary', 'description', None, {}, {}, False)
+            # With filter, schedule=False gets overridden to True by _render_action_fields
+            mock_render.return_value = ('summary', 'description', None, {}, {}, True)
             mock_find_create.return_value = (mock_issue, [], False)
 
             # Process the action
@@ -298,20 +303,16 @@ class TestScheduleAndRecipeFunctionality:
                 rog=None,
                 )
 
-            # Verify the override log message
-            mock_ctx.logger.info.assert_any_call(
-                "Issue TEST-123 will be scheduled (overridden by filter).",
-                )
-
-        # Verify jira job has recipe (despite schedule=False)
+        # Verify jira job has recipe (filter overrides schedule=False)
         jira_job_files = list(Path(mock_ctx.state_dirpath).glob('jira-*'))
         assert len(jira_job_files) == 1
         jira_job = JiraJob.from_yaml_file(jira_job_files[0])
         assert jira_job.recipe is not None
+        assert jira_job.recipe.auto_schedule is True
 
     def test_schedule_false_overridden_by_issue_id_filter(
             self, mock_ctx, mock_artifact_job, mock_jira_handler, mock_issue_config):
-        """Test that schedule=False is overridden when issue_id_filter matches."""
+        """Test that schedule=False still saves recipe when issue_id_filter would match."""
         # Set issue_id_filter_pattern on context
         mock_ctx.issue_id_filter_pattern = re.compile(r'TEST-123')
 
@@ -327,6 +328,9 @@ class TestScheduleAndRecipeFunctionality:
         with mock.patch('newa.cli.jira_helpers._render_action_fields') as mock_render, \
                 mock.patch('newa.cli.jira_helpers._find_or_create_issue') as mock_find_create:
 
+            # issue_id_filter doesn't affect _render_action_fields
+            # (only checked during load_jira_jobs)
+            # So recipe is still saved with auto_schedule=False
             mock_render.return_value = ('summary', 'description', None, {}, {}, False)
             mock_find_create.return_value = (mock_issue, [], False)
 
@@ -349,16 +353,160 @@ class TestScheduleAndRecipeFunctionality:
                 rog=None,
                 )
 
-            # Verify the override log message
-            mock_ctx.logger.info.assert_any_call(
-                "Issue TEST-123 will be scheduled (overridden by filter).",
-                )
-
-        # Verify jira job has recipe (despite schedule=False)
+        # Verify jira job has recipe (recipe is always saved now)
         jira_job_files = list(Path(mock_ctx.state_dirpath).glob('jira-*'))
         assert len(jira_job_files) == 1
         jira_job = JiraJob.from_yaml_file(jira_job_files[0])
         assert jira_job.recipe is not None
+        # auto_schedule remains False (issue_id filter is checked later in schedule command)
+        assert jira_job.recipe.auto_schedule is False
+
+    def test_schedule_command_skips_auto_schedule_false_without_filters(self, mock_ctx):
+        """Test that schedule command skips jobs with auto_schedule=False when no filters/flags."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        # Create a jira job with recipe but auto_schedule=False
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml', auto_schedule=False),
+            )
+
+        # Process without filters or --schedule-all
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=[],
+            fixtures=[],
+            no_reportportal=False,
+            schedule_all=False,
+            )
+
+        # Verify skip log message
+        mock_ctx.logger.info.assert_called_with(
+            f'Skipping jira job {JIRA_NONE_ID}-123 - auto_schedule is disabled. '
+            f'Use --schedule-all or --action-id-filter/--issue-id-filter to override.',
+            )
+
+        # Verify no schedule job files were created
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) == 0
+
+    def test_schedule_command_processes_auto_schedule_false_with_action_filter(self, mock_ctx):
+        """Test that action_id filter overrides auto_schedule=False."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        # Set action_id_filter_pattern to match
+        mock_ctx.action_id_filter_pattern = re.compile(r'test_action')
+
+        # Create a jira job with recipe but auto_schedule=False
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml', auto_schedule=False),
+            )
+
+        # Process with action_id_filter (no --schedule-all flag)
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            schedule_all=False,
+            )
+
+        # Verify override log message
+        mock_ctx.logger.info.assert_any_call(
+            f'Scheduling jira job {JIRA_NONE_ID}-123 - overridden by filter.',
+            )
+
+        # Verify schedule job files WERE created (filter overrides auto_schedule=False)
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) > 0
+
+    def test_schedule_command_processes_auto_schedule_false_with_issue_filter(self, mock_ctx):
+        """Test that issue_id filter overrides auto_schedule=False."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        # Set issue_id_filter_pattern to match
+        mock_ctx.issue_id_filter_pattern = re.compile(rf'{JIRA_NONE_ID}-123')
+
+        # Create a jira job with recipe but auto_schedule=False
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml', auto_schedule=False),
+            )
+
+        # Process with issue_id_filter (no --schedule-all flag)
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            schedule_all=False,
+            )
+
+        # Verify override log message
+        mock_ctx.logger.info.assert_any_call(
+            f'Scheduling jira job {JIRA_NONE_ID}-123 - overridden by filter.',
+            )
+
+        # Verify schedule job files WERE created (filter overrides auto_schedule=False)
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) > 0
+
+    def test_schedule_command_processes_auto_schedule_false_with_schedule_all(self, mock_ctx):
+        """Test that --schedule-all flag overrides auto_schedule=False."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        # Create a jira job with recipe but auto_schedule=False
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml', auto_schedule=False),
+            )
+
+        # Process with schedule_all=True
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            schedule_all=True,
+            )
+
+        # Verify override log message
+        mock_ctx.logger.info.assert_any_call(
+            f'Scheduling jira job {JIRA_NONE_ID}-123 - overridden by --schedule-all.',
+            )
+
+        # Verify schedule job files WERE created (--schedule-all overrides auto_schedule=False)
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) > 0
 
     def test_schedule_command_skips_jobs_without_recipe(self, mock_ctx, tmp_path):
         """Test that schedule command skips jira jobs without recipes."""
@@ -416,7 +564,7 @@ class TestScheduleAndRecipeFunctionality:
             artifact_job=mock_artifact_job,
             jira_event_fields={},
             new_issue=Issue('TEST-123'),
-            save_recipe=True,
+            auto_schedule=True,
             )
 
         _create_jira_job_from_action(
@@ -425,7 +573,7 @@ class TestScheduleAndRecipeFunctionality:
             artifact_job=mock_artifact_job,
             jira_event_fields={},
             new_issue=Issue('TEST-124'),
-            save_recipe=False,
+            auto_schedule=False,
             )
 
         # Verify both jira job files were created
@@ -451,7 +599,7 @@ class TestScheduleAndRecipeFunctionality:
             artifact_job=mock_artifact_job,
             jira_event_fields={},
             new_issue=mock_issue,
-            save_recipe=True,
+            auto_schedule=True,
             )
 
         # Verify jira job file was created
