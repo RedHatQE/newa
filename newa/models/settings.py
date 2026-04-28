@@ -236,6 +236,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
     action_id_filter_pattern: Optional[Pattern[str]] = None
     issue_id_filter_pattern: Optional[Pattern[str]] = None
     event_filter_pattern: Optional[EventFilter] = None
+    action_tag_filter_pattern: Optional[Pattern[str]] = None
 
     # Jira connection instance (lazy initialized)
     jira_connection: Optional['JiraConnection'] = field(default=None, init=False, repr=False)
@@ -319,6 +320,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
                     continue
+                if self._should_filter_by_action_tags(job.jira.action_tags):
+                    continue
                 if self.should_filter_job(job):
                     continue
             yield job
@@ -345,6 +348,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
                     continue
+                if self._should_filter_by_action_tags(job.jira.action_tags):
+                    continue
                 if self.should_filter_job(job):
                     continue
             yield job
@@ -370,6 +375,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 if self._should_filter_by_action_id(job.jira.action_id):
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
+                    continue
+                if self._should_filter_by_action_tags(job.jira.action_tags):
                     continue
                 if self.should_filter_job(job):
                     continue
@@ -494,6 +501,46 @@ class CLIContext:  # type: ignore[no-untyped-def]
             f"Issue {issue_id} matches the --issue-id-filter "
             "regular expression.")
         return False
+
+    def _should_filter_by_action_tags(
+            self,
+            action_tags: Optional[list[str]],
+            log_message: bool = True) -> bool:
+        """Check if job should be filtered out based on action_tags pattern.
+
+        Returns True if the job should be skipped, False if it should be processed.
+        """
+        if not self.action_tag_filter_pattern:
+            return False
+
+        if not action_tags:
+            # No tags, filter it out
+            if log_message:
+                self.logger.info(
+                    "Skipping action with no tags as --action-tag-filter is specified.")
+            else:
+                self.logger.debug(
+                    "Skipping action with no tags as --action-tag-filter is specified.")
+            return True
+
+        # Check if any tag matches the pattern
+        for tag in action_tags:
+            if self.action_tag_filter_pattern.fullmatch(tag):
+                self.logger.debug(
+                    f"Action tag '{tag}' matches the --action-tag-filter "
+                    "regular expression.")
+                return False
+
+        # No tags matched
+        if log_message:
+            self.logger.info(
+                f"Skipping action with tags {action_tags} as none match "
+                "the --action-tag-filter regular expression.")
+        else:
+            self.logger.debug(
+                f"Skipping action with tags {action_tags} as none match "
+                "the --action-tag-filter regular expression.")
+        return True
 
     def skip_action(self,
                     action_id: Optional[str],

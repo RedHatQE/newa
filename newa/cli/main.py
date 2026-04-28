@@ -38,21 +38,25 @@ def _should_filter_yaml_file(
         action_id_pattern: Optional[Pattern[str]],
         issue_id_pattern: Optional[Pattern[str]],
         event_filter_pattern: Optional['EventFilter'],
+        action_tag_pattern: Optional[Pattern[str]],
         logger: logging.Logger) -> bool:
     """
-    Check if a YAML file should be filtered out based on action_id, issue_id, and event patterns.
+    Check if a YAML file should be filtered out based on action_id, issue_id,
+    tag, and event patterns.
 
     Args:
         yaml_file: Path to the YAML file to check
         action_id_pattern: Compiled regex pattern for action_id filtering (or None)
         issue_id_pattern: Compiled regex pattern for issue_id filtering (or None)
         event_filter_pattern: EventFilter for event/artifact filtering (or None)
+        action_tag_pattern: Compiled regex pattern for tag filtering (or None)
         logger: Logger instance for debug messages
 
     Returns:
         True if the file should be filtered out (skipped), False if it should be kept
     """
-    if not action_id_pattern and not issue_id_pattern and not event_filter_pattern:
+    if (not action_id_pattern and not issue_id_pattern
+            and not event_filter_pattern and not action_tag_pattern):
         return False  # No filters, keep the file
 
     try:
@@ -77,6 +81,22 @@ def _should_filter_yaml_file(
                 logger.debug(
                     f'Filtering {yaml_file.name} (issue_id "{issue_id}" '
                     f'does not match filter)')
+                return True
+
+        # Check action_tag_filter if specified
+        if action_tag_pattern:
+            action_tags = yaml_data.get('jira', {}).get('action_tags', [])
+            if action_tags:
+                # Check if any action_tag matches the pattern
+                tag_matched = any(action_tag_pattern.fullmatch(tag) for tag in action_tags)
+                if not tag_matched:
+                    logger.debug(
+                        f'Filtering {yaml_file.name} (no action_tags match filter)')
+                    return True
+            else:
+                # No action_tags in the file, filter it out
+                logger.debug(
+                    f'Filtering {yaml_file.name} (no action_tags found)')
                 return True
 
         # Check event_filter if specified
@@ -176,6 +196,12 @@ def _should_filter_yaml_file(
          'or "erratum.release=RHEL-9.5". '
          'Supported: compose.id, erratum.id, erratum.release, rog.id.',
     )
+@click.option(
+    '--action-tag-filter',
+    default='',
+    help='Regular expression matching issue-config action tags to process (only). '
+         'Matches if any tag matches the pattern.',
+    )
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
@@ -190,7 +216,8 @@ def main(click_context: click.Context,
          force: bool,
          action_id_filter: str,
          issue_id_filter: str,
-         event_filter: str) -> None:
+         event_filter: str,
+         action_tag_filter: str) -> None:
     """NEWA - New Errata Workflow Automation."""
     import io
     import tarfile
@@ -254,6 +281,12 @@ def main(click_context: click.Context,
         raise Exception(
             f'Cannot compile --issue-id-filter regular expression. {e!r}') from e
 
+    try:
+        tag_pattern = re.compile(action_tag_filter) if action_tag_filter else None
+    except re.error as e:
+        raise Exception(
+            f'Cannot compile --action-tag-filter regular expression. {e!r}') from e
+
     # Parse event filter if provided
     event_filter_obj = parse_event_filter(event_filter) if event_filter else None
 
@@ -268,6 +301,7 @@ def main(click_context: click.Context,
         action_id_filter_pattern=pattern,
         issue_id_filter_pattern=issue_pattern,
         event_filter_pattern=event_filter_obj,
+        action_tag_filter_pattern=tag_pattern,
         )
     click_context.obj = ctx
 
@@ -311,7 +345,7 @@ def main(click_context: click.Context,
         initialize_state_dir(ctx)
 
         # Apply filters if specified - delete non-matching YAML files
-        if pattern or issue_pattern or event_filter_obj:
+        if pattern or issue_pattern or event_filter_obj or tag_pattern:
             yaml_files = list(ctx.state_dirpath.glob('*.yaml'))
             deleted_count = 0
             kept_count = 0
@@ -321,6 +355,7 @@ def main(click_context: click.Context,
                         pattern,
                         issue_pattern,
                         event_filter_obj,
+                        tag_pattern,
                         ctx.logger):
                     yaml_file.unlink()
                     deleted_count += 1
@@ -360,6 +395,7 @@ def main(click_context: click.Context,
                         pattern,
                         issue_pattern,
                         event_filter_obj,
+                        tag_pattern,
                         ctx.logger):
                     skipped_count += 1
                     continue
