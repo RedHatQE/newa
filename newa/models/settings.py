@@ -513,34 +513,31 @@ class CLIContext:  # type: ignore[no-untyped-def]
         if not self.action_tag_filter_pattern:
             return False
 
-        if not action_tags:
-            # No tags, filter it out
-            if log_message:
-                self.logger.info(
+        from newa.cli.filter_helpers import should_filter_by_action_tags
+
+        # Use shared helper for the actual filtering logic
+        should_filter = should_filter_by_action_tags(action_tags, self.action_tag_filter_pattern)
+
+        if should_filter:
+            # Action should be filtered out - log it
+            if not action_tags:
+                self.logger.debug(
                     "Skipping action with no tags as --action-tag-filter is specified.")
             else:
                 self.logger.debug(
-                    "Skipping action with no tags as --action-tag-filter is specified.")
-            return True
-
-        # Check if any tag matches the pattern
-        for tag in action_tags:
-            if self.action_tag_filter_pattern.fullmatch(tag):
-                self.logger.debug(
-                    f"Action tag '{tag}' matches the --action-tag-filter "
-                    "regular expression.")
-                return False
-
-        # No tags matched
-        if log_message:
-            self.logger.info(
-                f"Skipping action with tags {action_tags} as none match "
-                "the --action-tag-filter regular expression.")
+                    f"Skipping action with tags {action_tags} as none match "
+                    "the --action-tag-filter regular expression.")
         else:
-            self.logger.debug(
-                f"Skipping action with tags {action_tags} as none match "
-                "the --action-tag-filter regular expression.")
-        return True
+            # Action matches - log the matching tag at debug level
+            if action_tags:
+                for tag in action_tags:
+                    if self.action_tag_filter_pattern.fullmatch(tag):
+                        self.logger.debug(
+                            f"Action tag '{tag}' matches the --action-tag-filter "
+                            "regular expression.")
+                        break
+
+        return should_filter
 
     def skip_action(self,
                     action_id: Optional[str],
@@ -550,16 +547,16 @@ class CLIContext:  # type: ignore[no-untyped-def]
             return False
         if action_id and action_id in filtered_id_list:
             self.logger.debug(
-                f"Action {action_id} matches the --action-id-filter regular expression.")
+                f"Action {action_id} matches the filter regular expression.")
             return False
         if log_message:
             self.logger.info(
                 f"Skipping action {action_id} as it doesn't match "
-                "the --action-id-filter regular expression.")
+                "the filter regular expression.")
         else:
             self.logger.debug(
                 f"Skipping action {action_id} as it doesn't match "
-                "the --action-id-filter regular expression.")
+                "the filter regular expression.")
         return True
 
     def get_jira_connection(self) -> 'JiraConnection':

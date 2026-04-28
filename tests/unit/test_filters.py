@@ -469,27 +469,32 @@ class TestActionTagFilter:
         result = ctx_with_tag_filter._should_filter_by_action_tags(
             ['performance', 'nightly'])
         assert result is True
-        # Check info log was called (log_message=True by default)
-        ctx_with_tag_filter.logger.info.assert_called_once()
+        # Check debug log was called for skip message
+        ctx_with_tag_filter.logger.debug.assert_called_once()
 
     def test_none_action_tags_returns_true(self, ctx_with_tag_filter):
         """When action_tags is None, should filter (return True)."""
         result = ctx_with_tag_filter._should_filter_by_action_tags(None)
         assert result is True
+        # Check debug log was called with "no tags" message
+        ctx_with_tag_filter.logger.debug.assert_called_once_with(
+            "Skipping action with no tags as --action-tag-filter is specified.")
 
     def test_empty_action_tags_returns_true(self, ctx_with_tag_filter):
         """When action_tags is empty list, should filter (return True)."""
         result = ctx_with_tag_filter._should_filter_by_action_tags([])
         assert result is True
+        # Check debug log was called with "no tags" message
+        ctx_with_tag_filter.logger.debug.assert_called_once_with(
+            "Skipping action with no tags as --action-tag-filter is specified.")
 
     def test_log_message_false_uses_debug(self, ctx_with_tag_filter):
         """When log_message=False, should use debug log for skips."""
         result = ctx_with_tag_filter._should_filter_by_action_tags(
             ['performance', 'nightly'], log_message=False)
         assert result is True
-        # Check debug log was called, not info
-        # Note: debug is called for the filter check
-        ctx_with_tag_filter.logger.info.assert_not_called()
+        # Check debug log was called (logging now always uses debug)
+        ctx_with_tag_filter.logger.debug.assert_called_once()
 
     def test_pattern_matches_full_tag_only(self, ctx_with_tag_filter):
         """Pattern should match full tag, not partial."""
