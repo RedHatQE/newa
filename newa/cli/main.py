@@ -85,18 +85,11 @@ def _should_filter_yaml_file(
 
         # Check action_tag_filter if specified
         if action_tag_pattern:
-            action_tags = yaml_data.get('jira', {}).get('action_tags', [])
-            if action_tags:
-                # Check if any action_tag matches the pattern
-                tag_matched = any(action_tag_pattern.fullmatch(tag) for tag in action_tags)
-                if not tag_matched:
-                    logger.debug(
-                        f'Filtering {yaml_file.name} (no action_tags match filter)')
-                    return True
-            else:
-                # No action_tags in the file, filter it out
+            from newa.cli.filter_helpers import should_filter_by_action_tags
+            action_tags = yaml_data.get('jira', {}).get('action_tags')
+            if should_filter_by_action_tags(action_tags, action_tag_pattern):
                 logger.debug(
-                    f'Filtering {yaml_file.name} (no action_tags found)')
+                    f'Filtering {yaml_file.name} (no action_tags match filter)')
                 return True
 
         # Check event_filter if specified
