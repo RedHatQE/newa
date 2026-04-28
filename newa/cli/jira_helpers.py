@@ -602,13 +602,15 @@ def _create_jira_job_from_action(
     auto_schedule field for later use by the schedule command.
 
     The schedule command will respect auto_schedule unless overridden by
-    --schedule-all or filters (--action-id-filter, --issue-id-filter).
+    --schedule-all or filters (--action-id-filter, --issue-id-filter, --action-tag-filter).
     """
     if action.erratum_comment_triggers:
         new_issue.erratum_comment_triggers = action.erratum_comment_triggers
     if action.rog_comment_triggers:
         new_issue.rog_comment_triggers = action.rog_comment_triggers
     new_issue.action_id = action.id
+    if action.action_tags:
+        new_issue.action_tags = action.action_tags
 
     # Always create recipe if job_recipe is specified
     # The schedule command will decide whether to actually schedule it
@@ -818,6 +820,75 @@ def _build_action_id_filtered_list(
     return list(ids_filtered)
 
 
+def _build_action_tag_filtered_list(
+        issue_actions: list[IssueAction],
+        pattern: Pattern[str]) -> list[str]:
+    """Using the given tag RegExp Pattern and IssueAction list build a list
+    of action IDs where any action_tag matches the pattern, and their parent action IDs"""
+    # initially populate ids_filtered with action ids where any action_tag matches pattern
+    ids_filtered = set()
+    for action in issue_actions:
+        if action.id and action.action_tags:
+            # Check if any action_tag matches the pattern
+            for tag in action.action_tags:
+                if pattern.fullmatch(tag):
+                    ids_filtered.add(action.id)
+                    break  # No need to check remaining action_tags for this action
+
+    prev_filtered_list_len = -1
+    # repeat while filtered list grows (to include parents)
+    while len(ids_filtered) > prev_filtered_list_len:
+        prev_filtered_list_len = len(ids_filtered)
+        # if action has a parent_id, add parent_id to actions_filtered set
+        for action in issue_actions:
+            if action.id in ids_filtered and action.parent_id:
+                ids_filtered.add(action.parent_id)
+    return list(ids_filtered)
+
+
+def _build_combined_action_filtered_list(
+        ctx: CLIContext,
+        issue_actions: list[IssueAction]) -> Optional[list[str]]:
+    """
+    Build combined filtered list of action IDs based on active filters.
+
+    Combines action-id and action-tag filters using AND logic (intersection).
+    Includes parent action IDs for all matched actions.
+
+    Returns:
+        List of action IDs to process, or None if no filters are active
+    """
+    id_filtered_list: Optional[list[str]] = None
+    tag_filtered_list: Optional[list[str]] = None
+
+    if ctx.action_id_filter_pattern:
+        # Include parents of actions matching the given id regexp pattern
+        id_filtered_list = _build_action_id_filtered_list(
+            issue_actions, ctx.action_id_filter_pattern)
+        ctx.logger.debug(
+            f"Filtered action id list including parent ids: {id_filtered_list}")
+
+    if ctx.action_tag_filter_pattern:
+        # Include parents of actions matching the tag pattern
+        tag_filtered_list = _build_action_tag_filtered_list(
+            issue_actions, ctx.action_tag_filter_pattern)
+        ctx.logger.debug(
+            f"Filtered action tag list including parent ids: {tag_filtered_list}")
+
+    # Combine filters: if both are specified, use intersection (AND logic)
+    if id_filtered_list is not None and tag_filtered_list is not None:
+        combined_list = list(set(id_filtered_list) & set(tag_filtered_list))
+        ctx.logger.debug(
+            f"Combined filtered list (intersection of action-id and action-tag): "
+            f"{combined_list}")
+        return combined_list
+    if id_filtered_list is not None:
+        return id_filtered_list
+    if tag_filtered_list is not None:
+        return tag_filtered_list
+    return None
+
+
 def _process_issue_config(
         ctx: CLIContext,
         artifact_job: ArtifactJob,
@@ -834,14 +905,8 @@ def _process_issue_config(
     # All issue actions from the configuration
     issue_actions = config.issues[:]
 
-    action_id_filtered_list: Optional[list[str]] = None
-    if ctx.action_id_filter_pattern:
-        # only for the issue config processing case we are going to include
-        # also parents of actions matching the given id regexp pattern
-        action_id_filtered_list = _build_action_id_filtered_list(
-            issue_actions, ctx.action_id_filter_pattern)
-        ctx.logger.debug(
-            f"Filtered action id list including parent ids: {action_id_filtered_list}")
+    # Build combined filtered list from action-id and action-tag filters
+    action_id_filtered_list = _build_combined_action_filtered_list(ctx, issue_actions)
 
     # Processed actions (action.id : issue)
     processed_actions: dict[str, Issue] = {}

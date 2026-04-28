@@ -417,3 +417,197 @@ class TestEventFilter:
 
         result = should_filter_by_event(filter_obj, job, mock_logger)
         assert result is True  # Should be filtered (wrong artifact type)
+
+
+class TestActionTagFilter:
+    """Tests for _should_filter_by_action_tags method."""
+
+    @pytest.fixture
+    def ctx_no_tag_filter(self, tmp_path, mock_logger):
+        """Return a CLIContext without tag filter."""
+        return CLIContext(
+            logger=mock_logger,
+            settings=Settings(),
+            state_dirpath=tmp_path,
+            cli_environment={},
+            cli_context={},
+            action_tag_filter_pattern=None)
+
+    @pytest.fixture
+    def ctx_with_tag_filter(self, tmp_path, mock_logger):
+        """Return a CLIContext with action_tag filter."""
+        return CLIContext(
+            logger=mock_logger,
+            settings=Settings(),
+            state_dirpath=tmp_path,
+            cli_environment={},
+            cli_context={},
+            action_tag_filter_pattern=re.compile(r'tier.*'))
+
+    def test_no_filter_returns_false(self, ctx_no_tag_filter):
+        """When no filter pattern is set, should not filter."""
+        result = ctx_no_tag_filter._should_filter_by_action_tags(['tier1', 'regression'])
+        assert result is False
+
+    def test_matching_single_tag_returns_false(self, ctx_with_tag_filter):
+        """When one tag matches pattern, should not filter (return False)."""
+        result = ctx_with_tag_filter._should_filter_by_action_tags(['tier1'])
+        assert result is False
+        # Check debug log was called
+        ctx_with_tag_filter.logger.debug.assert_called_once()
+
+    def test_matching_tag_in_list_returns_false(self, ctx_with_tag_filter):
+        """When any tag in list matches pattern, should not filter (return False)."""
+        result = ctx_with_tag_filter._should_filter_by_action_tags(
+            ['performance', 'tier2', 'nightly'])
+        assert result is False
+        # Check debug log was called
+        ctx_with_tag_filter.logger.debug.assert_called_once()
+
+    def test_non_matching_tags_returns_true(self, ctx_with_tag_filter):
+        """When no tags match pattern, should filter (return True)."""
+        result = ctx_with_tag_filter._should_filter_by_action_tags(
+            ['performance', 'nightly'])
+        assert result is True
+        # Check info log was called (log_message=True by default)
+        ctx_with_tag_filter.logger.info.assert_called_once()
+
+    def test_none_action_tags_returns_true(self, ctx_with_tag_filter):
+        """When action_tags is None, should filter (return True)."""
+        result = ctx_with_tag_filter._should_filter_by_action_tags(None)
+        assert result is True
+
+    def test_empty_action_tags_returns_true(self, ctx_with_tag_filter):
+        """When action_tags is empty list, should filter (return True)."""
+        result = ctx_with_tag_filter._should_filter_by_action_tags([])
+        assert result is True
+
+    def test_log_message_false_uses_debug(self, ctx_with_tag_filter):
+        """When log_message=False, should use debug log for skips."""
+        result = ctx_with_tag_filter._should_filter_by_action_tags(
+            ['performance', 'nightly'], log_message=False)
+        assert result is True
+        # Check debug log was called, not info
+        # Note: debug is called for the filter check
+        ctx_with_tag_filter.logger.info.assert_not_called()
+
+    def test_pattern_matches_full_tag_only(self, ctx_with_tag_filter):
+        """Pattern should match full tag, not partial."""
+        # Pattern is 'tier.*', so 'tier1' matches but 'mytier' doesn't
+        result_match = ctx_with_tag_filter._should_filter_by_action_tags(['tier1'])
+        assert result_match is False
+
+        # Reset logger mock for second call
+        ctx_with_tag_filter.logger.reset_mock()
+
+        result_no_match = ctx_with_tag_filter._should_filter_by_action_tags(['mytier'])
+        assert result_no_match is True
+
+
+class TestBuildActionTagFilteredList:
+    """Tests for _build_action_tag_filtered_list function."""
+
+    def test_empty_action_list(self):
+        """Test with empty action list."""
+        from newa.cli.jira_helpers import _build_action_tag_filtered_list
+
+        result = _build_action_tag_filtered_list([], re.compile(r'tier.*'))
+        assert result == []
+
+    def test_no_matching_tags(self):
+        """Test when no tags match the pattern."""
+        from newa.cli.jira_helpers import _build_action_tag_filtered_list
+        from newa.models.issues import IssueAction
+
+        actions = [
+            IssueAction(id='action1', action_tags=['performance', 'nightly']),
+            IssueAction(id='action2', action_tags=['regression']),
+            ]
+
+        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        assert result == []
+
+    def test_single_matching_tag(self):
+        """Test when one action has a matching tag."""
+        from newa.cli.jira_helpers import _build_action_tag_filtered_list
+        from newa.models.issues import IssueAction
+
+        actions = [
+            IssueAction(id='action1', action_tags=['tier1']),
+            IssueAction(id='action2', action_tags=['performance']),
+            ]
+
+        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        assert result == ['action1']
+
+    def test_multiple_matching_tags(self):
+        """Test when multiple actions have matching tags."""
+        from newa.cli.jira_helpers import _build_action_tag_filtered_list
+        from newa.models.issues import IssueAction
+
+        actions = [
+            IssueAction(id='action1', action_tags=['tier1']),
+            IssueAction(id='action2', action_tags=['tier2', 'performance']),
+            IssueAction(id='action3', action_tags=['regression']),
+            ]
+
+        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        assert set(result) == {'action1', 'action2'}
+
+    def test_includes_parent_actions(self):
+        """Test that parent actions are included when child matches."""
+        from newa.cli.jira_helpers import _build_action_tag_filtered_list
+        from newa.models.issues import IssueAction
+
+        actions = [
+            IssueAction(id='parent', action_tags=['setup']),
+            IssueAction(id='child1', parent_id='parent', action_tags=['tier1']),
+            IssueAction(id='child2', parent_id='parent', action_tags=['performance']),
+            ]
+
+        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        # Should include child1 (matches) and parent (parent of child1)
+        assert set(result) == {'child1', 'parent'}
+
+    def test_includes_grandparent_actions(self):
+        """Test that grandparent actions are included when grandchild matches."""
+        from newa.cli.jira_helpers import _build_action_tag_filtered_list
+        from newa.models.issues import IssueAction
+
+        actions = [
+            IssueAction(id='grandparent', action_tags=['setup']),
+            IssueAction(id='parent', parent_id='grandparent', action_tags=['prepare']),
+            IssueAction(id='child', parent_id='parent', action_tags=['tier1']),
+            ]
+
+        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        # Should include all three: child (matches), parent, and grandparent
+        assert set(result) == {'child', 'parent', 'grandparent'}
+
+    def test_actions_without_tags(self):
+        """Test that actions without tags are not included unless they're parents."""
+        from newa.cli.jira_helpers import _build_action_tag_filtered_list
+        from newa.models.issues import IssueAction
+
+        actions = [
+            IssueAction(id='action1'),  # No tags
+            IssueAction(id='action2', action_tags=['tier1']),
+            IssueAction(id='action3'),  # No tags
+            ]
+
+        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        assert result == ['action2']
+
+    def test_actions_with_explicit_id(self):
+        """Test that only actions with matching tags are included."""
+        from newa.cli.jira_helpers import _build_action_tag_filtered_list
+        from newa.models.issues import IssueAction
+
+        actions = [
+            IssueAction(id='action1', action_tags=['performance']),
+            IssueAction(id='action2', action_tags=['tier2']),
+            IssueAction(id='action3', action_tags=['nightly']),
+            ]
+
+        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        assert result == ['action2']

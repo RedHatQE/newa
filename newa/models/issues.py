@@ -68,6 +68,7 @@ class Issue(Serializable):  # type: ignore[no-untyped-def]
     transition_processed: Optional[str] = None
     transition_passed: Optional[str] = None
     action_id: Optional[str] = None
+    action_tags: Optional[list[str]] = field(factory=list)
 
     def __str__(self) -> str:
         return self.id
@@ -101,6 +102,7 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
     environment: Optional[RecipeEnvironment] = None
     links: Optional[dict[str, list[str]]] = None
     schedule: Union[bool, str] = True
+    action_tags: Optional[list[str]] = field(factory=list)
 
     # function to handle issue-config file defaults
 
