@@ -339,6 +339,9 @@ issues:
    on_respin: close
    auto_transition: True
    job_recipe: https://path/to/my/NEWA/recipe/errata.yaml
+   action_tags:
+     - tier1
+     - regression
    erratum_comment_triggers:
      - execute
      - report
@@ -359,6 +362,9 @@ issues:
    parent_id: errata_epic
    on_respin: close
    job_recipe: https://path/to/my/NEWA/recipe/performance.yaml
+   action_tags:
+     - tier2
+     - performance
    schedule: false
 
  - summary: "ER#{{ ERRATUM.id }} - Security testing {{ ERRATUM.builds|join(' ') }}"
@@ -368,6 +374,9 @@ issues:
    parent_id: errata_epic
    on_respin: close
    job_recipe: https://path/to/my/NEWA/recipe/security.yaml
+   action_tags:
+     - tier1
+     - security
    schedule: "{{ ERRATUM.id is match('RHSA-.*') }}"
 ```
 
@@ -572,6 +581,7 @@ The following options are available:
  - `type`: Jira issue type, could be `epic`, `task`, `sub-task`
  - `id`: unique identifier within the scope of issue-config file, it is used to identify this specific config item.
  - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
+ - `action_tags`: Optional list of string tags that can be used to categorize and filter actions. These tags are stored in the generated YAML files and can be used with `--action-tag-filter` to selectively process subsets of actions. This is useful for splitting test execution into parts (e.g., by test tier, category, or priority). See example below.
  - `newa_id`: Optional custom identifier (usually a Jinja2 template) that NEWA will embed in the Jira issue description. This identifier is used by NEWA to find and reuse existing Jira issues in subsequent runs instead of creating duplicates. When NEWA processes an issue-config, it first searches for existing Jira issues containing this identifier in their description. If found, the existing issue is reused; otherwise, a new issue is created and the identifier is added to its description. This is particularly useful for erratum-based workflows where you want to track the same erratum across multiple NEWA runs. See example below.
  - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are:
    - `close` - Creates a new issue and marks the old one as obsolete
@@ -1252,6 +1262,44 @@ $ newa --action-id-filter '(epic|tier1).*' event --compose CentOS-Stream-10 jira
 Example (triggering performance tests that have `schedule: false`):
 ```
 $ newa --action-id-filter 'task_performance' event --erratum 12345 jira --issue-config errata-config.yaml schedule execute report
+```
+
+#### Option `--action-tag-filter`
+
+Instructs NEWA to process only actions whose `action_tags` match the provided regular expression. An action is included if **any** of its tags matches the pattern. This option works across all NEWA subcommands and can be used to split test execution into logical parts.
+
+When using this filter:
+- Actions are matched if any tag matches the regex pattern
+- Parent actions are automatically included when their child actions match (similar to `--action-id-filter`)
+- Actions with `schedule: false` will have their jobs scheduled if they match the filter pattern
+- This option can be combined with `--action-id-filter` and `--issue-id-filter` for fine-grained control
+- Tags are stored in generated YAML files, so filtering works at all stages (jira, schedule, execute, report, list)
+
+Use with caution.
+
+Example (run only tier1 tests):
+```
+$ newa --action-tag-filter 'tier1' event --erratum 12345 jira --issue-config config.yaml schedule execute report
+```
+
+Example (run tier1 or tier2 tests):
+```
+$ newa --action-tag-filter 'tier[12]' event --compose CentOS-Stream-10 jira --issue-config config.yaml schedule execute report
+```
+
+Example (run all regression tests):
+```
+$ newa --action-tag-filter 'regression' --prev-state-dir schedule execute report
+```
+
+Example (combine with other filters):
+```
+$ newa --action-tag-filter 'security' --action-id-filter 'task_.*' event --erratum 12345 jira --issue-config config.yaml schedule
+```
+
+Example (use with --copy-state-dir to create a subset):
+```
+$ newa --state-dir /path/to/existing/run-123 --copy-state-dir --action-tag-filter 'tier1' schedule execute report
 ```
 
 #### Option `--issue-id-filter`

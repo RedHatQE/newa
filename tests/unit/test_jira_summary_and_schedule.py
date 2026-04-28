@@ -390,7 +390,8 @@ class TestScheduleAndRecipeFunctionality:
         # Verify skip log message
         mock_ctx.logger.info.assert_called_with(
             f'Skipping jira job {JIRA_NONE_ID}-123 - auto_schedule is disabled. '
-            f'Use --schedule-all or --action-id-filter/--issue-id-filter to override.',
+            f'Use --schedule-all or --action-id-filter/--issue-id-filter/'
+            f'--action-tag-filter to override.',
             )
 
         # Verify no schedule job files were created
