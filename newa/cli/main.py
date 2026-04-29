@@ -22,6 +22,7 @@ from newa.cli.commands.schedule_cmd import cmd_schedule
 from newa.cli.commands.summarize_cmd import cmd_summarize
 from newa.cli.constants import NEWA_DEFAULT_CONFIG
 from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
+from newa.cli.filter_helpers import should_filter_by_action_tags
 from newa.cli.utils import get_state_dir, initialize_state_dir
 
 if TYPE_CHECKING:
@@ -85,7 +86,6 @@ def _should_filter_yaml_file(
 
         # Check action_tag_filter if specified
         if action_tag_pattern:
-            from newa.cli.filter_helpers import should_filter_by_action_tags
             action_tags = yaml_data.get('jira', {}).get('action_tags')
             if should_filter_by_action_tags(action_tags, action_tag_pattern):
                 logger.debug(
