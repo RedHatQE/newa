@@ -469,23 +469,23 @@ class TestActionTagFilter:
         result = ctx_with_tag_filter._should_filter_by_action_tags(
             ['performance', 'nightly'])
         assert result is True
-        # Check debug log was called for skip message
-        ctx_with_tag_filter.logger.debug.assert_called_once()
+        # Check info log was called for skip message (log_message=True by default)
+        ctx_with_tag_filter.logger.info.assert_called_once()
 
     def test_none_action_tags_returns_true(self, ctx_with_tag_filter):
         """When action_tags is None, should filter (return True)."""
         result = ctx_with_tag_filter._should_filter_by_action_tags(None)
         assert result is True
-        # Check debug log was called with "no tags" message
-        ctx_with_tag_filter.logger.debug.assert_called_once_with(
+        # Check info log was called with "no tags" message (log_message=True by default)
+        ctx_with_tag_filter.logger.info.assert_called_once_with(
             "Skipping action with no tags as --action-tag-filter is specified.")
 
     def test_empty_action_tags_returns_true(self, ctx_with_tag_filter):
         """When action_tags is empty list, should filter (return True)."""
         result = ctx_with_tag_filter._should_filter_by_action_tags([])
         assert result is True
-        # Check debug log was called with "no tags" message
-        ctx_with_tag_filter.logger.debug.assert_called_once_with(
+        # Check info log was called with "no tags" message (log_message=True by default)
+        ctx_with_tag_filter.logger.info.assert_called_once_with(
             "Skipping action with no tags as --action-tag-filter is specified.")
 
     def test_log_message_false_uses_debug(self, ctx_with_tag_filter):

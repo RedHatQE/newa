@@ -521,12 +521,21 @@ class CLIContext:  # type: ignore[no-untyped-def]
         if should_filter:
             # Action should be filtered out - log it
             if not action_tags:
-                self.logger.debug(
-                    "Skipping action with no tags as --action-tag-filter is specified.")
+                if log_message:
+                    self.logger.info(
+                        "Skipping action with no tags as --action-tag-filter is specified.")
+                else:
+                    self.logger.debug(
+                        "Skipping action with no tags as --action-tag-filter is specified.")
             else:
-                self.logger.debug(
-                    f"Skipping action with tags {action_tags} as none match "
-                    "the --action-tag-filter regular expression.")
+                if log_message:
+                    self.logger.info(
+                        f"Skipping action with tags {action_tags} as none match "
+                        "the --action-tag-filter regular expression.")
+                else:
+                    self.logger.debug(
+                        f"Skipping action with tags {action_tags} as none match "
+                        "the --action-tag-filter regular expression.")
         else:
             # Action matches - log the matching tag at debug level
             if action_tags:
@@ -541,22 +550,23 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
     def skip_action(self,
                     action_id: Optional[str],
-                    filtered_id_list: Optional[list[str]] = None,
-                    log_message: bool = True) -> bool:
+                    filtered_id_list: Optional[list[str]] = None) -> bool:
+        """Check if action should be skipped based on filtered list.
+
+        Args:
+            action_id: The action ID to check
+            filtered_id_list: List of action IDs that should be processed (not skipped)
+
+        Returns:
+            True if action should be skipped, False if it should be processed
+        """
         if filtered_id_list is None:
             return False
         if action_id and action_id in filtered_id_list:
-            self.logger.debug(
-                f"Action {action_id} matches the filter regular expression.")
+            self.logger.debug(f"Action {action_id} matches the user provided filter.")
             return False
-        if log_message:
-            self.logger.info(
-                f"Skipping action {action_id} as it doesn't match "
-                "the filter regular expression.")
-        else:
-            self.logger.debug(
-                f"Skipping action {action_id} as it doesn't match "
-                "the filter regular expression.")
+        self.logger.info(
+            f"Skipping action {action_id} as it doesn't match the user provided filter.")
         return True
 
     def get_jira_connection(self) -> 'JiraConnection':
