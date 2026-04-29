@@ -47,6 +47,38 @@ def _default_action_id_generator() -> Generator[str, int, None]:
 default_action_id = _default_action_id_generator()
 
 
+def _normalize_action_tags(tags: Optional[Union[str, list[str]]]) -> Optional[list[str]]:
+    """
+    Normalize action_tags to always be a list[str] or None.
+
+    Handles the common mistake of providing a single string instead of a list.
+
+    Args:
+        tags: Either None, a string, or a list of strings
+
+    Returns:
+        None if tags is None, otherwise a list of strings
+
+    Raises:
+        TypeError: If tags is not None, str, or list[str]
+    """
+    if tags is None:
+        return None
+    if isinstance(tags, str):
+        # Auto-correct: wrap single string in a list
+        return [tags]
+    if isinstance(tags, list):
+        # Validate all elements are strings
+        for i, tag in enumerate(tags):
+            if not isinstance(tag, str):
+                raise TypeError(
+                    f"action_tags must be a list of strings, but element at index {i} "
+                    f"is {type(tag).__name__}: {tag!r}")
+        return tags
+    raise TypeError(
+        f"action_tags must be a string or list of strings, got {type(tags).__name__}: {tags!r}")
+
+
 @define
 class Issue(Serializable):  # type: ignore[no-untyped-def]
     """Issue - a key in Jira (eg. NEWA-123)."""
@@ -68,7 +100,8 @@ class Issue(Serializable):  # type: ignore[no-untyped-def]
     transition_processed: Optional[str] = None
     transition_passed: Optional[str] = None
     action_id: Optional[str] = None
-    action_tags: Optional[list[str]] = None
+    action_tags: Optional[list[str]] = field(
+        converter=_normalize_action_tags, default=None)
 
     def __str__(self) -> str:
         return self.id
@@ -102,7 +135,8 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
     environment: Optional[RecipeEnvironment] = None
     links: Optional[dict[str, list[str]]] = None
     schedule: Union[bool, str] = True
-    action_tags: Optional[list[str]] = None
+    action_tags: Optional[list[str]] = field(
+        converter=_normalize_action_tags, default=None)
 
     # function to handle issue-config file defaults
 
