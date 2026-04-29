@@ -1266,10 +1266,28 @@ $ newa --action-id-filter 'task_performance' event --erratum 12345 jira --issue-
 
 #### Option `--action-tag-filter`
 
-Instructs NEWA to process only actions whose `action_tags` match the provided regular expression. An action is included if **any** of its tags matches the pattern. This option works across all NEWA subcommands and can be used to split test execution into logical parts.
+Instructs NEWA to process only actions whose `action_tags` match the provided filter expression. This option uses a powerful expression syntax that combines regex pattern matching with boolean operators (OR, AND, NOT), allowing you to create complex filtering rules. The filter works across all NEWA subcommands and can be used to split test execution into logical parts.
 
-When using this filter:
-- Actions are matched if any tag matches the regex pattern
+**Filter Expression Syntax:**
+
+The filter expression supports three boolean operators:
+- **`|` (OR)**: Match if **any** of the patterns match. Example: `tier1|tier2` matches actions with either "tier1" OR "tier2" tag
+- **`,` (AND)**: Match if **all** of the conditions are satisfied. Example: `regression,rhel-9` matches only actions that have BOTH "regression" AND "rhel-9" tags
+- **`!` (NOT)**: Exclude actions that match the pattern. Example: `!slow` excludes actions with "slow" tag
+
+Each pattern in the expression is a **full regex pattern**, giving you the power to use wildcards and other regex features:
+- `tier.*` - matches "tier1", "tier2", "tier_anything"
+- `tier[12]` - matches exactly "tier1" or "tier2"
+- `rhel-\d+` - matches "rhel-9", "rhel-10", etc.
+
+**Boolean operators can be combined** to create sophisticated filters:
+- `tier1|tier2` - Match actions with tier1 OR tier2
+- `regression,rhel-9.*` - Match actions with regression AND rhel-9.x tags
+- `!slow` - Exclude slow tests
+- `tier[12]|regression,rhel-9.*,!slow` - Match (tier1 OR tier2 OR regression) AND (rhel-9.x) AND NOT (slow)
+
+**Filter Behavior:**
+- Actions are matched if their tags satisfy the entire filter expression
 - Parent actions are automatically included when their child actions match (similar to `--action-id-filter`)
 - Actions with `schedule: false` will have their jobs scheduled if they match the filter pattern
 - This option can be combined with `--action-id-filter` and `--issue-id-filter` for fine-grained control
@@ -1277,29 +1295,42 @@ When using this filter:
 
 Use with caution.
 
-Example (run only tier1 tests):
+**Examples:**
+
+Simple OR filter (run tier1 OR tier2 tests):
 ```
-$ newa --action-tag-filter 'tier1' event --erratum 12345 jira --issue-config config.yaml schedule execute report
+$ newa --action-tag-filter 'tier1|tier2' event --erratum 12345 jira --issue-config config.yaml schedule execute report
 ```
 
-Example (run tier1 or tier2 tests):
+Regex pattern (run tests matching tier followed by any character):
 ```
-$ newa --action-tag-filter 'tier[12]' event --compose CentOS-Stream-10 jira --issue-config config.yaml schedule execute report
-```
-
-Example (run all regression tests):
-```
-$ newa --action-tag-filter 'regression' --prev-state-dir schedule execute report
+$ newa --action-tag-filter 'tier.*' event --compose CentOS-Stream-10 jira --issue-config config.yaml schedule execute report
 ```
 
-Example (combine with other filters):
+AND filter (run regression tests for RHEL-9 only):
 ```
-$ newa --action-tag-filter 'security' --action-id-filter 'task_.*' event --erratum 12345 jira --issue-config config.yaml schedule
+$ newa --action-tag-filter 'regression,rhel-9.*' --prev-state-dir schedule execute report
 ```
 
-Example (use with --copy-state-dir to create a subset):
+NOT filter (run all tests except slow ones):
 ```
-$ newa --state-dir /path/to/existing/run-123 --copy-state-dir --action-tag-filter 'tier1' schedule execute report
+$ newa --action-tag-filter '!slow' event --erratum 12345 jira --issue-config config.yaml schedule execute report
+```
+
+Complex combined filter:
+```
+# Run (tier1 OR tier2) AND (rhel-9.x) AND NOT (slow or nightly)
+$ newa --action-tag-filter 'tier[12],rhel-9.*,!slow,!nightly' event --erratum 12345 jira --issue-config config.yaml schedule
+```
+
+Combine with other filters:
+```
+$ newa --action-tag-filter 'security|regression' --action-id-filter 'task_.*' event --erratum 12345 jira --issue-config config.yaml schedule
+```
+
+Use with --copy-state-dir to create a subset:
+```
+$ newa --state-dir /path/to/existing/run-123 --copy-state-dir --action-tag-filter 'tier1,!slow' schedule execute report
 ```
 
 #### Option `--issue-id-filter`

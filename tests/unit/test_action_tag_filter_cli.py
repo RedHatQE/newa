@@ -1,11 +1,11 @@
 """Tests for --action-tag-filter CLI option and YAML file filtering."""
-import re
 from unittest import mock
 
 import pytest
 
 from newa import CLIContext, Settings
 from newa.cli.main import _should_filter_yaml_file
+from newa.cli.tag_filter import parse_tag_filter
 
 
 @pytest.fixture
@@ -80,74 +80,75 @@ class TestShouldFilterYamlFile:
 
     def test_tag_filter_matches_keeps_file(self, temp_yaml_files, mock_logger):
         """When tag filter matches, file should be kept."""
-        tag_pattern = re.compile(r'tier1')
+        tag_filter = parse_tag_filter('tier1')
         result = _should_filter_yaml_file(
             temp_yaml_files['with_tags'],
-            None, None, None, tag_pattern, mock_logger)
+            None, None, None, tag_filter, mock_logger)
         assert result is False
 
     def test_tag_filter_no_match_filters_file(self, temp_yaml_files, mock_logger):
         """When tag filter doesn't match, file should be filtered."""
-        tag_pattern = re.compile(r'tier1')
+        tag_filter = parse_tag_filter('tier1')
         result = _should_filter_yaml_file(
             temp_yaml_files['with_other_tags'],
-            None, None, None, tag_pattern, mock_logger)
+            None, None, None, tag_filter, mock_logger)
         assert result is True
 
     def test_tag_filter_pattern_matches_multiple(self, temp_yaml_files, mock_logger):
         """When tag filter pattern matches multiple tags, file should be kept."""
-        tag_pattern = re.compile(r'tier.*')
+        tag_filter = parse_tag_filter('tier.*')
         # Should match both tier1 and tier2
         result1 = _should_filter_yaml_file(
             temp_yaml_files['with_tags'],
-            None, None, None, tag_pattern, mock_logger)
+            None, None, None, tag_filter, mock_logger)
         assert result1 is False
 
         result2 = _should_filter_yaml_file(
             temp_yaml_files['with_other_tags'],
-            None, None, None, tag_pattern, mock_logger)
+            None, None, None, tag_filter, mock_logger)
         assert result2 is False
 
     def test_tag_filter_with_no_tags_filters_file(self, temp_yaml_files, mock_logger):
         """When file has no action_tags field, it should be filtered."""
-        tag_pattern = re.compile(r'tier.*')
+        tag_filter = parse_tag_filter('tier.*')
         result = _should_filter_yaml_file(
             temp_yaml_files['without_tags'],
-            None, None, None, tag_pattern, mock_logger)
+            None, None, None, tag_filter, mock_logger)
         assert result is True
 
     def test_tag_filter_with_empty_tags_filters_file(self, temp_yaml_files, mock_logger):
         """When file has empty action_tags list, it should be filtered."""
-        tag_pattern = re.compile(r'tier.*')
+        tag_filter = parse_tag_filter('tier.*')
         result = _should_filter_yaml_file(
             temp_yaml_files['with_empty_tags'],
-            None, None, None, tag_pattern, mock_logger)
+            None, None, None, tag_filter, mock_logger)
         assert result is True
 
     def test_tag_filter_matches_any_tag(self, temp_yaml_files, mock_logger):
         """When any tag matches pattern, file should be kept."""
         # Pattern matches 'regression' in the tag list ['tier1', 'regression']
-        tag_pattern = re.compile(r'regression')
+        tag_filter = parse_tag_filter('regression')
         result = _should_filter_yaml_file(
             temp_yaml_files['with_tags'],
-            None, None, None, tag_pattern, mock_logger)
+            None, None, None, tag_filter, mock_logger)
         assert result is False
 
     def test_combined_action_id_and_tag_filters(self, temp_yaml_files, mock_logger):
         """When both action_id and tag filters are specified, both must match."""
+        import re
         action_id_pattern = re.compile(r'tier1.*')
-        tag_pattern = re.compile(r'regression')
+        tag_filter = parse_tag_filter('regression')
 
         # File with matching action_id and matching tag
         result = _should_filter_yaml_file(
             temp_yaml_files['with_tags'],
-            action_id_pattern, None, None, tag_pattern, mock_logger)
+            action_id_pattern, None, None, tag_filter, mock_logger)
         assert result is False
 
         # File with non-matching action_id but matching tag - should be filtered
         result2 = _should_filter_yaml_file(
             temp_yaml_files['with_other_tags'],
-            action_id_pattern, None, None, tag_pattern, mock_logger)
+            action_id_pattern, None, None, tag_filter, mock_logger)
         assert result2 is True
 
 
@@ -204,7 +205,7 @@ class TestActionTagFilterWithCLIContext:
             state_dirpath=tmp_path,
             cli_environment={},
             cli_context={},
-            action_tag_filter_pattern=re.compile(r'tier1'))
+            action_tag_filter_pattern=parse_tag_filter('tier1'))
 
         # Load jira jobs with filter_actions=True - should only get job1
         jobs = list(ctx.load_jira_jobs('jira', filter_actions=True))
@@ -261,7 +262,7 @@ class TestActionTagFilterWithCLIContext:
             state_dirpath=tmp_path,
             cli_environment={},
             cli_context={},
-            action_tag_filter_pattern=re.compile(r'tier.*'))
+            action_tag_filter_pattern=parse_tag_filter('tier.*'))
 
         # Load jira jobs with filter_actions=True - should get job1 and job2
         jobs = list(ctx.load_jira_jobs('jira', filter_actions=True))

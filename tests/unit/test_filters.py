@@ -5,6 +5,7 @@ from unittest import mock
 import pytest
 
 from newa import CLIContext, Settings
+from newa.cli.tag_filter import parse_tag_filter
 
 
 @pytest.fixture
@@ -436,13 +437,14 @@ class TestActionTagFilter:
     @pytest.fixture
     def ctx_with_tag_filter(self, tmp_path, mock_logger):
         """Return a CLIContext with action_tag filter."""
+        from newa.cli.tag_filter import parse_tag_filter
         return CLIContext(
             logger=mock_logger,
             settings=Settings(),
             state_dirpath=tmp_path,
             cli_environment={},
             cli_context={},
-            action_tag_filter_pattern=re.compile(r'tier.*'))
+            action_tag_filter_pattern=parse_tag_filter(r'tier.*'))
 
     def test_no_filter_returns_false(self, ctx_no_tag_filter):
         """When no filter pattern is set, should not filter."""
@@ -516,7 +518,7 @@ class TestBuildActionTagFilteredList:
         """Test with empty action list."""
         from newa.cli.jira_helpers import _build_action_tag_filtered_list
 
-        result = _build_action_tag_filtered_list([], re.compile(r'tier.*'))
+        result = _build_action_tag_filtered_list([], parse_tag_filter(r'tier.*'))
         assert result == []
 
     def test_no_matching_tags(self):
@@ -529,7 +531,7 @@ class TestBuildActionTagFilteredList:
             IssueAction(id='action2', action_tags=['regression']),
             ]
 
-        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        result = _build_action_tag_filtered_list(actions, parse_tag_filter(r'tier.*'))
         assert result == []
 
     def test_single_matching_tag(self):
@@ -542,7 +544,7 @@ class TestBuildActionTagFilteredList:
             IssueAction(id='action2', action_tags=['performance']),
             ]
 
-        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        result = _build_action_tag_filtered_list(actions, parse_tag_filter(r'tier.*'))
         assert result == ['action1']
 
     def test_multiple_matching_tags(self):
@@ -556,7 +558,7 @@ class TestBuildActionTagFilteredList:
             IssueAction(id='action3', action_tags=['regression']),
             ]
 
-        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        result = _build_action_tag_filtered_list(actions, parse_tag_filter(r'tier.*'))
         assert set(result) == {'action1', 'action2'}
 
     def test_includes_parent_actions(self):
@@ -570,7 +572,7 @@ class TestBuildActionTagFilteredList:
             IssueAction(id='child2', parent_id='parent', action_tags=['performance']),
             ]
 
-        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        result = _build_action_tag_filtered_list(actions, parse_tag_filter(r'tier.*'))
         # Should include child1 (matches) and parent (parent of child1)
         assert set(result) == {'child1', 'parent'}
 
@@ -585,7 +587,7 @@ class TestBuildActionTagFilteredList:
             IssueAction(id='child', parent_id='parent', action_tags=['tier1']),
             ]
 
-        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        result = _build_action_tag_filtered_list(actions, parse_tag_filter(r'tier.*'))
         # Should include all three: child (matches), parent, and grandparent
         assert set(result) == {'child', 'parent', 'grandparent'}
 
@@ -600,7 +602,7 @@ class TestBuildActionTagFilteredList:
             IssueAction(id='action3'),  # No tags
             ]
 
-        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        result = _build_action_tag_filtered_list(actions, parse_tag_filter(r'tier.*'))
         assert result == ['action2']
 
     def test_actions_with_explicit_id(self):
@@ -614,5 +616,5 @@ class TestBuildActionTagFilteredList:
             IssueAction(id='action3', action_tags=['nightly']),
             ]
 
-        result = _build_action_tag_filtered_list(actions, re.compile(r'tier.*'))
+        result = _build_action_tag_filtered_list(actions, parse_tag_filter(r'tier.*'))
         assert result == ['action2']
