@@ -18,6 +18,7 @@ from newa.models.execution import RequestResult
 from newa.models.recipes import RecipeContext, RecipeEnvironment
 
 if TYPE_CHECKING:
+    from newa.cli.tag_filter import TagFilter
     from newa.models.jobs import ArtifactJob, ExecuteJob, JiraJob, ScheduleJob
     from newa.services.jira_connection import JiraConnection
 
@@ -236,7 +237,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
     action_id_filter_pattern: Optional[Pattern[str]] = None
     issue_id_filter_pattern: Optional[Pattern[str]] = None
     event_filter_pattern: Optional[EventFilter] = None
-    action_tag_filter_pattern: Optional[Pattern[str]] = None
+    action_tag_filter_pattern: Optional['TagFilter'] = None
 
     # Jira connection instance (lazy initialized)
     jira_connection: Optional['JiraConnection'] = field(default=None, init=False, repr=False)
@@ -506,7 +507,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
             self,
             action_tags: Optional[list[str]],
             log_message: bool = True) -> bool:
-        """Check if job should be filtered out based on action_tags pattern.
+        """Check if job should be filtered out based on action_tags filter.
 
         Returns True if the job should be skipped, False if it should be processed.
         """
@@ -530,21 +531,16 @@ class CLIContext:  # type: ignore[no-untyped-def]
             else:
                 if log_message:
                     self.logger.info(
-                        f"Skipping action with tags {action_tags} as none match "
-                        "the --action-tag-filter regular expression.")
+                        f"Skipping action with tags {action_tags} as they don't match "
+                        "the --action-tag-filter expression.")
                 else:
                     self.logger.debug(
-                        f"Skipping action with tags {action_tags} as none match "
-                        "the --action-tag-filter regular expression.")
+                        f"Skipping action with tags {action_tags} as they don't match "
+                        "the --action-tag-filter expression.")
         else:
-            # Action matches - log the matching tag at debug level
-            if action_tags:
-                for tag in action_tags:
-                    if self.action_tag_filter_pattern.fullmatch(tag):
-                        self.logger.debug(
-                            f"Action tag '{tag}' matches the --action-tag-filter "
-                            "regular expression.")
-                        break
+            # Action matches - log at debug level
+            self.logger.debug(
+                f"Action tags {action_tags} match the --action-tag-filter expression.")
 
         return should_filter
 

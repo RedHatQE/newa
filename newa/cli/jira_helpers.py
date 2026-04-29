@@ -5,7 +5,10 @@ import re
 import urllib.parse
 from collections.abc import Generator
 from re import Pattern
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from newa.cli.tag_filter import TagFilter
 
 from newa import (
     ArtifactJob,
@@ -822,18 +825,17 @@ def _build_action_id_filtered_list(
 
 def _build_action_tag_filtered_list(
         issue_actions: list[IssueAction],
-        pattern: Pattern[str]) -> list[str]:
-    """Using the given tag RegExp Pattern and IssueAction list build a list
-    of action IDs where any action_tag matches the pattern, and their parent action IDs"""
-    # initially populate ids_filtered with action ids where any action_tag matches pattern
+        tag_filter: 'TagFilter') -> list[str]:
+    """Using the given TagFilter and IssueAction list build a list
+    of action IDs where action_tags match the filter, and their parent action IDs"""
+    from newa.cli.filter_helpers import should_filter_by_action_tags
+
+    # initially populate ids_filtered with action ids where action_tags match the filter
     ids_filtered = set()
     for action in issue_actions:
-        if action.id and action.action_tags:
-            # Check if any action_tag matches the pattern
-            for tag in action.action_tags:
-                if pattern.fullmatch(tag):
-                    ids_filtered.add(action.id)
-                    break  # No need to check remaining action_tags for this action
+        # Check if action_tags match the filter (should_filter returns True if NOT matching)
+        if action.id and not should_filter_by_action_tags(action.action_tags, tag_filter):
+            ids_filtered.add(action.id)
 
     prev_filtered_list_len = -1
     # repeat while filtered list grows (to include parents)
