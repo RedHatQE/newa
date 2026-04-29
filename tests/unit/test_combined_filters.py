@@ -6,6 +6,7 @@ import pytest
 
 from newa import CLIContext, Settings
 from newa.cli.jira_helpers import _build_combined_action_filtered_list
+from newa.cli.tag_filter import parse_tag_filter
 from newa.models.issues import IssueAction
 
 
@@ -93,7 +94,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=None,
-            action_tag_filter_pattern=re.compile(r'security'))
+            action_tag_filter_pattern=parse_tag_filter(r'security'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -110,7 +111,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'test_tier1_.*'),
-            action_tag_filter_pattern=re.compile(r'security'))
+            action_tag_filter_pattern=parse_tag_filter(r'security'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -127,7 +128,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'test_tier1_.*'),
-            action_tag_filter_pattern=re.compile(r'maintenance'))
+            action_tag_filter_pattern=parse_tag_filter(r'maintenance'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -144,7 +145,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'build_tier1'),
-            action_tag_filter_pattern=re.compile(r'tier1'))
+            action_tag_filter_pattern=parse_tag_filter(r'tier1'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -161,7 +162,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'test_tier2_.*'),
-            action_tag_filter_pattern=re.compile(r'tier1'))
+            action_tag_filter_pattern=parse_tag_filter(r'tier1'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -181,7 +182,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'test_tier[12]_.*'),
-            action_tag_filter_pattern=re.compile(r'tier1'))
+            action_tag_filter_pattern=parse_tag_filter(r'tier1'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -201,7 +202,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'.*tier1.*'),
-            action_tag_filter_pattern=re.compile(r'smoke'))
+            action_tag_filter_pattern=parse_tag_filter(r'smoke'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -219,7 +220,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=None,
-            action_tag_filter_pattern=re.compile(r'performance'))
+            action_tag_filter_pattern=parse_tag_filter(r'performance'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -236,7 +237,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'test_tier1_.*'),
-            action_tag_filter_pattern=re.compile(r'security|performance'))
+            action_tag_filter_pattern=parse_tag_filter(r'security|performance'))
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -260,7 +261,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'test_.*'),
-            action_tag_filter_pattern=re.compile(r'tier1'))
+            action_tag_filter_pattern=parse_tag_filter(r'tier1'))
 
         result = _build_combined_action_filtered_list(ctx, actions)
 
@@ -277,7 +278,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'test'),  # Partial match
-            action_tag_filter_pattern=re.compile(r'tier'))  # Partial match
+            action_tag_filter_pattern=parse_tag_filter(r'tier'))  # Partial match
 
         result = _build_combined_action_filtered_list(ctx, sample_actions)
 
@@ -294,7 +295,7 @@ class TestCombinedFilters:
             cli_environment={},
             cli_context={},
             action_id_filter_pattern=re.compile(r'test_tier1_.*'),
-            action_tag_filter_pattern=re.compile(r'security'))
+            action_tag_filter_pattern=parse_tag_filter(r'security'))
 
         _build_combined_action_filtered_list(ctx, sample_actions)
 
