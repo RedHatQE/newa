@@ -346,7 +346,7 @@ def _find_or_create_issue(
                 action, all_respins=True, closed=True)
 
         for jira_issue_key, jira_issue in search_result.items():
-            if ctx.settings.jira_show_url:
+            if ctx.settings.use_urls_in_logs:
                 ctx.logger.debug(
                     f"Checking {jira_issue_key} "
                     f"({ctx.settings.jira_url}/browse/{jira_issue_key})")
@@ -449,14 +449,14 @@ def _find_or_create_issue(
         opened_issues = [i for i in new_issues if not i.closed]
         closed_issues = [i for i in new_issues if i.closed]
         if not opened_issues:
-            closed_ids = ', '.join([i.id for i in closed_issues])
-            if ctx.settings.jira_show_url:
-                ctx.logger.info(
-                    f"Relevant issues {closed_ids} "
-                    f"({ctx.settings.jira_url}/browse/{closed_ids}) found but already closed")
+            if ctx.settings.use_urls_in_logs:
+                closed_ids = ', '.join(
+                    [f"{i.id} ({ctx.settings.jira_url}/browse/{i.id})"
+                     for i in closed_issues])
             else:
-                ctx.logger.info(
-                    f"Relevant issues {closed_ids} found but already closed")
+                closed_ids = ', '.join([i.id for i in closed_issues])
+            ctx.logger.info(
+                f"Relevant issues {closed_ids} found but already closed")
             return None, [], False  # Signal to skip this action
 
         new_issues = opened_issues
@@ -494,7 +494,7 @@ def _find_or_create_issue(
             assert action.id is not None
             processed_actions[action.id] = new_issue
             created_action_ids.append(action.id)
-            if ctx.settings.jira_show_url:
+            if ctx.settings.use_urls_in_logs:
                 ctx.logger.info(
                     f"New issue {new_issue.id} created "
                     f"({ctx.settings.jira_url}/browse/{new_issue.id})")
@@ -538,10 +538,10 @@ def _find_or_create_issue(
                 ctx.logger.debug(f"refresh_issue returned: {trigger_comment}")
             else:
                 ctx.logger.info("Skipping issue refresh due to --no-newa-id flag")
-            if ctx.settings.jira_show_url:
+            if ctx.settings.use_urls_in_logs:
                 ctx.logger.info(
                     f"Issue {new_issue} "
-                    f"({ctx.settings.jira_url}/browse/{new_issue})re-used")
+                    f"({ctx.settings.jira_url}/browse/{new_issue}) re-used")
             else:
                 ctx.logger.info(f"Issue {new_issue} re-used")
 

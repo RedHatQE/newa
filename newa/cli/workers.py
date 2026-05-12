@@ -150,7 +150,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
                     pass
             envs = ','.join([f"{e['os']['compose']}/{e['arch']}"
                              for e in tf_request.details['environments_requested']])
-            if ctx.settings.tf_show_url:
+            if ctx.settings.use_urls_in_logs and execute_job.execution.artifacts_url:
                 log(
                     f'TF request {execute_job.execution.artifacts_url}'
                     f' envs: {envs} state: {state}')
