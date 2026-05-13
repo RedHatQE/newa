@@ -681,7 +681,7 @@ def _expand_action_iterations(
         new_action.id = f"{new_action.id}.iter{i + 1}"
         ctx.logger.debug(f"Created issue config action: {new_action}")
         issue_actions.insert(i, new_action)
-    ctx.logger.info(f"Created {i} iterations of action {action.id}")
+    ctx.logger.info(f"Created {len(action.iterate)} iterations of action {action.id}")
     return True
 
 
