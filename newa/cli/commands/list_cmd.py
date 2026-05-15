@@ -151,6 +151,9 @@ def cmd_list(
                 _print(4, colorize_text(issue_line, issue_color))
                 if jira_job.jira.url:
                     _print(4, jira_job.jira.url)
+                if jira_job.jira.action_tags:
+                    tags_str = ', '.join(jira_job.jira.action_tags)
+                    _print(4, f'tags: {tags_str}')
                 if jira_job.recipe and jira_job.recipe.url:
                     # Show indicator only when auto_schedule is false
                     auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)

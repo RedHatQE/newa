@@ -390,7 +390,8 @@ class TestScheduleAndRecipeFunctionality:
         # Verify skip log message
         mock_ctx.logger.info.assert_called_with(
             f'Skipping jira job {JIRA_NONE_ID}-123 - auto_schedule is disabled. '
-            f'Use --schedule-all or --action-id-filter/--issue-id-filter to override.',
+            f'Use --schedule-all or --action-id-filter/--issue-id-filter/'
+            f'--action-tag-filter to override.',
             )
 
         # Verify no schedule job files were created
@@ -455,6 +456,53 @@ class TestScheduleAndRecipeFunctionality:
             )
 
         # Process with issue_id_filter (no --schedule-all flag)
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            schedule_all=False,
+            )
+
+        # Verify override log message
+        mock_ctx.logger.info.assert_any_call(
+            f'Scheduling jira job {JIRA_NONE_ID}-123 - overridden by filter.',
+            )
+
+        # Verify schedule job files WERE created (filter overrides auto_schedule=False)
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) > 0
+
+    def test_schedule_command_processes_auto_schedule_false_with_tag_filter(self, mock_ctx):
+        """Test that action_tag filter overrides auto_schedule=False."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        # Set action_tag_filter_pattern to match
+        mock_ctx.action_tag_filter_pattern = re.compile(r'tier1')
+
+        # Create a jira job with recipe but auto_schedule=False and matching action_tags
+        jira_job = JiraJob(
+            event=Event(
+                id='12345',
+                type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(
+                f'{JIRA_NONE_ID}-123',
+                summary='Test Issue',
+                action_tags=[
+                    'tier1',
+                    'smoke']),
+            recipe=Recipe(
+                url='tests/unit/data/sample_recipe.yaml',
+                auto_schedule=False),
+            )
+
+        # Process with action_tag_filter (no --schedule-all flag)
         _process_jira_job(
             ctx=mock_ctx,
             jira_job=jira_job,

@@ -18,6 +18,7 @@ from newa.models.execution import RequestResult
 from newa.models.recipes import RecipeContext, RecipeEnvironment
 
 if TYPE_CHECKING:
+    from newa.cli.tag_filter import TagFilter
     from newa.models.jobs import ArtifactJob, ExecuteJob, JiraJob, ScheduleJob
     from newa.services.jira_connection import JiraConnection
 
@@ -236,6 +237,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
     action_id_filter_pattern: Optional[Pattern[str]] = None
     issue_id_filter_pattern: Optional[Pattern[str]] = None
     event_filter_pattern: Optional[EventFilter] = None
+    action_tag_filter_pattern: Optional['TagFilter'] = None
 
     # Jira connection instance (lazy initialized)
     jira_connection: Optional['JiraConnection'] = field(default=None, init=False, repr=False)
@@ -319,6 +321,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
                     continue
+                if self._should_filter_by_action_tags(job.jira.action_tags):
+                    continue
                 if self.should_filter_job(job):
                     continue
             yield job
@@ -345,6 +349,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
                     continue
+                if self._should_filter_by_action_tags(job.jira.action_tags):
+                    continue
                 if self.should_filter_job(job):
                     continue
             yield job
@@ -370,6 +376,8 @@ class CLIContext:  # type: ignore[no-untyped-def]
                 if self._should_filter_by_action_id(job.jira.action_id):
                     continue
                 if self._should_filter_by_issue_id(job.jira.id):
+                    continue
+                if self._should_filter_by_action_tags(job.jira.action_tags):
                     continue
                 if self.should_filter_job(job):
                     continue
@@ -495,24 +503,66 @@ class CLIContext:  # type: ignore[no-untyped-def]
             "regular expression.")
         return False
 
+    def _should_filter_by_action_tags(
+            self,
+            action_tags: Optional[list[str]],
+            log_message: bool = True) -> bool:
+        """Check if job should be filtered out based on action_tags filter.
+
+        Returns True if the job should be skipped, False if it should be processed.
+        """
+        if not self.action_tag_filter_pattern:
+            return False
+
+        from newa.cli.filter_helpers import should_filter_by_action_tags
+
+        # Use shared helper for the actual filtering logic
+        should_filter = should_filter_by_action_tags(action_tags, self.action_tag_filter_pattern)
+
+        if should_filter:
+            # Action should be filtered out - log it
+            if not action_tags:
+                if log_message:
+                    self.logger.info(
+                        "Skipping action with no tags as --action-tag-filter is specified.")
+                else:
+                    self.logger.debug(
+                        "Skipping action with no tags as --action-tag-filter is specified.")
+            else:
+                if log_message:
+                    self.logger.info(
+                        f"Skipping action with tags {action_tags} as they don't match "
+                        "the --action-tag-filter expression.")
+                else:
+                    self.logger.debug(
+                        f"Skipping action with tags {action_tags} as they don't match "
+                        "the --action-tag-filter expression.")
+        else:
+            # Action matches - log at debug level
+            self.logger.debug(
+                f"Action tags {action_tags} match the --action-tag-filter expression.")
+
+        return should_filter
+
     def skip_action(self,
                     action_id: Optional[str],
-                    filtered_id_list: Optional[list[str]] = None,
-                    log_message: bool = True) -> bool:
+                    filtered_id_list: Optional[list[str]] = None) -> bool:
+        """Check if action should be skipped based on filtered list.
+
+        Args:
+            action_id: The action ID to check
+            filtered_id_list: List of action IDs that should be processed (not skipped)
+
+        Returns:
+            True if action should be skipped, False if it should be processed
+        """
         if filtered_id_list is None:
             return False
         if action_id and action_id in filtered_id_list:
-            self.logger.debug(
-                f"Action {action_id} matches the --action-id-filter regular expression.")
+            self.logger.debug(f"Action {action_id} matches the user provided filter.")
             return False
-        if log_message:
-            self.logger.info(
-                f"Skipping action {action_id} as it doesn't match "
-                "the --action-id-filter regular expression.")
-        else:
-            self.logger.debug(
-                f"Skipping action {action_id} as it doesn't match "
-                "the --action-id-filter regular expression.")
+        self.logger.info(
+            f"Skipping action {action_id} as it doesn't match the user provided filter.")
         return True
 
     def get_jira_connection(self) -> 'JiraConnection':

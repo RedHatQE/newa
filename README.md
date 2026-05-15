@@ -339,6 +339,9 @@ issues:
    on_respin: close
    auto_transition: True
    job_recipe: https://path/to/my/NEWA/recipe/errata.yaml
+   action_tags:
+     - tier1
+     - regression
    erratum_comment_triggers:
      - execute
      - report
@@ -359,6 +362,9 @@ issues:
    parent_id: errata_epic
    on_respin: close
    job_recipe: https://path/to/my/NEWA/recipe/performance.yaml
+   action_tags:
+     - tier2
+     - performance
    schedule: false
 
  - summary: "ER#{{ ERRATUM.id }} - Security testing {{ ERRATUM.builds|join(' ') }}"
@@ -368,6 +374,9 @@ issues:
    parent_id: errata_epic
    on_respin: close
    job_recipe: https://path/to/my/NEWA/recipe/security.yaml
+   action_tags:
+     - tier1
+     - security
    schedule: "{{ ERRATUM.id is match('RHSA-.*') }}"
 ```
 
@@ -572,6 +581,7 @@ The following options are available:
  - `type`: Jira issue type, could be `epic`, `task`, `sub-task`
  - `id`: unique identifier within the scope of issue-config file, it is used to identify this specific config item.
  - `parent_id`: refers to item `id` which should become a parent Jira issue of this issue.
+ - `action_tags`: Optional list of string tags that can be used to categorize and filter actions. These tags are stored in the generated YAML files and can be used with `--action-tag-filter` to selectively process subsets of actions. This is useful for splitting test execution into parts (e.g., by test tier, category, or priority). See example below.
  - `newa_id`: Optional custom identifier (usually a Jinja2 template) that NEWA will embed in the Jira issue description. This identifier is used by NEWA to find and reuse existing Jira issues in subsequent runs instead of creating duplicates. When NEWA processes an issue-config, it first searches for existing Jira issues containing this identifier in their description. If found, the existing issue is reused; otherwise, a new issue is created and the identifier is added to its description. This is particularly useful for erratum-based workflows where you want to track the same erratum across multiple NEWA runs. See example below.
  - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are:
    - `close` - Creates a new issue and marks the old one as obsolete
@@ -1252,6 +1262,75 @@ $ newa --action-id-filter '(epic|tier1).*' event --compose CentOS-Stream-10 jira
 Example (triggering performance tests that have `schedule: false`):
 ```
 $ newa --action-id-filter 'task_performance' event --erratum 12345 jira --issue-config errata-config.yaml schedule execute report
+```
+
+#### Option `--action-tag-filter`
+
+Instructs NEWA to process only actions whose `action_tags` match the provided filter expression. This option uses a powerful expression syntax that combines regex pattern matching with boolean operators (OR, AND, NOT), allowing you to create complex filtering rules. The filter works across all NEWA subcommands and can be used to split test execution into logical parts.
+
+**Filter Expression Syntax:**
+
+The filter expression supports three boolean operators:
+- **`|` (OR)**: Match if **any** of the patterns match. Example: `tier1|tier2` matches actions with either "tier1" OR "tier2" tag
+- **`,` (AND)**: Match if **all** of the conditions are satisfied. Example: `regression,rhel-9` matches only actions that have BOTH "regression" AND "rhel-9" tags
+- **`!` (NOT)**: Exclude actions that match the pattern. Example: `!slow` excludes actions with "slow" tag
+
+Each pattern in the expression is a **full regex pattern**, giving you the power to use wildcards and other regex features:
+- `tier.*` - matches "tier1", "tier2", "tier_anything"
+- `tier[12]` - matches exactly "tier1" or "tier2"
+- `rhel-\d+` - matches "rhel-9", "rhel-10", etc.
+
+**Boolean operators can be combined** to create sophisticated filters:
+- `tier1|tier2` - Match actions with tier1 OR tier2
+- `regression,rhel-9.*` - Match actions with regression AND rhel-9.x tags
+- `!slow` - Exclude slow tests
+- `tier[12]|regression,rhel-9.*,!slow` - Match (tier1 OR tier2 OR regression) AND (rhel-9.x) AND NOT (slow)
+
+**Filter Behavior:**
+- Actions are matched if their tags satisfy the entire filter expression
+- Parent actions are automatically included when their child actions match (similar to `--action-id-filter`)
+- Actions with `schedule: false` will have their jobs scheduled if they match the filter pattern
+- This option can be combined with `--action-id-filter` and `--issue-id-filter` for fine-grained control
+- Tags are stored in generated YAML files, so filtering works at all stages (jira, schedule, execute, report, list)
+
+Use with caution.
+
+**Examples:**
+
+Simple OR filter (run tier1 OR tier2 tests):
+```
+$ newa --action-tag-filter 'tier1|tier2' event --erratum 12345 jira --issue-config config.yaml schedule execute report
+```
+
+Regex pattern (run tests matching tier followed by any character):
+```
+$ newa --action-tag-filter 'tier.*' event --compose CentOS-Stream-10 jira --issue-config config.yaml schedule execute report
+```
+
+AND filter (run regression tests for RHEL-9 only):
+```
+$ newa --action-tag-filter 'regression,rhel-9.*' --prev-state-dir schedule execute report
+```
+
+NOT filter (run all tests except slow ones):
+```
+$ newa --action-tag-filter '!slow' event --erratum 12345 jira --issue-config config.yaml schedule execute report
+```
+
+Complex combined filter:
+```
+# Run (tier1 OR tier2) AND (rhel-9.x) AND NOT (slow or nightly)
+$ newa --action-tag-filter 'tier[12],rhel-9.*,!slow,!nightly' event --erratum 12345 jira --issue-config config.yaml schedule
+```
+
+Combine with other filters:
+```
+$ newa --action-tag-filter 'security|regression' --action-id-filter 'task_.*' event --erratum 12345 jira --issue-config config.yaml schedule
+```
+
+Use with --copy-state-dir to create a subset:
+```
+$ newa --state-dir /path/to/existing/run-123 --copy-state-dir --action-tag-filter 'tier1,!slow' schedule execute report
 ```
 
 #### Option `--issue-id-filter`
