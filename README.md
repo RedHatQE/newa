@@ -163,6 +163,34 @@ For Jira Cloud, you need to:
 1. Generate an API token at https://id.atlassian.com/manage-profile/security/api-tokens
 2. Configure both `email` and `token` in the `[jira]` section
 
+### Environment variables passed to subprocesses
+
+For security reasons, NEWA uses a whitelist approach when passing environment variables to subprocesses (such as `testing-farm` CLI commands). This prevents sensitive credentials like `NEWA_*` configuration variables from accidentally leaking to subprocess execution environments.
+
+Only the following environment variables from your shell environment are passed through to subprocesses:
+
+**Required for NEWA operation:**
+- `TESTING_FARM_API_TOKEN` - Required for Testing Farm CLI authentication
+- `PATH` - Required to find executables
+- `HOME` - May be needed by CLI tools for configuration
+- `USER` - May be needed by some tools
+- `LANG` - Locale settings
+- `LC_ALL` - Locale settings
+
+**Proxy and SSL certificate configuration** (for proxied environments):
+- `HTTP_PROXY`, `http_proxy` - HTTP proxy server
+- `HTTPS_PROXY`, `https_proxy` - HTTPS proxy server
+- `NO_PROXY`, `no_proxy` - Proxy bypass list
+- `REQUESTS_CA_BUNDLE` - Custom CA bundle for SSL verification
+- `SSL_CERT_FILE` - SSL certificate file
+- `SSL_CERT_DIR` - SSL certificate directory
+
+**Automatically set by NEWA:**
+- `NO_COLOR` - Disables colored output in subprocesses
+- `NO_TTY` - Disables TTY-specific output in subprocesses
+
+All other environment variables (including sensitive `NEWA_*` configuration variables) are filtered out and not passed to subprocesses. Additional variables may be passed through the recipe configuration (e.g., `environment` and `context` settings) as part of the test execution workflow.
+
 ### Color configuration
 
 NEWA's `list` command supports colored output with automatic terminal detection and customizable color schemes.
