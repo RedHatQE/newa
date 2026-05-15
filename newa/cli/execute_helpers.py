@@ -188,7 +188,15 @@ def _create_or_reuse_rp_launch(
     if not new_launch_uuid:
         raise Exception('Failed to create RP launch')
 
-    ctx.logger.info(f'Created RP launch {new_launch_uuid} for issue {jira_id}')
+    if ctx.settings.use_urls_in_logs and ctx.settings.rp_url:
+        rp_launch_url = (
+            f"{ctx.settings.rp_url}/ui/#{ctx.settings.rp_project}"
+            f"/launches/all/{new_launch_uuid}")
+        ctx.logger.info(
+            f'Created RP launch {new_launch_uuid} ({rp_launch_url})'
+            f' for issue {jira_id}')
+    else:
+        ctx.logger.info(f'Created RP launch {new_launch_uuid} for issue {jira_id}')
     return str(new_launch_uuid)
 
 
