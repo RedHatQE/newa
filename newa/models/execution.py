@@ -1,6 +1,5 @@
 """Test execution and request models."""
 
-import copy
 import os
 import re
 import subprocess
@@ -44,6 +43,58 @@ def global_request_counter() -> Iterator[int]:
 
 
 gen_global_request_counter = global_request_counter()
+
+
+def build_clean_environment(additional_vars: Optional[dict[str, str]] = None) -> dict[str, str]:
+    """
+    Build a clean environment for subprocess execution with only whitelisted variables.
+
+    This prevents leaking sensitive NEWA_* and other credentials to subprocess calls.
+    Only explicitly needed environment variables are included.
+
+    Args:
+        additional_vars: Optional dictionary of additional variables to include/override
+
+    Returns:
+        Dictionary with whitelisted environment variables
+    """
+    # Whitelist of environment variables to pass through
+    passthrough_vars = [
+        'TESTING_FARM_API_TOKEN',  # Required by testing-farm CLI for authentication
+        'PATH',                     # Required to find executables
+        'HOME',                     # May be needed by CLI tools for config
+        'USER',                     # May be needed by some tools
+        'LANG',                     # Locale settings
+        'LC_ALL',                   # Locale settings
+        # Proxy and SSL certificate configuration for proxied environments
+        'HTTP_PROXY',               # HTTP proxy server
+        'http_proxy',               # HTTP proxy server (lowercase variant)
+        'HTTPS_PROXY',              # HTTPS proxy server
+        'https_proxy',              # HTTPS proxy server (lowercase variant)
+        'NO_PROXY',                 # Proxy bypass list
+        'no_proxy',                 # Proxy bypass list (lowercase variant)
+        'REQUESTS_CA_BUNDLE',       # Custom CA bundle for SSL verification
+        'SSL_CERT_FILE',            # SSL certificate file
+        'SSL_CERT_DIR',             # SSL certificate directory
+        ]
+
+    env: dict[str, str] = {}
+
+    # Copy whitelisted variables from current environment if they exist
+    for var in passthrough_vars:
+        value = os.environ.get(var)
+        if value is not None:
+            env[var] = value
+
+    # Always disable colors and TTY for subprocess consistency
+    env['NO_COLOR'] = "1"
+    env['NO_TTY'] = "1"
+
+    # Add/override with any additional variables
+    if additional_vars:
+        env.update(additional_vars)
+
+    return env
 
 
 @define
@@ -157,12 +208,8 @@ class Request(Cloneable, Serializable):
 
     def initiate_tf_request(self, ctx: 'CLIContext') -> 'TFRequest':
         command, environment = self.generate_tf_exec_command(ctx)
-        # extend current envvars with the ones from the generated command
-        env = copy.deepcopy(os.environ)
-        env.update(environment)
-        # disable colors and escape control sequences
-        env['NO_COLOR'] = "1"
-        env['NO_TTY'] = "1"
+        # build clean environment with only whitelisted variables
+        env = build_clean_environment(additional_vars=environment)
         if not command:
             raise Exception("Failed to generate testing-farm command")
         try:
@@ -270,10 +317,8 @@ class TFRequest(Cloneable, Serializable):
     details: Optional[dict[str, 'Any']] = None
 
     def cancel(self, ctx: 'CLIContext') -> None:
-        env = copy.deepcopy(os.environ)
-        # disable colors and escape control sequences
-        env['NO_COLOR'] = "1"
-        env['NO_TTY'] = "1"
+        # build clean environment with only whitelisted variables
+        env = build_clean_environment()
         command: list[str] = ['testing-farm', 'cancel', self.uuid]
         try:
             process = subprocess.run(
@@ -306,10 +351,8 @@ class TFRequest(Cloneable, Serializable):
 
 
 def check_tf_cli_version(ctx: 'CLIContext') -> None:
-    env = copy.deepcopy(os.environ)
-    # disable colors and escape control sequences
-    env['NO_COLOR'] = "1"
-    env['NO_TTY'] = "1"
+    # build clean environment with only whitelisted variables
+    env = build_clean_environment()
     command: list[str] = ['testing-farm', 'version']
     try:
         process = subprocess.run(
