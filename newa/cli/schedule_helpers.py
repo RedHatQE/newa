@@ -114,7 +114,12 @@ def _configure_recipe(
 def _render_request_attributes(
         request: Request,
         jinja_vars: dict[str, Any]) -> None:
-    """Render request attributes as Jinja templates in place."""
+    """Render request attributes as Jinja templates in place.
+
+    Note: 'when' attribute is intentionally not rendered as it was already
+    evaluated during build_requests() and contains references to variables
+    that may be None, which would cause errors if re-rendered.
+    """
     for attr in ("reportportal", "tmt", "testingfarm", "environment", "context", "compose"):
         # compose value is a string, not dict
         if attr == 'compose':
@@ -126,6 +131,9 @@ def _render_request_attributes(
             # getattr(request, attr) could also be None due to 'attr' being None
             mapping = getattr(request, attr, {}) or {}
             for (key, value) in mapping.items():
+                # Skip 'when' key - it was already evaluated and is just metadata
+                if key == 'when':
+                    continue
                 # launch_attributes is a dict
                 if key == 'launch_attributes':
                     for (k, v) in value.items():

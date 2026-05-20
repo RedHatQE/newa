@@ -66,3 +66,9 @@ def test_expressions():
     assert test('JOB.erratum.release is not match("RHEL-.*")', False)
     assert test('JOB.erratum.release is not match("(?i)rhel-.*")', False)
     assert test('JOB.erratum.release is not match("RHEL-9.7.0")', True)
+
+    # Test EventType enum matching (regression test for enum handling)
+    assert test('EVENT.type_ is match("erratum")', True)
+    assert test('EVENT.type_ is match("compose")', False)
+    assert test('EVENT.type_ is not match("erratum")', False)
+    assert test('EVENT.type_ is not match("compose")', True)

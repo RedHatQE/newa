@@ -2,6 +2,7 @@
 
 import logging
 import re
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 import jinja2
@@ -55,11 +56,17 @@ def render_template(
     # Our common tests for each render_template call
     # Register if not already present
     if 'match' not in environment.tests:
-        def _test_match(s: str, pattern: str) -> bool:
-            logger.debug(
-                f"Match test: checking if '{s}' (type: {
-                    type(s).__name__}) matches pattern '{pattern}'")
-            return re.match(pattern, s) is not None
+        def _test_match(s: Any, pattern: str) -> bool:
+            # Convert to string for regex matching
+            # For Enums, use the underlying enum value; otherwise use str()
+            str_value = str(s.value) if isinstance(s, Enum) else str(s)
+
+            if logger.isEnabledFor(logging.DEBUG):
+                type_name = type(s).__name__
+                logger.debug(
+                    f"Match test: checking if '{str_value}' (type: {type_name}) "
+                    f"matches pattern '{pattern}'")
+            return re.match(pattern, str_value) is not None
 
         environment.tests['match'] = _test_match
 
