@@ -260,6 +260,8 @@ def _process_jira_job(
     jinja_vars: dict[str, Any] = {
         'EVENT': jira_job.event,
         'ERRATUM': jira_job.erratum,
+        'COMPOSE': jira_job.compose,
+        'ROG': jira_job.rog,
         }
     requests = list(config.build_requests(initial_config, cli_config, jinja_vars))
     ctx.logger.info(f'{len(requests)} requests have been generated')

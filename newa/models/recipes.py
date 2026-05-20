@@ -433,15 +433,17 @@ class RecipeConfig(Cloneable, Serializable):
             condition = combination.get('when', '')
             if condition:
                 compose: Optional[str] = combination.get('compose', '')
-                # we will expose COMPOSE, ENVIRONMENT, CONTEXT to evaluate a condition
                 arch = combination.get('arch', None)
-                test_result = eval_test(
-                    condition,
-                    COMPOSE=Compose(compose) if compose else None,
-                    ARCH=arch.value if arch else None,
-                    ENVIRONMENT=combination.get('environment', None),
-                    CONTEXT=combination.get('context', None),
-                    **(jinja_vars or {}))
+                # Start with jinja_vars (EVENT, ERRATUM, ROG, etc), then override with
+                # combination-specific values (COMPOSE, ENVIRONMENT, CONTEXT, ARCH)
+                test_vars = dict(jinja_vars or {})
+                test_vars.update({
+                    'COMPOSE': Compose(compose) if compose else None,
+                    'ARCH': arch.value if arch else None,
+                    'ENVIRONMENT': combination.get('environment', None),
+                    'CONTEXT': combination.get('context', None),
+                    })
+                test_result = eval_test(condition, **test_vars)
                 if not test_result:
                     continue
             filtered_combinations.append(combination)
