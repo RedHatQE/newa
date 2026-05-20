@@ -1,5 +1,6 @@
 """Jinja2 template rendering utilities."""
 
+import logging
 import re
 from typing import TYPE_CHECKING, Any, Optional, Union
 
@@ -8,6 +9,8 @@ import jinja2
 if TYPE_CHECKING:
     from newa.models.events import Event
     from newa.models.jobs import ArtifactJob
+
+logger = logging.getLogger(__name__)
 
 
 def default_template_environment() -> jinja2.Environment:
@@ -53,6 +56,9 @@ def render_template(
     # Register if not already present
     if 'match' not in environment.tests:
         def _test_match(s: str, pattern: str) -> bool:
+            logger.debug(
+                f"Match test: checking if '{s}' (type: {
+                    type(s).__name__}) matches pattern '{pattern}'")
             return re.match(pattern, s) is not None
 
         environment.tests['match'] = _test_match
@@ -130,6 +136,8 @@ def eval_test(
     environment.tests['erratum'] = _test_erratum
     environment.tests['RoG'] = _test_rog
 
+    logger.debug(f"Evaluating test condition: {test}")
+
     try:
         outcome = render_template(
             f'{{% if {test} %}}true{{% else %}}false{{% endif %}}',
@@ -140,4 +148,6 @@ def eval_test(
     except Exception as exc:
         raise Exception(f"Could not evaluate test '{test}'") from exc
 
-    return bool(outcome == 'true')
+    result = bool(outcome == 'true')
+    logger.debug(f"Test condition result: {result}")
+    return result
