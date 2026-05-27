@@ -53,14 +53,14 @@ from newa.cli.report_helpers import _update_all_tf_request_statuses
     is_flag=True,
     default=False,
     help='Refresh Testing Farm request statuses before listing (only incomplete requests). '
-         'Requires -D/--state-dir or -P/--prev-state-dir.',
+         'Requires -D/--state-dir, -P/--prev-state-dir, or --event-filter.',
     )
 @click.option(
     '--refresh-all',
     is_flag=True,
     default=False,
     help='Refresh all Testing Farm request statuses before listing (overrides --refresh). '
-         'Requires -D/--state-dir or -P/--prev-state-dir.',
+         'Requires -D/--state-dir, -P/--prev-state-dir, or --event-filter.',
     )
 @click.pass_obj
 def cmd_list(
@@ -81,11 +81,13 @@ def cmd_list(
     # Validate --last parameter
     if last < 1:
         raise click.UsageError("'--last' must be >= 1")
-    # Ensure --refresh and --refresh-all are only used with a specific state-dir
-    if (refresh or refresh_all) and not ctx.state_dirpath.is_dir():
+    # Ensure --refresh and --refresh-all are only used with a specific state-dir or event filter
+    if ((refresh or refresh_all) and not ctx.state_dirpath.is_dir() and
+            not ctx.event_filter_pattern):
         raise click.UsageError(
-            '--refresh and --refresh-all require a specific state directory. '
-            'Use -D/--state-dir or -P/--prev-state-dir to specify one.')
+            '--refresh and --refresh-all require a specific state directory or --event-filter. '
+            'Use -D/--state-dir, -P/--prev-state-dir, or --event-filter '
+            'to specify what to refresh.')
     # save current logger level and statedir
     saved_logger_level = ctx.logger.level
     saved_state_dir = ctx.state_dirpath
@@ -94,7 +96,8 @@ def cmd_list(
     if ctx.logger.level != logging.DEBUG:
         ctx.logger.setLevel(logging.WARN)
     # when existing state-dir has been provided, use it
-    if ctx.state_dirpath.is_dir():
+    specific_state_dir = saved_state_dir.is_dir()
+    if specific_state_dir:
         state_dirs = [ctx.state_dirpath]
     # otherwise choose last N dirs or all dirs
     else:
@@ -112,10 +115,15 @@ def cmd_list(
         print(f'{" " * indent}{s}', end=end)
 
     for state_dir in state_dirs:
-        state_dir_color = Colors.STATE_DIR or Colors.ORANGE
-        print(f'{colorize_text(str(state_dir), state_dir_color)}:')
         ctx.state_dirpath = state_dir
         event_jobs = list(ctx.load_artifact_jobs(filter_events=True))
+        # Skip this state dir if no events match the filter, but only when listing
+        # multiple directories. Always show explicitly specified state dir.
+        if not event_jobs and not specific_state_dir:
+            continue
+        # Print state dir header only if there are events to show
+        state_dir_color = Colors.STATE_DIR or Colors.ORANGE
+        print(f'{colorize_text(str(state_dir), state_dir_color)}:')
         event_color = Colors.EVENT or Colors.RED
         for event_job in event_jobs:
             if event_job.erratum:
