@@ -1378,6 +1378,8 @@ Instructs NEWA to process only jobs associated with events/artifacts that match 
 - For **event** subcommand: Only creates YAML files for events/artifacts matching the filter
 - For **jira, schedule, execute, report, summarize, and list** subcommands: Only processes existing jobs where the event/artifact matches the filter
 
+**Note:** When using `--event-filter` with the `list` command, the filter is applied to state directories in scope. By default, `newa list` only processes the last 10 state directories (unless a specific state directory is specified via `-D/--state-dir` or `-P/--prev-state-dir`). To ensure the event filter is applied across all state directories, it is recommended to use `newa list --all` when combined with `--event-filter`.
+
 This option can be combined with `--action-id-filter` and `--issue-id-filter` for fine-grained control. It also works with `--copy-state-dir` and `--extract-state-dir` to filter which YAML files are copied or extracted.
 
 Use with caution.
@@ -2090,27 +2092,33 @@ $ newa list --issues
 
 #### Option `--refresh`
 
-Refreshes Testing Farm request statuses before listing (only incomplete requests where `result == NONE`). This option requires a specific state directory to be specified via `-D/--state-dir` or `-P/--prev-state-dir`. It cannot be used when listing multiple state directories for performance reasons.
+Refreshes Testing Farm request statuses before listing (only incomplete requests where `result == NONE`). This option requires either:
+- A specific state directory via `-D/--state-dir` or `-P/--prev-state-dir`, or
+- An event filter via `--event-filter` to refresh multiple matching state directories
 
 When `--refresh` is used, NEWA will:
 1. Check the current status of incomplete Testing Farm requests
 2. Update the state directory with fresh data
 3. Display the updated status information
 
-Example:
+Examples:
 ```
 $ newa -D /var/tmp/newa/run-123 list --refresh
+$ newa --event-filter erratum.id=167842 list --all --refresh
 ```
 
 #### Option `--refresh-all`
 
-Refreshes all Testing Farm request statuses before listing, regardless of their current status. This option overrides `--refresh` and also requires a specific state directory to be specified via `-D/--state-dir` or `-P/--prev-state-dir`.
+Refreshes all Testing Farm request statuses before listing, regardless of their current status. This option overrides `--refresh` and requires either:
+- A specific state directory via `-D/--state-dir` or `-P/--prev-state-dir`, or
+- An event filter via `--event-filter` to refresh multiple matching state directories
 
 Use this option when you want to force a status update for all requests, including those that have already completed.
 
-Example:
+Examples:
 ```
 $ newa -P list --refresh-all
+$ newa --event-filter erratum.id=167842 list --all --refresh-all
 ```
 
 Basic usage examples:
@@ -2130,6 +2138,9 @@ $ newa -D /var/tmp/newa/run-123 list --refresh
 
 # List previous state directory with all requests refreshed
 $ newa -P list --refresh-all
+
+# List and refresh all state directories matching an event filter
+$ newa --event-filter erratum.id=167842 list --all --refresh
 ```
 
 ## Bash Auto-Completion
