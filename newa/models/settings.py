@@ -241,6 +241,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
     new_state_dir: bool = False
     prev_state_dirpath: Optional[Path] = None
     force: bool = False
+    no_comments: bool = False
     action_id_filter_pattern: Optional[Pattern[str]] = None
     issue_id_filter_pattern: Optional[Pattern[str]] = None
     event_filter_pattern: Optional[EventFilter] = None
