@@ -199,6 +199,12 @@ def _should_filter_yaml_file(
          'and "!" for NOT (e.g., "!slow"). '
          'Can combine: "regression|security,!slow".',
     )
+@click.option(
+    '--no-comments',
+    is_flag=True,
+    default=False,
+    help='Disable all comments (Errata Tool, RoG MR, and Jira).',
+    )
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
@@ -214,7 +220,8 @@ def main(click_context: click.Context,
          action_id_filter: str,
          issue_id_filter: str,
          event_filter: str,
-         action_tag_filter: str) -> None:
+         action_tag_filter: str,
+         no_comments: bool) -> None:
     """NEWA - New Errata Workflow Automation."""
     import io
     import tarfile
@@ -296,12 +303,20 @@ def main(click_context: click.Context,
         cli_context={},
         prev_state_dirpath=prev_state_dirpath,
         force=force,
+        no_comments=no_comments,
         action_id_filter_pattern=pattern,
         issue_id_filter_pattern=issue_pattern,
         event_filter_pattern=event_filter_obj,
         action_tag_filter_pattern=tag_filter_obj,
         )
     click_context.obj = ctx
+
+    # Override comment settings when --no-comments is specified
+    # This takes precedence over config file and environment variable settings
+    if no_comments:
+        ctx.settings.et_enable_comments = False
+        ctx.settings.rog_enable_comments = False
+        ctx.settings.jira_enable_comments = False
 
     # In case of '--help' we are going to end here
     if '--help' in sys.argv:

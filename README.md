@@ -1148,6 +1148,20 @@ $ newa --environment FOO=bar event --compose Fedora-40 ...
 
 Enables YAML files rewrite when they already exist in state-dir.
 
+#### Option `--no-comments`
+
+Disables all comment additions to Errata Tool, RoG merge requests, and Jira issues. This option overrides all comment-related settings from both configuration files and environment variables:
+- `erratatool/enable_comments` (or `NEWA_ET_ENABLE_COMMENTS`)
+- `rog/enable_comments` (or `NEWA_ROG_ENABLE_COMMENTS`)
+- `jira/enable_comments` (or `NEWA_JIRA_ENABLE_COMMENTS`)
+
+This is useful when you want to run NEWA workflows without posting any comments, regardless of how the configuration is set.
+
+Example:
+```
+$ newa --no-comments jira --issue-config my-config.yaml schedule execute report
+```
+
 ### Subcommand `event`
 
 This subcommand is associated with a particular event (like an erratum) and it attempts to read details about it so that this data can be utilized in later parts of the workflow. While we are using erratum as an event example, other event types could be supported in the future (e.g. compose, build, GitLab MR, Jira issue etc.).
