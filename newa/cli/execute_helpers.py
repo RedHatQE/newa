@@ -330,8 +330,9 @@ def _process_rp_launches_and_jira_updates(
         # Update Jira issue if not using execute --continue
         if not (jira_id.startswith(JIRA_NONE_ID) or ctx.continue_execution):
             jira_connection = ctx.get_jira_connection().get_connection()
-            _add_jira_comment_for_execution(
-                ctx, jira_connection, jira_id, job, launch_url)
+            if ctx.settings.jira_enable_comments:
+                _add_jira_comment_for_execution(
+                    ctx, jira_connection, jira_id, job, launch_url)
 
             # Update Errata Tool if needed
             if et and launch_url:
