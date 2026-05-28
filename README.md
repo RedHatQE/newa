@@ -99,6 +99,7 @@ deduplicate_releases = 1
 [jira]
 url = https://...
 token = *JIRATOKEN*
+# enable_comments = 1  # (enabled by default, set to 0 to disable)
 # For Jira Cloud (atlassian.net), also specify email:
 # email = your-email@example.com
 [reportportal]
@@ -126,6 +127,7 @@ NEWA_ET_DEDUPLICATE_RELEASES
 NEWA_JIRA_URL
 NEWA_JIRA_TOKEN
 NEWA_JIRA_EMAIL
+NEWA_JIRA_ENABLE_COMMENTS
 NEWA_JIRA_PROJECT
 NEWA_REPORTPORTAL_URL
 NEWA_REPORTPORTAL_TOKEN

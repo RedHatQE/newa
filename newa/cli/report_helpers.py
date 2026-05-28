@@ -385,17 +385,18 @@ def _process_jira_id_reports(
             ctx.logger.info(f'Updating Jira issue {jira_id} with test results')
 
         # Add Jira comments - more might be needed if we have exceeded comment length limit
-        for jira_description in jira_descriptions:
-            comment = _build_jira_comment(
-                launch_uuid,
-                launch_url,
-                jira_description,
-                footer,
-                first_comment=jira_description == jira_descriptions[0],
-                progress_mode=progress_mode)
-            _add_jira_comment_for_report(
-                ctx, jira_connection, jira_id, execute_jobs[0], comment)
-            short_sleep()
+        if ctx.settings.jira_enable_comments:
+            for jira_description in jira_descriptions:
+                comment = _build_jira_comment(
+                    launch_uuid,
+                    launch_url,
+                    jira_description,
+                    footer,
+                    first_comment=jira_description == jira_descriptions[0],
+                    progress_mode=progress_mode)
+                _add_jira_comment_for_report(
+                    ctx, jira_connection, jira_id, execute_jobs[0], comment)
+                short_sleep()
 
         # Transition Jira issue if needed (skip in progress mode)
         if not progress_mode:

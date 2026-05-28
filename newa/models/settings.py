@@ -55,6 +55,7 @@ class Settings:  # type: ignore[no-untyped-def]
     et_enable_comments: bool = False
     et_deduplicate_releases: bool = False
     rog_enable_comments: bool = False
+    jira_enable_comments: bool = True
     rp_url: str = ''
     rp_token: str = ''
     rp_project: str = ''
@@ -130,6 +131,12 @@ class Settings:  # type: ignore[no-untyped-def]
                     cp,
                     'rog/enable_comments',
                     'NEWA_ROG_ENABLE_COMMENTS')),
+            jira_enable_comments=_str_to_bool(
+                _get(
+                    cp,
+                    'jira/enable_comments',
+                    'NEWA_JIRA_ENABLE_COMMENTS',
+                    '1')),
             rp_url=_get(
                 cp,
                 'reportportal/url',

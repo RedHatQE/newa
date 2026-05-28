@@ -184,19 +184,20 @@ def process_execute_job_for_summary(
     comment = jira_connection.sanitize_comment(comment)
 
     # Add comment to Jira issue
-    ctx.logger.info(f'Adding AI summary comment to {jira_id}')
-    try:
-        jira_client = jira_connection.get_connection()
-        jira_client.add_comment(
-            jira_id,
-            comment,
-            visibility={
-                'type': 'group',
-                'value': execute_job.jira.group}
-            if execute_job.jira.group else None)
-        ctx.logger.info(f'Successfully added AI summary to {jira_id}')
-    except Exception as e:
-        ctx.logger.error(f'Error adding comment to Jira issue {jira_id}: {e}')
+    if ctx.settings.jira_enable_comments:
+        ctx.logger.info(f'Adding AI summary comment to {jira_id}')
+        try:
+            jira_client = jira_connection.get_connection()
+            jira_client.add_comment(
+                jira_id,
+                comment,
+                visibility={
+                    'type': 'group',
+                    'value': execute_job.jira.group}
+                if execute_job.jira.group else None)
+            ctx.logger.info(f'Successfully added AI summary to {jira_id}')
+        except Exception as e:
+            ctx.logger.error(f'Error adding comment to Jira issue {jira_id}: {e}')
 
 
 @click.command(name='summarize')
