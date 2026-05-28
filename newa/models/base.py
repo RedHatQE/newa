@@ -28,6 +28,7 @@ class Arch(Enum):
     I686 = 'i686'
     X86_64 = 'x86_64'
     AARCH64 = 'aarch64'
+    S390 = 's390'
     S390X = 's390x'
     PPC64LE = 'ppc64le'
     PPC64 = 'ppc64'
@@ -40,7 +41,7 @@ class Arch(Enum):
                       preset: Optional[list['Arch']] = None,
                       compose: Optional[str] = None) -> list['Arch']:
 
-        _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH, Arch.I386, Arch.I686]
+        _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH, Arch.I386, Arch.I686, Arch.S390]
         _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
         _default = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'aarch64']]
         _default_rhel7 = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'ppc64']]
