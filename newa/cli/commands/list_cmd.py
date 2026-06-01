@@ -221,13 +221,16 @@ def cmd_list(
                                     execute_job.execution, "result", RequestResult.NONE)
                                 url = getattr(
                                     execute_job.execution, "artifacts_url", "not available")
+                                # Get architecture if available
+                                arch = getattr(execute_job.request, "arch", None)
+                                arch_suffix = f', arch: {arch.value}' if arch else ''
                                 # Apply color formatting to state and result
                                 colored_state = colorize_state(state)
                                 colored_result = colorize_result(result.value)
                                 print(
                                     f' - state: {colored_state}, '
                                     f'result: {colored_result}, '
-                                    f'artifacts: {url}')
+                                    f'artifacts: {url}{arch_suffix}')
                     else:
                         # Apply color formatting to 'not executed' state
                         print(f' - {colorize_state("not executed")}')
