@@ -205,28 +205,64 @@ class JiraConnection:
         if self._connection is None:
             # Configure API version (use v2 for both Cloud and Server)
             options = {'rest_api_version': '2'}
+            auth_type = 'email + API token' if self.is_cloud else 'Personal Access Token'
 
-            if self.is_cloud:
-                # Jira Cloud requires email + API token for basic auth
-                if not self.email:
-                    raise Exception(
-                        'Jira Cloud (atlassian.net) requires email to be configured. '
-                        'Please set jira/email in config file or '
-                        'NEWA_JIRA_EMAIL environment variable.')
-                self._connection = jira.JIRA(
-                    self.url, basic_auth=(self.email, self.token), options=options)
-            else:
-                # Jira Server uses Personal Access Token
-                self._connection = jira.JIRA(self.url, token_auth=self.token, options=options)
-
-            # Verify connection works
             try:
+                if self.is_cloud:
+                    # Jira Cloud requires email + API token for basic auth
+                    if not self.email:
+                        raise Exception(
+                            'Jira Cloud (atlassian.net) requires email to be configured. '
+                            'Please set jira/email in config file or '
+                            'NEWA_JIRA_EMAIL environment variable.')
+                    self._connection = jira.JIRA(
+                        self.url, basic_auth=(self.email, self.token), options=options)
+                else:
+                    # Jira Server uses Personal Access Token
+                    self._connection = jira.JIRA(self.url, token_auth=self.token, options=options)
+
+                # Verify connection works
                 self._connection.myself()
                 short_sleep()
+
             except jira.JIRAError as e:
-                auth_type = 'email + API token' if self.is_cloud else 'Personal Access Token'
-                raise Exception(
-                    f'Could not authenticate to Jira. Wrong {auth_type}?') from e
+                # Extract useful information from the error
+                error_msg = f'Failed to connect to Jira at {self.url}'
+
+                # Check HTTP status code
+                if hasattr(e, 'status_code'):
+                    status = e.status_code
+                    if status == 401:
+                        error_msg = (
+                            f'Authentication failed (HTTP 401): Invalid credentials.\n'
+                            f'Please check your {auth_type}.\n'
+                            f'Jira URL: {self.url}'
+                            )
+                    elif status == 403:
+                        error_msg = (
+                            f'Access forbidden (HTTP 403): Authentication successful but '
+                            f'insufficient permissions.\n'
+                            f'Jira URL: {self.url}'
+                            )
+                    elif status == 404:
+                        error_msg = (
+                            f'Jira instance not found (HTTP 404): Check the URL.\n'
+                            f'Jira URL: {self.url}'
+                            )
+                    else:
+                        error_msg = (
+                            f'HTTP {status} error connecting to Jira.\n'
+                            f'Jira URL: {self.url}'
+                            )
+                else:
+                    # No status code available, use generic message
+                    error_msg = (
+                        f'Failed to connect to Jira: {str(e)[:200]}\n'
+                        f'Authentication type: {auth_type}\n'
+                        f'Jira URL: {self.url}'
+                        )
+
+                raise Exception(error_msg) from e
 
         return self._connection
 
