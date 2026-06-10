@@ -19,6 +19,7 @@ from newa.cli.color_utils import (
     colorize_text,
     init_colors,
     )
+from newa.cli.metadata import StateMetadata
 from newa.cli.report_helpers import _update_all_tf_request_statuses
 
 
@@ -123,7 +124,13 @@ def cmd_list(
             continue
         # Print state dir header only if there are events to show
         state_dir_color = Colors.STATE_DIR or Colors.ORANGE
-        print(f'{colorize_text(str(state_dir), state_dir_color)}:')
+        # Read metadata to get description
+        metadata = StateMetadata(state_dir)
+        description = metadata.get_description()
+        if description:
+            print(f'{colorize_text(str(state_dir), state_dir_color)} ({description}):')
+        else:
+            print(f'{colorize_text(str(state_dir), state_dir_color)}:')
         event_color = Colors.EVENT or Colors.RED
         for event_job in event_jobs:
             if event_job.erratum:

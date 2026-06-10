@@ -60,6 +60,19 @@ def initialize_state_dir(ctx: CLIContext) -> None:
     with open(os.path.join(ctx.state_dirpath, f'{os.getppid()}.ppid'), 'w'):
         pass
 
+    # Set description for new state-dir if provided and not already set
+    # (copy and extract operations handle their own descriptions)
+    if ctx.description and ctx.new_state_dir:
+        from newa.cli.metadata import StateMetadata, setup_state_metadata
+        metadata = StateMetadata(ctx.state_dirpath)
+        # Only set if metadata file doesn't exist yet (avoid overwriting copy/extract descriptions)
+        if not metadata.metadata_file.exists():
+            setup_state_metadata(
+                ctx.state_dirpath,
+                description=ctx.description,
+                operation='new',
+                logger=ctx.logger)
+
 
 def test_file_presence(statedir: Path, prefix: str) -> bool:
     """Check if files with given prefix exist in state directory."""

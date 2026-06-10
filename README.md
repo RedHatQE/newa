@@ -1028,6 +1028,55 @@ $ newa --conf-file ~/.newa.stage event --erratum=12345
 
 Enables debug level logging.
 
+#### Option `--description`, `-d`
+
+Adds a human-readable description to the state directory, stored in `.newa-metadata.yaml`. This is especially useful when you have multiple state directories for the same erratum (e.g., original run, debug sessions, retests) and need to distinguish between them.
+
+The description is displayed in the `newa list` output next to the state directory path.
+
+**Use cases:**
+- When creating a new state directory with `event`, `jira`, or other subcommands
+- When copying a state directory with `--copy-state-dir` (without explicit description, defaults to "Copied from <source>")
+- When extracting a state directory with `--extract-state-dir` (without explicit description, defaults to "Extracted from <source>")
+- When updating an existing state directory (using `-D` or `-P` with `--description`)
+
+Examples:
+```bash
+# Add description when creating a new run
+$ newa -d "Full RC1 validation" event --erratum 12345 jira --issue-config config.yaml
+
+# Add description when copying for debugging
+$ newa -D /var/tmp/newa/run-123 --copy-state-dir -d "Debug tier1 failures" \
+       --action-tag-filter 'tier1' schedule execute
+
+# Copy without explicit description (uses default)
+$ newa -D /var/tmp/newa/run-123 --copy-state-dir schedule
+# Creates description: "Copied from /var/tmp/newa/run-123"
+
+# Extract with description
+$ newa --extract-state-dir https://example.com/archive.tar.gz \
+       -d "From Jenkins job #456" list
+
+# Update description on existing state-dir
+$ newa -D /var/tmp/newa/run-123 -d "Updated description after fix"
+```
+
+**List output with descriptions:**
+```bash
+$ newa list
+/var/tmp/newa/run-789 (Updated after recipe fix):
+  event RHSA-2024:12345
+    ...
+
+/var/tmp/newa/run-456 (Debug tier1 failures):
+  event RHSA-2024:12345
+    ...
+
+/var/tmp/newa/run-123 (Full RC1 validation):
+  event RHSA-2024:12345
+    ...
+```
+
 #### Option `--help`
 
 Prints `newa` usage help to a console.
