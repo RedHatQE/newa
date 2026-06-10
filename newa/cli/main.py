@@ -23,6 +23,7 @@ from newa.cli.commands.summarize_cmd import cmd_summarize
 from newa.cli.constants import NEWA_DEFAULT_CONFIG
 from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
 from newa.cli.filter_helpers import should_filter_by_action_tags
+from newa.cli.metadata import setup_state_metadata
 from newa.cli.tag_filter import TagFilter, parse_tag_filter
 from newa.cli.utils import get_state_dir, initialize_state_dir
 
@@ -205,6 +206,11 @@ def _should_filter_yaml_file(
     default=False,
     help='Disable all comments (Errata Tool, RoG MR, and Jira).',
     )
+@click.option(
+    '--description', '-d',
+    default='',
+    help='Description for the state directory (stored in .newa-metadata.yaml).',
+    )
 @click.pass_context
 def main(click_context: click.Context,
          state_dir: str,
@@ -221,7 +227,8 @@ def main(click_context: click.Context,
          issue_id_filter: str,
          event_filter: str,
          action_tag_filter: str,
-         no_comments: bool) -> None:
+         no_comments: bool,
+         description: str) -> None:
     """NEWA - New Errata Workflow Automation."""
     import io
     import tarfile
@@ -304,6 +311,7 @@ def main(click_context: click.Context,
         prev_state_dirpath=prev_state_dirpath,
         force=force,
         no_comments=no_comments,
+        description=description,
         action_id_filter_pattern=pattern,
         issue_id_filter_pattern=issue_pattern,
         event_filter_pattern=event_filter_obj,
@@ -378,6 +386,14 @@ def main(click_context: click.Context,
             ctx.logger.info(
                 f'Kept {kept_count} YAML file(s), deleted {deleted_count} non-matching')
 
+        # Handle metadata for extracted state-dir
+        setup_state_metadata(
+            ctx.state_dirpath,
+            description=description,
+            parent_state_dir=extract_state_dir,
+            operation='extract',
+            logger=ctx.logger)
+
     # copy YAML files from the given state directory to a new state-dir
     if copy_state_dir:
         assert source_state_dir is not None  # guaranteed by validation above
@@ -421,6 +437,14 @@ def main(click_context: click.Context,
             ctx.logger.info(
                 f'Copied {copied_count} YAML file(s), skipped {skipped_count}')
 
+        # Handle metadata for copied state-dir
+        setup_state_metadata(
+            ctx.state_dirpath,
+            description=description,
+            parent_state_dir=str(source_dir),
+            operation='copy',
+            logger=ctx.logger)
+
     def _split(s: str) -> tuple[str, str]:
         """Split key='some value' into a tuple (key, value)."""
         r = re.match(r"""^\s*([a-zA-Z0-9_][a-zA-Z0-9_\-]*)=["']?(.*?)["']?\s*$""", s)
@@ -433,6 +457,16 @@ def main(click_context: click.Context,
     # store environment variables and context provided on a cmdline
     ctx.cli_environment.update(dict(_split(s) for s in envvars))
     ctx.cli_context.update(dict(_split(s) for s in contexts))
+
+    # Handle description update for existing state-dir (when using -D or -P with --description)
+    # This allows updating description without running other subcommands
+    if (description and (state_dir or prev_state_dir) and not copy_state_dir
+            and not extract_state_dir and ctx.state_dirpath.exists() and not ctx.new_state_dir):
+        setup_state_metadata(
+            ctx.state_dirpath,
+            description=description,
+            operation='update',
+            logger=ctx.logger)
 
     # If no subcommand was specified, invoke the list command by default.
     # Avoid doing this during resilient parsing (e.g., shell completion).
