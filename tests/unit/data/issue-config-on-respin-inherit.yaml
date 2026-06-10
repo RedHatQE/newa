@@ -1,0 +1,45 @@
+project: TEST
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Dropped
+
+issues:
+ - summary: "Parent epic with update"
+   type: epic
+   id: parent_epic
+   on_respin: update
+
+ - summary: "Child task inherits from parent"
+   type: task
+   id: child_task
+   parent_id: parent_epic
+   on_respin: inherit
+
+ - summary: "Grandchild subtask inherits from child"
+   type: subtask
+   id: grandchild_subtask
+   parent_id: child_task
+   on_respin: inherit
+
+ - summary: "Parent with default (close)"
+   type: epic
+   id: parent_default
+
+ - summary: "Child inherits default close"
+   type: task
+   id: child_default
+   parent_id: parent_default
+   on_respin: inherit
+
+ - summary: "Parent with keep"
+   type: epic
+   id: parent_keep
+   on_respin: keep
+
+ - summary: "Child inherits keep"
+   type: task
+   id: child_keep
+   parent_id: parent_keep
+   on_respin: inherit

@@ -35,6 +35,7 @@ class OnRespinAction(Enum):
     KEEP = 'keep'
     CLOSE = 'close'
     UPDATE = 'update'
+    INHERIT = 'inherit'
 
 
 def _default_action_id_generator() -> Generator[str, int, None]:

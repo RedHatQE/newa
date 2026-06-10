@@ -586,9 +586,10 @@ The following options are available:
  - `action_tags`: Optional list of string tags that can be used to categorize and filter actions. These tags are stored in the generated YAML files and can be used with `--action-tag-filter` to selectively process subsets of actions. This is useful for splitting test execution into parts (e.g., by test tier, category, or priority). See example below.
  - `newa_id`: Optional custom identifier (usually a Jinja2 template) that NEWA will embed in the Jira issue description. This identifier is used by NEWA to find and reuse existing Jira issues in subsequent runs instead of creating duplicates. When NEWA processes an issue-config, it first searches for existing Jira issues containing this identifier in their description. If found, the existing issue is reused; otherwise, a new issue is created and the identifier is added to its description. This is particularly useful for erratum-based workflows where you want to track the same erratum across multiple NEWA runs. See example below.
  - `on_respin`: Defines action when the issue is obsoleted by a newer version (due to erratum respin). Possible values are:
-   - `close` - Creates a new issue and marks the old one as obsolete
+   - `close` - Creates a new issue and marks the old one as obsolete (this is the default value)
    - `keep` - Reuses the existing open issue without updating it (only refreshes the NEWA ID)
    - `update` - Reuses the existing open issue and updates its summary, description, and custom fields. If no open issue exists but a closed issue with an old NEWA ID is found, it will be reopened and updated. When multiple old closed issues exist, the most recently updated one is selected. If the `updated` transition is configured, it will be applied after the update.
+   - `inherit` - Copies the `on_respin` value from the parent issue (specified by `parent_id`). When an action is processed, if it has `on_respin: inherit`, the value is replaced with the parent's `on_respin` value. The parent must exist (via `parent_id`). If the parent doesn't explicitly set `on_respin`, the default value (`close`) will be inherited. The parent can also use `inherit`, which will be resolved first before the child inherits from it.
  - `auto_transition`: Defines if automatic issue state transitions are enabled (`True`) or not (`False`, a default value).
  - `schedule`: Controls whether a job should be automatically scheduled for this action (default: `True`). Can be either a boolean value or a Jinja template string that evaluates to a boolean:
    - **Boolean value**: When set to `False`, NEWA will create or update the Jira issue and save the recipe information, but will NOT automatically schedule the job during the `schedule` command. The job can be manually scheduled later using `schedule --schedule-all` or by using filters (`--action-id-filter` or `--issue-id-filter`).
@@ -631,6 +632,23 @@ issues:
 ```
 
 In this example, the epic issue uses `"ER#{{ ERRATUM.id }}"` as its NEWA ID (e.g., "ER#123456"). When you run NEWA again for the same erratum, it will find and reuse the epic issue because the identifier matches.
+
+**Example with `on_respin: inherit`:**
+```yaml
+issues:
+ - summary: "Testing ER#{{ ERRATUM.id }}"
+   type: epic
+   id: errata_epic
+   on_respin: update
+
+ - summary: "Subtask for testing"
+   type: subtask
+   id: subtask_1
+   parent_id: errata_epic
+   on_respin: inherit  # Will use 'update' from parent
+```
+
+In this example, the subtask inherits `on_respin: update` from its parent epic. This ensures consistent respin behavior without repeating the configuration.
 
 #### Using links in issue configuration
 

@@ -1,0 +1,13 @@
+project: TEST
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Dropped
+
+issues:
+ - summary: "Child with non-existent parent"
+   type: task
+   id: child_task
+   parent_id: non_existent_parent
+   on_respin: inherit

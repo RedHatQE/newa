@@ -1,0 +1,12 @@
+project: TEST
+transitions:
+  closed:
+    - Closed
+  dropped:
+    - Dropped
+
+issues:
+ - summary: "Child without parent"
+   type: task
+   id: orphan_child
+   on_respin: inherit

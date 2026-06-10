@@ -749,6 +749,38 @@ def _process_issue_action(
     """
     ctx.logger.info(f"Processing {action.id}")
 
+    # Resolve on_respin='inherit' by copying value from parent
+    if action.on_respin == OnRespinAction.INHERIT:
+        if not action.parent_id:
+            raise Exception(
+                f"Action '{action.id}' has on_respin='inherit' but no parent_id is specified")
+
+        # Find parent action in the config
+        parent_action = None
+        for a in config.issues:
+            if a.id == action.parent_id:
+                parent_action = a
+                break
+
+        if not parent_action:
+            raise Exception(
+                f"Action '{action.id}' has on_respin='inherit' but parent '{action.parent_id}' "
+                f"does not exist")
+
+        # Defensive check: parent should not have on_respin='inherit' at this point
+        # because parents are always processed before children, so the parent's 'inherit'
+        # value would have already been resolved. This check should never trigger.
+        if parent_action.on_respin == OnRespinAction.INHERIT:
+            raise Exception(
+                f"Action '{action.id}' has on_respin='inherit' but its parent "
+                f"'{action.parent_id}' also has on_respin='inherit'. This should not happen.")
+
+        # Copy the on_respin value from parent (which may be the default value CLOSE)
+        ctx.logger.debug(
+            f"Action '{action.id}': inheriting on_respin='{parent_action.on_respin.value}' "
+            f"from parent '{action.parent_id}'")
+        action.on_respin = parent_action.on_respin
+
     # Validate action
     if not action.summary:
         raise Exception(f"Action {action} does not have a 'summary' defined.")
