@@ -1104,7 +1104,7 @@ Using --state-dir=/var/tmp/newa/run-123
 
 #### Option `--prev-state-dir`, `-P`
 
-Similar to `--state-dir`, however no directory is specified. Instead, `newa` will use the most recent (modified) directory used by `newa` process issued from the current shell.
+Similar to `--state-dir`, however no directory is specified. Instead, `newa` will use the most recently modified directory used by `newa` processes invoked from the current shell.
 
 **Multi-Terminal Support:** This option is intentionally shell-scoped to support running multiple NEWA sessions in parallel across different terminals. Each terminal maintains its own "previous state-dir" context, allowing you to run different test campaigns simultaneously without interference:
 
