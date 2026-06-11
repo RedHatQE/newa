@@ -2371,6 +2371,54 @@ $ newa search --erratum "jira_issues=RHEL-1951" --jira "action_id=.*regression"
 
 The object search recursively searches through nested dictionaries and lists within each object type.
 
+#### Output detail levels
+
+The search command provides three levels of output detail, controlled by `--brief` and `--full` options:
+
+**`--brief`** - Show only state directory headers (with description and modification time):
+```bash
+$ newa search --text keylime --brief
+/var/tmp/newa/run-271 (modified 2 hours ago)
+/var/tmp/newa/run-254 (Copied from stage, modified 6 days ago)
+Found 2 state directories matching --text "keylime"
+```
+
+**Default (no flag)** - Intelligent default based on search criteria:
+- Searching with `--event`, `--erratum`, `--rog-mr`, or `--text`: Shows event-level details
+- Searching with `--jira`: Shows event-level and Jira issue details
+
+```bash
+$ newa search --text keylime
+/var/tmp/newa/run-271 (modified 2 hours ago):
+  event E: 155199 @ RHEL-10.2.GA - keylime update
+  https://errata.devel.redhat.com/advisory/155199
+
+$ newa search --jira SECENGSP-10172
+/var/tmp/newa/run-254:
+  event E: 154960 @ RHEL-10.2.GA - keylime-agent-rust update
+  https://errata.devel.redhat.com/advisory/154960
+    issue SECENGSP-10172 (tier1) - Test keylime-agent-rust
+    https://issues.redhat.com/browse/SECENGSP-10172
+    tags: tier1, baseline
+```
+
+**`--full`** - Show complete details including events, Jira issues, and execution status (like `newa list` default):
+```bash
+$ newa search --erratum keylime --full
+/var/tmp/newa/run-271 (modified 2 hours ago):
+  event E: 155199 @ RHEL-10.2.GA - keylime update
+  https://errata.devel.redhat.com/advisory/155199
+    issue SECENGSP-10173 (tier1) - Test keylime
+    https://issues.redhat.com/browse/SECENGSP-10173
+      recipe: https://gitlab.com/redhat/.../plans/tier1.fmf
+      ReportPortal launch: keylime_RHEL-10.2_tier1
+      https://reportportal.example.com/ui/#runs/...
+      abc123-def456
+        - state: complete, result: passed, artifacts: https://artifacts.dev.testing-farm.io/...
+```
+
+The `--brief` and `--full` options are mutually exclusive.
+
 #### Use cases
 
 - Find all state directories for a specific package or component

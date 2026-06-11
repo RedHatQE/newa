@@ -2,6 +2,7 @@
 
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -23,6 +24,54 @@ from newa.cli.metadata import StateMetadata
 from newa.cli.report_helpers import _update_all_tf_request_statuses
 
 
+def _get_relative_time(state_dir: Path) -> str:
+    """Get relative time string for state directory.
+
+    Uses the modification time of the .ppid file in the state directory.
+
+    Args:
+        state_dir: Path to the state directory
+
+    Returns:
+        Relative time string like "2 days ago", "3 hours ago", etc.
+        Returns empty string if ppid file not found.
+    """
+    # Find .ppid file
+    ppid_files = list(state_dir.glob('*.ppid'))
+    if not ppid_files:
+        return ''
+
+    # Get modification time from the most recently modified .ppid file
+    try:
+        mtime = max(ppid_file.stat().st_mtime for ppid_file in ppid_files)
+        # Use local timezone-aware datetime to avoid DTZ warnings
+        # We want local time since users think in their local timezone
+        mtime_dt = datetime.fromtimestamp(mtime, tz=datetime.now().astimezone().tzinfo)
+        now = datetime.now(tz=datetime.now().astimezone().tzinfo)
+        delta = now - mtime_dt
+
+        # Calculate relative time
+        seconds = delta.total_seconds()
+        if seconds < 60:
+            return 'just now'
+        if seconds < 3600:  # Less than 1 hour
+            minutes = int(seconds / 60)
+            return f'{minutes} minute{"s" if minutes != 1 else ""} ago'
+        if seconds < 86400:  # Less than 1 day
+            hours = int(seconds / 3600)
+            return f'{hours} hour{"s" if hours != 1 else ""} ago'
+        if seconds < 604800:  # Less than 1 week
+            days = int(seconds / 86400)
+            return f'{days} day{"s" if days != 1 else ""} ago'
+        if seconds < 2592000:  # Less than 30 days
+            weeks = int(seconds / 604800)
+            return f'{weeks} week{"s" if weeks != 1 else ""} ago'
+        months = int(seconds / 2592000)
+        return f'{months} month{"s" if months != 1 else ""} ago'
+    except Exception:
+        return ''
+
+
 def print_state_dirs(
         ctx: CLIContext,
         state_dirs: list[Path],
@@ -30,7 +79,8 @@ def print_state_dirs(
         issues: bool = False,
         refresh: bool = False,
         refresh_all: bool = False,
-        specific_state_dir: bool = False) -> None:
+        specific_state_dir: bool = False,
+        brief: bool = False) -> None:
     """Print state directories with their event/issue/execution details.
 
     Args:
@@ -41,26 +91,62 @@ def print_state_dirs(
         refresh: Refresh incomplete TF request statuses
         refresh_all: Refresh all TF request statuses
         specific_state_dir: Whether printing a specific state dir (affects filtering)
+        brief: Only show state dir headers (no events/issues/executions)
     """
     def _print(indent: int, s: str, end: str = '\n') -> None:
         print(f'{" " * indent}{s}', end=end)
 
     for state_dir in state_dirs:
         ctx.state_dirpath = state_dir
+
+        # Build state dir header
+        state_dir_color = Colors.STATE_DIR or Colors.ORANGE
+        metadata = StateMetadata(state_dir)
+        description = metadata.get_description()
+        relative_time = _get_relative_time(state_dir)
+
+        # For brief mode, just print the header and continue
+        if brief:
+            if description and relative_time:
+                header = f'{
+                    colorize_text(
+                        str(state_dir),
+                        state_dir_color)} ({description}, modified {relative_time})'
+            elif description:
+                header = f'{colorize_text(str(state_dir), state_dir_color)} ({description})'
+            elif relative_time:
+                header = f'{
+                    colorize_text(
+                        str(state_dir),
+                        state_dir_color)} (modified {relative_time})'
+            else:
+                header = f'{colorize_text(str(state_dir), state_dir_color)}'
+            print(header)
+            continue
+
+        # For non-brief mode, load events and show details
         event_jobs = list(ctx.load_artifact_jobs(filter_events=True))
         # Skip this state dir if no events match the filter, but only when listing
         # multiple directories. Always show explicitly specified state dir.
         if not event_jobs and not specific_state_dir:
             continue
-        # Print state dir header only if there are events to show
-        state_dir_color = Colors.STATE_DIR or Colors.ORANGE
-        # Read metadata to get description
-        metadata = StateMetadata(state_dir)
-        description = metadata.get_description()
-        if description:
-            print(f'{colorize_text(str(state_dir), state_dir_color)} ({description}):')
+
+        # Build header with colon suffix for detailed view
+        if description and relative_time:
+            header = f'{
+                colorize_text(
+                    str(state_dir),
+                    state_dir_color)} ({description}, modified {relative_time}):'
+        elif description:
+            header = f'{colorize_text(str(state_dir), state_dir_color)} ({description}):'
+        elif relative_time:
+            header = f'{
+                colorize_text(
+                    str(state_dir),
+                    state_dir_color)} (modified {relative_time}):'
         else:
-            print(f'{colorize_text(str(state_dir), state_dir_color)}:')
+            header = f'{colorize_text(str(state_dir), state_dir_color)}:'
+        print(header)
         event_color = Colors.EVENT or Colors.RED
         for event_job in event_jobs:
             if event_job.erratum:
