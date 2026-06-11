@@ -108,17 +108,13 @@ def print_state_dirs(
         # For brief mode, just print the header and continue
         if brief:
             if description and relative_time:
-                header = f'{
-                    colorize_text(
-                        str(state_dir),
-                        state_dir_color)} ({description}, modified {relative_time})'
+                header = (f'{colorize_text(str(state_dir), state_dir_color)} '
+                          f'({description}, modified {relative_time})')
             elif description:
                 header = f'{colorize_text(str(state_dir), state_dir_color)} ({description})'
             elif relative_time:
-                header = f'{
-                    colorize_text(
-                        str(state_dir),
-                        state_dir_color)} (modified {relative_time})'
+                header = (f'{colorize_text(str(state_dir), state_dir_color)} '
+                          f'(modified {relative_time})')
             else:
                 header = f'{colorize_text(str(state_dir), state_dir_color)}'
             print(header)
@@ -133,17 +129,13 @@ def print_state_dirs(
 
         # Build header with colon suffix for detailed view
         if description and relative_time:
-            header = f'{
-                colorize_text(
-                    str(state_dir),
-                    state_dir_color)} ({description}, modified {relative_time}):'
+            header = (f'{colorize_text(str(state_dir), state_dir_color)} '
+                      f'({description}, modified {relative_time}):')
         elif description:
             header = f'{colorize_text(str(state_dir), state_dir_color)} ({description}):'
         elif relative_time:
-            header = f'{
-                colorize_text(
-                    str(state_dir),
-                    state_dir_color)} (modified {relative_time}):'
+            header = (f'{colorize_text(str(state_dir), state_dir_color)} '
+                      f'(modified {relative_time}):')
         else:
             header = f'{colorize_text(str(state_dir), state_dir_color)}:'
         print(header)
