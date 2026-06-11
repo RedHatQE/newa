@@ -100,6 +100,18 @@ def _search_object(
     help='Search within Jira issue objects. Format: "PATTERN" or "KEY=PATTERN". '
          'Searches jira-* YAML files.',
     )
+@click.option(
+    '--brief',
+    is_flag=True,
+    default=False,
+    help='Show only state directory headers without event/issue details.',
+    )
+@click.option(
+    '--full',
+    is_flag=True,
+    default=False,
+    help='Show full details including events, issues, and executions.',
+    )
 @click.pass_obj
 def cmd_search(
         ctx: CLIContext,
@@ -107,7 +119,9 @@ def cmd_search(
         event: Optional[str],
         erratum: Optional[str],
         rog_mr: Optional[str],
-        jira: Optional[str]) -> None:
+        jira: Optional[str],
+        brief: bool,
+        full: bool) -> None:
     """Search for text/pattern across all metadata in state directories.
 
     The search supports regular expressions and is case-insensitive by default.
@@ -133,6 +147,10 @@ def cmd_search(
         raise click.UsageError(
             'At least one search option is required: '
             '--text, --event, --erratum, --rog-mr, or --jira')
+
+    # Validate that --brief and --full are not used together
+    if brief and full:
+        raise click.UsageError('--brief and --full cannot be used together')
 
     ctx.enter_command('search')
     init_colors(ctx.settings.newa_color_config)
@@ -271,16 +289,37 @@ def cmd_search(
         if state_dir_matches:
             matching_state_dirs.append(state_dir)
 
-    # Print matching state directories with event-level details
+    # Determine display level based on flags and search criteria
+    # Dynamic default: choose detail level based on what was searched
+    show_brief = brief
+    show_events = False
+    show_issues = False
+
+    if not brief and not full:
+        # Dynamic behavior based on search criteria
+        if jira:
+            # Searching jira -> show issues level (events + jira issues)
+            show_issues = True
+        else:
+            # Searching events/erratum/rog/text -> show events level
+            show_events = True
+    elif full:
+        # Full mode: show everything (events + issues + executions)
+        show_events = False
+        show_issues = False
+    # brief mode: show_brief=True already set
+
+    # Print matching state directories
     if matching_state_dirs:
         print_state_dirs(
             ctx,
             matching_state_dirs,
-            events=True,  # Show event-level details like 'newa list --events'
-            issues=False,
+            events=show_events,
+            issues=show_issues,
             refresh=False,
             refresh_all=False,
-            specific_state_dir=False)
+            specific_state_dir=False,
+            brief=show_brief)
         # Build description of search criteria
         search_desc_parts = []
         if text:
