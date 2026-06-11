@@ -331,6 +331,8 @@ def _find_or_create_issue(
         mapped_issue = Issue(
             issue_mapping[action.id].strip(),
             group=config.group,
+            url=urllib.parse.urljoin(f'{jira_handler.jira_connection.url}/',
+                                     f'browse/{issue_mapping[action.id].strip()}'),
             transition_passed=transition_passed,
             transition_processed=transition_processed)
         jira_issue = jira_handler.get_details(mapped_issue)
@@ -365,6 +367,8 @@ def _find_or_create_issue(
                         jira_issue_key,
                         group=config.group,
                         summary=jira_issue.get("summary", ""),
+                        url=urllib.parse.urljoin(f'{jira_handler.jira_connection.url}/',
+                                                 f'browse/{jira_issue_key}'),
                         closed=jira_issue["status"] == "closed",
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
@@ -375,6 +379,8 @@ def _find_or_create_issue(
                         jira_issue_key,
                         group=config.group,
                         summary=jira_issue.get("summary", ""),
+                        url=urllib.parse.urljoin(f'{jira_handler.jira_connection.url}/',
+                                                 f'browse/{jira_issue_key}'),
                         closed=False,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
@@ -385,6 +391,8 @@ def _find_or_create_issue(
                         jira_issue_key,
                         group=config.group,
                         summary=jira_issue.get("summary", ""),
+                        url=urllib.parse.urljoin(f'{jira_handler.jira_connection.url}/',
+                                                 f'browse/{jira_issue_key}'),
                         closed=True,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
@@ -552,7 +560,7 @@ def _handle_erratum_comment_for_jira(
             ErratumCommentTrigger.JIRA in action.erratum_comment_triggers and
             artifact_job.erratum):
         issue_url = urllib.parse.urljoin(
-            ctx.settings.jira_url, f"/browse/{new_issue.id}")
+            f'{ctx.settings.jira_url}/', f'browse/{new_issue.id}')
         et.add_comment(
             artifact_job.erratum.id,
             'New Errata Workflow Automation (NEWA) prepared '
@@ -579,7 +587,7 @@ def _handle_rog_comment_for_jira(
             RoGCommentTrigger.JIRA in action.rog_comment_triggers and
             artifact_job.rog):
         issue_url = urllib.parse.urljoin(
-            ctx.settings.jira_url, f"/browse/{new_issue.id}")
+            f'{ctx.settings.jira_url}/', f'browse/{new_issue.id}')
         rog.add_comment(
             artifact_job.rog.id,
             'New Errata Workflow Automation (NEWA) prepared '
@@ -1075,7 +1083,7 @@ def _create_simple_jira_job(
             new_issue = Issue(issue_id,
                               summary=jira_issue.fields.summary,
                               url=urllib.parse.urljoin(
-                                  ctx.settings.jira_url, f'/browse/{jira_issue.key}'))
+                                  f'{ctx.settings.jira_url}/', f'browse/{jira_issue.key}'))
         else:
             # Generate a unique fake Jira ID for this recipe
             new_issue = Issue(next(jira_none_id))

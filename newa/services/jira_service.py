@@ -534,8 +534,8 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             new_issue = Issue(jira_issue.key,
                               group=self.group,
                               summary=summary,
-                              url=urllib.parse.urljoin(self.jira_connection.url,
-                                                       f'/browse/{jira_issue.key}'),
+                              url=urllib.parse.urljoin(f'{self.jira_connection.url}/',
+                                                       f'browse/{jira_issue.key}'),
                               transition_passed=transition_passed,
                               transition_processed=transition_processed,
                               action_id=action.id)
