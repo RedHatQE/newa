@@ -84,6 +84,11 @@ class IssueHandler:  # type: ignore[no-untyped-def]
             self.artifact_job.event.type_ is EventType.ERRATUM and
                 self.artifact_job.erratum):
             newa_id += f" ({', '.join(sorted(self.artifact_job.erratum.builds))}) :::"
+        # for ROG event type update ID with build task ID
+        elif (not partial and
+              self.artifact_job.event.type_ is EventType.ROG and
+              self.artifact_job.rog):
+            newa_id += f" (task {self.artifact_job.rog.build_task_id}) :::"
 
         return newa_id
 
