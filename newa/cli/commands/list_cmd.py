@@ -34,7 +34,7 @@ def _get_relative_time(state_dir: Path) -> str:
 
     Returns:
         Relative time string like "2 days ago", "3 hours ago", etc.
-        Returns empty string if ppid file not found.
+        Returns empty string if ppid file not found or on error.
     """
     # Find .ppid file
     ppid_files = list(state_dir.glob('*.ppid'))
@@ -43,11 +43,11 @@ def _get_relative_time(state_dir: Path) -> str:
 
     # Get modification time from the most recently modified .ppid file
     try:
+        # Cache timezone to avoid potential time changes between calls
+        tz = datetime.now().astimezone().tzinfo
         mtime = max(ppid_file.stat().st_mtime for ppid_file in ppid_files)
-        # Use local timezone-aware datetime to avoid DTZ warnings
-        # We want local time since users think in their local timezone
-        mtime_dt = datetime.fromtimestamp(mtime, tz=datetime.now().astimezone().tzinfo)
-        now = datetime.now(tz=datetime.now().astimezone().tzinfo)
+        mtime_dt = datetime.fromtimestamp(mtime, tz=tz)
+        now = datetime.now(tz=tz)
         delta = now - mtime_dt
 
         # Calculate relative time
@@ -68,7 +68,8 @@ def _get_relative_time(state_dir: Path) -> str:
             return f'{weeks} week{"s" if weeks != 1 else ""} ago'
         months = int(seconds / 2592000)
         return f'{months} month{"s" if months != 1 else ""} ago'
-    except Exception:
+    except (OSError, ValueError):
+        # Failed to read or interpret the ppid file; treat as no relative time
         return ''
 
 

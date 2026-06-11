@@ -173,9 +173,11 @@ def cmd_search(
             raise click.ClickException(
                 f'Invalid regular expression in --text: {e}') from e
 
-    for option_name, option_value in [
-            ('event', event), ('erratum', erratum),
-            ('rog', rog_mr), ('jira', jira)]:
+    for option_name, option_value, option_flag in [
+            ('event', event, 'event'),
+            ('erratum', erratum, 'erratum'),
+            ('rog', rog_mr, 'rog-mr'),
+            ('jira', jira, 'jira')]:
         if option_value:
             key_pattern_str, value_pattern_str = _parse_search_spec(option_value)
             try:
@@ -185,7 +187,7 @@ def cmd_search(
                 search_specs.append((option_name, key_pat, value_pat))
             except re.error as e:
                 raise click.ClickException(
-                    f'Invalid regular expression in --{option_name}: {e}') from e
+                    f'Invalid regular expression in --{option_flag}: {e}') from e
 
     matching_state_dirs = []
 
@@ -333,10 +335,9 @@ def cmd_search(
         if jira:
             search_desc_parts.append(f'--jira "{jira}"')
         search_desc = ', '.join(search_desc_parts)
-        print(
-            f'Found {
-                len(matching_state_dirs)} state director{
-                "y" if len(matching_state_dirs) == 1 else "ies"} matching {search_desc}')
+        count = len(matching_state_dirs)
+        plural = "y" if count == 1 else "ies"
+        print(f'Found {count} state director{plural} matching {search_desc}')
     else:
         print('No matches found')
 
