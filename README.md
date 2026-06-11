@@ -2246,6 +2246,79 @@ $ newa -P list --refresh-all
 $ newa --event-filter erratum.id=167842 list --all --refresh
 ```
 
+### Subcommand `search`
+
+The `search` subcommand allows you to search for text or patterns across all metadata files in all state directories. This is useful for finding state directories related to specific packages, errata, issues, or any other metadata.
+
+The search supports regular expressions and is case-insensitive by default. It searches through all YAML files in each state directory. For matching directories, it displays event-level details (similar to `newa list --events`).
+
+#### Option `--text`
+
+Specifies the text or regular expression pattern to search for (required). The search is performed case-insensitively across all YAML files.
+
+**Simple text search examples:**
+```
+# Search for a specific package
+$ newa search --text keylime
+
+# Search for an erratum ID
+$ newa search --text 154960
+
+# Search for a RHEL release
+$ newa search --text "RHEL-10.2"
+
+# Search for a Jira issue
+$ newa search --text "PROJ-123"
+```
+
+**Regular expression pattern examples:**
+```
+# Search for multiple RHEL versions (9 or 10)
+$ newa search --text "RHEL-(9|10)\.2"
+
+# Search for erratum IDs starting with 154
+$ newa search --text "^154.*"
+
+# Search for keylime with optional agent or rust suffix
+$ newa search --text "keylime-(agent-)?rust"
+
+# Search for Jira issues matching a pattern
+$ newa search --text "SECENGSP-\d+"
+
+# Search for security-related updates
+$ newa search --text "security.*update"
+```
+
+**Output format:**
+
+The command displays matching state directories with event-level details:
+```
+$ newa search --text keylime
+/var/tmp/newa/run-271:
+  event E: 155199 @ RHEL-10.2.GA - keylime update
+  https://errata.devel.redhat.com/advisory/155199
+
+/var/tmp/newa/run-254:
+  event E: 154960 @ RHEL-10.2.GA - keylime-agent-rust update
+  https://errata.devel.redhat.com/advisory/154960
+
+Found 2 state directories with matches
+```
+
+If a state directory has a description (set via `--description` or `-d`), it will be displayed:
+```
+/var/tmp/newa/run-403 (Copied from /var/tmp/newa-stage/run-740):
+  event E: 154960 @ RHEL-10.2.GA - keylime-agent-rust update
+  https://errata.devel.redhat.com/advisory/154960
+```
+
+**Use cases:**
+
+- Find all state directories related to a specific package or component
+- Locate test runs for a particular erratum or advisory
+- Search for state directories containing specific Jira issues
+- Find runs related to a particular RHEL release or compose
+
 ## Bash Auto-Completion
 
 NEWA includes bash auto-completion support for all commands and options. When you install NEWA via the RPM package, bash completion is automatically installed.

@@ -23,95 +23,25 @@ from newa.cli.metadata import StateMetadata
 from newa.cli.report_helpers import _update_all_tf_request_statuses
 
 
-@click.command(name='list')
-@click.option(
-    '--last',
-    default=10,
-    help='Print details of recent newa executions.',
-    show_default=True,
-    )
-@click.option(
-    '--all', '-a',
-    'list_all',
-    is_flag=True,
-    default=False,
-    help='List all newa state directories (overrides --last).',
-    )
-@click.option(
-    '--events',
-    is_flag=True,
-    default=False,
-    help='List details only up to the event level.',
-    )
-@click.option(
-    '--issues',
-    is_flag=True,
-    default=False,
-    help='List details only up to the Jira issue level.',
-    )
-@click.option(
-    '--refresh',
-    is_flag=True,
-    default=False,
-    help='Refresh Testing Farm request statuses before listing (only incomplete requests). '
-         'Requires -D/--state-dir, -P/--prev-state-dir, or --event-filter.',
-    )
-@click.option(
-    '--refresh-all',
-    is_flag=True,
-    default=False,
-    help='Refresh all Testing Farm request statuses before listing (overrides --refresh). '
-         'Requires -D/--state-dir, -P/--prev-state-dir, or --event-filter.',
-    )
-@click.pass_obj
-def cmd_list(
+def print_state_dirs(
         ctx: CLIContext,
-        last: int,
-        list_all: bool,
-        events: bool,
-        issues: bool,
-        refresh: bool,
-        refresh_all: bool) -> None:
-    """List NEWA execution details from state directories."""
-    ctx.enter_command('list')
-    # Initialize colors based on environment, terminal capabilities, and config
-    init_colors(ctx.settings.newa_color_config)
-    # Ensure --events and --issues are not used together
-    if events and issues:
-        raise click.UsageError('--events and --issues cannot be used together')
-    # Validate --last parameter
-    if last < 1:
-        raise click.UsageError("'--last' must be >= 1")
-    # Ensure --refresh and --refresh-all are only used with a specific state-dir or event filter
-    if ((refresh or refresh_all) and not ctx.state_dirpath.is_dir() and
-            not ctx.event_filter_pattern):
-        raise click.UsageError(
-            '--refresh and --refresh-all require a specific state directory or --event-filter. '
-            'Use -D/--state-dir, -P/--prev-state-dir, or --event-filter '
-            'to specify what to refresh.')
-    # save current logger level and statedir
-    saved_logger_level = ctx.logger.level
-    saved_state_dir = ctx.state_dirpath
-    # when not in DEBUG, decrese log verbosity so it won't be too noisy
-    # when loading individual YAML files
-    if ctx.logger.level != logging.DEBUG:
-        ctx.logger.setLevel(logging.WARN)
-    # when existing state-dir has been provided, use it
-    specific_state_dir = saved_state_dir.is_dir()
-    if specific_state_dir:
-        state_dirs = [ctx.state_dirpath]
-    # otherwise choose last N dirs or all dirs
-    else:
-        try:
-            entries = os.scandir(ctx.settings.newa_statedir_topdir)
-        except FileNotFoundError as e:
-            raise Exception(f'{ctx.settings.newa_statedir_topdir} does not exist') from e
-        sorted_entries = sorted(entries, key=lambda entry: os.path.getmtime(Path(entry)))
-        if list_all:
-            state_dirs = [Path(e.path) for e in sorted_entries]
-        else:
-            state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
+        state_dirs: list[Path],
+        events: bool = False,
+        issues: bool = False,
+        refresh: bool = False,
+        refresh_all: bool = False,
+        specific_state_dir: bool = False) -> None:
+    """Print state directories with their event/issue/execution details.
 
+    Args:
+        ctx: CLI context
+        state_dirs: List of state directories to print
+        events: Stop at event level (don't show issues)
+        issues: Stop at issue level (don't show executions)
+        refresh: Refresh incomplete TF request statuses
+        refresh_all: Refresh all TF request statuses
+        specific_state_dir: Whether printing a specific state dir (affects filtering)
+    """
     def _print(indent: int, s: str, end: str = '\n') -> None:
         print(f'{" " * indent}{s}', end=end)
 
@@ -242,6 +172,107 @@ def cmd_list(
                         # Apply color formatting to 'not executed' state
                         print(f' - {colorize_state("not executed")}')
         print()
+
+
+@click.command(name='list')
+@click.option(
+    '--last',
+    default=10,
+    help='Print details of recent newa executions.',
+    show_default=True,
+    )
+@click.option(
+    '--all', '-a',
+    'list_all',
+    is_flag=True,
+    default=False,
+    help='List all newa state directories (overrides --last).',
+    )
+@click.option(
+    '--events',
+    is_flag=True,
+    default=False,
+    help='List details only up to the event level.',
+    )
+@click.option(
+    '--issues',
+    is_flag=True,
+    default=False,
+    help='List details only up to the Jira issue level.',
+    )
+@click.option(
+    '--refresh',
+    is_flag=True,
+    default=False,
+    help='Refresh Testing Farm request statuses before listing (only incomplete requests). '
+         'Requires -D/--state-dir, -P/--prev-state-dir, or --event-filter.',
+    )
+@click.option(
+    '--refresh-all',
+    is_flag=True,
+    default=False,
+    help='Refresh all Testing Farm request statuses before listing (overrides --refresh). '
+         'Requires -D/--state-dir, -P/--prev-state-dir, or --event-filter.',
+    )
+@click.pass_obj
+def cmd_list(
+        ctx: CLIContext,
+        last: int,
+        list_all: bool,
+        events: bool,
+        issues: bool,
+        refresh: bool,
+        refresh_all: bool) -> None:
+    """List NEWA execution details from state directories."""
+    ctx.enter_command('list')
+    # Initialize colors based on environment, terminal capabilities, and config
+    init_colors(ctx.settings.newa_color_config)
+    # Ensure --events and --issues are not used together
+    if events and issues:
+        raise click.UsageError('--events and --issues cannot be used together')
+    # Validate --last parameter
+    if last < 1:
+        raise click.UsageError("'--last' must be >= 1")
+    # Ensure --refresh and --refresh-all are only used with a specific state-dir or event filter
+    if ((refresh or refresh_all) and not ctx.state_dirpath.is_dir() and
+            not ctx.event_filter_pattern):
+        raise click.UsageError(
+            '--refresh and --refresh-all require a specific state directory or --event-filter. '
+            'Use -D/--state-dir, -P/--prev-state-dir, or --event-filter '
+            'to specify what to refresh.')
+    # save current logger level and statedir
+    saved_logger_level = ctx.logger.level
+    saved_state_dir = ctx.state_dirpath
+    # when not in DEBUG, decrese log verbosity so it won't be too noisy
+    # when loading individual YAML files
+    if ctx.logger.level != logging.DEBUG:
+        ctx.logger.setLevel(logging.WARN)
+    # when existing state-dir has been provided, use it
+    specific_state_dir = saved_state_dir.is_dir()
+    if specific_state_dir:
+        state_dirs = [ctx.state_dirpath]
+    # otherwise choose last N dirs or all dirs
+    else:
+        try:
+            entries = os.scandir(ctx.settings.newa_statedir_topdir)
+        except FileNotFoundError as e:
+            raise Exception(f'{ctx.settings.newa_statedir_topdir} does not exist') from e
+        sorted_entries = sorted(entries, key=lambda entry: os.path.getmtime(Path(entry)))
+        if list_all:
+            state_dirs = [Path(e.path) for e in sorted_entries]
+        else:
+            state_dirs = [Path(e.path) for e in sorted_entries[-last:]]
+
+    # Print all state directories
+    print_state_dirs(
+        ctx,
+        state_dirs,
+        events=events,
+        issues=issues,
+        refresh=refresh,
+        refresh_all=refresh_all,
+        specific_state_dir=specific_state_dir)
+
     # restore logger level and statedir
     ctx.logger.setLevel(saved_logger_level)
     ctx.state_dirpath = saved_state_dir
