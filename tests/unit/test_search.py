@@ -83,7 +83,7 @@ compose:
 
     assert result.exit_code == 0
     # Should find 2 matching state directories
-    assert 'Found 2 state directories with matches' in result.output
+    assert 'Found 2 state directories matching' in result.output
     # Should show the matching directories
     assert str(state_dir1) in result.output
     assert str(state_dir2) in result.output
@@ -124,7 +124,7 @@ compose:
         env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
-    assert 'Found 1 state directory with matches' in result.output
+    assert 'Found 1 state directory matching' in result.output
     assert str(state_dir) in result.output
 
     # Search with uppercase
@@ -134,7 +134,7 @@ compose:
         env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
-    assert 'Found 1 state directory with matches' in result.output
+    assert 'Found 1 state directory matching' in result.output
     assert str(state_dir) in result.output
 
 
@@ -171,7 +171,7 @@ compose:
         env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
-    assert 'No matches found for "nonexistent-package-xyz"' in result.output
+    assert 'No matches found' in result.output
     assert str(state_dir) not in result.output
 
 
@@ -190,7 +190,7 @@ def test_search_empty_topdir(tmp_path):
         env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
-    assert 'No matches found for "keylime"' in result.output
+    assert 'No matches found' in result.output
 
 
 def test_search_with_description(tmp_path):
@@ -323,7 +323,7 @@ jira:
 
     assert result.exit_code == 0
     # Should find the state directory (match in jira file)
-    assert 'Found 1 state directory with matches' in result.output
+    assert 'Found 1 state directory matching' in result.output
     assert str(state_dir) in result.output
 
 
@@ -360,7 +360,7 @@ compose:
         env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
-    assert 'Found 1 state directory with matches' in result.output
+    assert 'Found 1 state directory matching' in result.output
     assert str(state_dir) in result.output
 
 
@@ -449,7 +449,7 @@ compose:
 
     assert result.exit_code == 0
     # Should find 2 matching state directories (RHEL-9 and RHEL-10)
-    assert 'Found 2 state directories with matches' in result.output
+    assert 'Found 2 state directories matching' in result.output
     assert str(state_dir1) in result.output
     assert str(state_dir2) in result.output
     assert str(state_dir3) not in result.output
@@ -508,7 +508,7 @@ compose:
         env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
-    assert 'Found 2 state directories with matches' in result.output
+    assert 'Found 2 state directories matching' in result.output
 
     # Search for exact erratum ID 154960 using word boundary
     result = runner.invoke(
@@ -517,7 +517,7 @@ compose:
         env={**os.environ, 'NEWA_STATEDIR_TOPDIR': str(topdir)})
 
     assert result.exit_code == 0
-    assert 'Found 1 state directory with matches' in result.output
+    assert 'Found 1 state directory matching' in result.output
     assert str(state_dir1) in result.output
     assert str(state_dir2) not in result.output
 
@@ -598,7 +598,7 @@ compose:
 
     assert result.exit_code == 0
     # Should find both keylime and keylime-agent-rust
-    assert 'Found 2 state directories with matches' in result.output
+    assert 'Found 2 state directories matching' in result.output
     assert str(state_dir1) in result.output
     assert str(state_dir2) in result.output
     assert str(state_dir3) not in result.output
