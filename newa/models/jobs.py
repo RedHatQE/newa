@@ -67,6 +67,9 @@ class ArtifactJob(EventJob):
             if self.erratum.content_type == ErratumContentType.DOCKER:
                 # docker type ArtifactJob is identified by the container name
                 return NVRParser(self.erratum.builds[0]).name
+        elif self.rog:
+            # RoG type ArtifactJob is identified by build target
+            return self.rog.build_target
         elif self.compose:
             return self.compose.id
         return ""
