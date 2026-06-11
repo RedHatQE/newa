@@ -1102,18 +1102,38 @@ Using --state-dir=/var/tmp/newa/run-123
 ...
 ```
 
-#### Option `--prev-state-dir`
+#### Option `--prev-state-dir`, `-P`
 
-Similar to `--state-dir`, however no directory is specified. Instead, `newa` will use the most recent (modified) directory used by `newa` process issued from the current shell (so the functionality won't collidate with `newa` processes from different terminals).
+Similar to `--state-dir`, however no directory is specified. Instead, `newa` will use the most recent (modified) directory used by `newa` process issued from the current shell.
+
+**Multi-Terminal Support:** This option is intentionally shell-scoped to support running multiple NEWA sessions in parallel across different terminals. Each terminal maintains its own "previous state-dir" context, allowing you to run different test campaigns simultaneously without interference:
+
+- Terminal 1 can run erratum testing with its own `-P` context
+- Terminal 2 can run compose testing with its own `-P` context
+- Both sessions track their state independently
+
+To reference a state-dir from a different terminal or past session, use `-D/--state-dir` with the explicit path shown in the `newa` output or found via `newa list`.
 
 Example:
 ```
-$ newa event --erratum 12345
+# Terminal 1 - Testing erratum
+$ newa event --erratum 12345 jira --issue-config my-issue-config.yaml
 Using --state-dir=/var/tmp/newa/run-123
 ...
-$ newa --prev-state-dir jira --issue-config my-issue-config.yaml
+$ newa --prev-state-dir schedule execute
 Using --state-dir=/var/tmp/newa/run-123
 ...
+
+# Terminal 2 - Testing compose (different session, different -P context)
+$ newa event --compose CentOS-Stream-9 jira --issue-config config.yaml
+Using --state-dir=/var/tmp/newa/run-456
+...
+$ newa -P report
+Using --state-dir=/var/tmp/newa/run-456  # Uses run-456, NOT run-123
+...
+
+# To reference Terminal 1's state-dir from Terminal 2, use explicit path:
+$ newa -D /var/tmp/newa/run-123 list
 ```
 
 #### Option `--extract-state-dir`, `-E`
