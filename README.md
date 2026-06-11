@@ -2250,11 +2250,20 @@ $ newa --event-filter erratum.id=167842 list --all --refresh
 
 The `search` subcommand allows you to search for text or patterns across all metadata files in all state directories. This is useful for finding state directories related to specific packages, errata, issues, or any other metadata.
 
-The search supports regular expressions and is case-insensitive by default. It searches through all YAML files in each state directory. For matching directories, it displays event-level details (similar to `newa list --events`).
+The search supports regular expressions and is case-insensitive by default. For matching directories, it displays event-level details (similar to `newa list --events`).
+
+**Search options:**
+- `--text PATTERN` - Search across all YAML files
+- `--event PATTERN` - Search within event objects (event-* files)
+- `--erratum PATTERN` - Search within erratum objects (event-* files)
+- `--rog-mr PATTERN` - Search within RoG MR objects (event-* files)
+- `--jira PATTERN` - Search within Jira issue objects (jira-* files)
+
+At least one search option is required. When multiple options are specified, all conditions must match (AND logic).
 
 #### Option `--text`
 
-Specifies the text or regular expression pattern to search for (required). The search is performed case-insensitively across all YAML files.
+Specifies the text or regular expression pattern to search for across all YAML files. The search is performed case-insensitively.
 
 **Simple text search examples:**
 ```
@@ -2312,12 +2321,64 @@ If a state directory has a description (set via `--description` or `-d`), it wil
   https://errata.devel.redhat.com/advisory/154960
 ```
 
-**Use cases:**
+#### Object-specific search options
 
-- Find all state directories related to a specific package or component
+The `--event`, `--erratum`, `--rog-mr`, and `--jira` options allow you to search within specific NEWA objects:
+
+- **`--event PATTERN`** - Search within **event** objects (metadata about the triggering event)
+- **`--erratum PATTERN`** - Search within **erratum** objects (advisory metadata from Errata Tool)
+- **`--rog-mr PATTERN`** - Search within **RoG merge request** objects (RoG metadata)
+- **`--jira PATTERN`** - Search within **Jira tracker** objects (testing issues created by NEWA)
+
+**Important distinction:**
+- `--jira SECENGSP-10172` finds state directories where NEWA created a Jira tracker with ID SECENGSP-10172 (i.e., the testing issue)
+- `--erratum SECENGSP-10172` finds state directories for advisories that **fix** Jira issue SECENGSP-10172 (listed in erratum's `jira_issues` field)
+
+Each option supports two formats:
+
+**Format 1: `PATTERN`** - Search for the pattern in any field within the object:
+```bash
+# Find errata containing "keylime" in any field
+$ newa search --erratum keylime
+
+# Find NEWA Jira trackers containing "SECENGSP-10172" in any field
+$ newa search --jira "SECENGSP-10172"
+```
+
+**Format 2: `KEY=PATTERN`** - Search only in fields where the key matches KEY:
+```bash
+# Find errata with id="154960"
+$ newa search --erratum "id=154960"
+
+# Find NEWA Jira trackers with action_id matching "tier1"
+$ newa search --jira "action_id=tier1"
+
+# Find events with type_="erratum"
+$ newa search --event "type_=erratum"
+```
+
+**Combining multiple search options** (all must match):
+```bash
+# Find keylime errata that have tier1 testing
+$ newa search --erratum keylime --jira "action_id=tier1"
+
+# Find erratum 154960 with specific NEWA tracker
+$ newa search --erratum "id=154960" --jira "id=SECENGSP-10172"
+
+# Find advisories fixing RHEL-1951 that have regression testing
+$ newa search --erratum "jira_issues=RHEL-1951" --jira "action_id=.*regression"
+```
+
+The object search recursively searches through nested dictionaries and lists within each object type.
+
+#### Use cases
+
+- Find all state directories for a specific package or component
 - Locate test runs for a particular erratum or advisory
-- Search for state directories containing specific Jira issues
-- Find runs related to a particular RHEL release or compose
+- Search for state directories containing specific NEWA Jira trackers
+- Find advisories that fix specific Jira issues
+- Filter by specific test action IDs (e.g., tier1, regression)
+- Combine multiple criteria to narrow down results (e.g., keylime errata with tier1 testing)
 
 ## Bash Auto-Completion
 
