@@ -96,6 +96,20 @@ def print_state_dirs(
         brief: Only show state dir headers (no events/issues/executions)
         full: Show full details including RP launch and suite descriptions
     """
+    # Base indentation unit (spaces per nesting level)
+    indent_unit = 2
+
+    def _indent(level: int) -> int:
+        """Calculate indentation based on nesting level.
+
+        Args:
+            level: Nesting level (0=state_dir, 1=event, 2=issue, 3=rp_launch, 4=request, 5=status)
+
+        Returns:
+            Number of spaces for indentation
+        """
+        return level * indent_unit
+
     def _print(indent: int, s: str, end: str = '\n') -> None:
         print(f'{" " * indent}{s}', end=end)
 
@@ -145,25 +159,25 @@ def print_state_dirs(
         event_color = Colors.EVENT or Colors.RED
         for event_job in event_jobs:
             if event_job.erratum:
-                _print(2, colorize_text(
+                _print(_indent(1), colorize_text(
                     f'event {event_job.id} - {event_job.erratum.summary}', event_color))
-                _print(2, event_job.erratum.url)
+                _print(_indent(1), event_job.erratum.url)
             elif event_job.rog:
-                _print(2, colorize_text(
+                _print(_indent(1), colorize_text(
                     f'event {event_job.id} - {event_job.rog.title}', event_color))
             elif event_job.jira_issue:
-                _print(2, colorize_text(
+                _print(_indent(1), colorize_text(
                     f'event {event_job.id} - {event_job.jira_issue.summary}', event_color))
-                _print(2, event_job.jira_issue.url)
+                _print(_indent(1), event_job.jira_issue.url)
                 people_info = []
                 if event_job.jira_issue.assignee:
                     people_info.append(f'assignee: {event_job.jira_issue.assignee}')
                 if event_job.jira_issue.reporter:
                     people_info.append(f'reporter: {event_job.jira_issue.reporter}')
                 if people_info:
-                    _print(2, ', '.join(people_info))
+                    _print(_indent(1), ', '.join(people_info))
             else:
-                _print(2, colorize_text(f'event {event_job.id}', event_color))
+                _print(_indent(1), colorize_text(f'event {event_job.id}', event_color))
             # Skip Jira issues and other details if --events flag is set
             if events:
                 continue
@@ -174,17 +188,17 @@ def print_state_dirs(
                 jira_summary = f'- {jira_job.jira.summary}' if jira_job.jira.summary else ''
                 jira_action_id = jira_job.jira.action_id or 'no action id'
                 issue_line = f'issue {jira_job.jira.id} ({jira_action_id}) {jira_summary}'
-                _print(4, colorize_text(issue_line, issue_color))
+                _print(_indent(2), colorize_text(issue_line, issue_color))
                 if jira_job.jira.url:
-                    _print(4, jira_job.jira.url)
+                    _print(_indent(2), jira_job.jira.url)
                 if jira_job.jira.action_tags:
                     tags_str = ', '.join(jira_job.jira.action_tags)
-                    _print(4, f'tags: {tags_str}')
+                    _print(_indent(2), f'tags: {tags_str}')
                 if jira_job.recipe and jira_job.recipe.url:
                     # Show indicator only when auto_schedule is false
                     auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)
                     auto_schedule_indicator = ' [no-auto-schedule]' if not auto_schedule else ''
-                    _print(4, f'recipe: {jira_job.recipe.url}{auto_schedule_indicator}')
+                    _print(_indent(2), f'recipe: {jira_job.recipe.url}{auto_schedule_indicator}')
                 # Skip schedule/execute details if --issues flag is set
                 if issues:
                     continue
@@ -201,7 +215,7 @@ def print_state_dirs(
                     launch_name = schedule_jobs[0].request.reportportal.get('launch_name', None)
                     if launch_name:
                         _print(
-                            6,
+                            _indent(3),
                             colorize_text(
                                 f'ReportPortal launch: {launch_name}',
                                 reportportal_color))
@@ -209,10 +223,12 @@ def print_state_dirs(
                         launch_description = schedule_jobs[0].request.reportportal.get(
                             'launch_description', None)
                         if full and launch_description:
-                            _print(6, colorize_text(launch_description, reportportal_color))
+                            _print(
+                                _indent(3), colorize_text(
+                                    launch_description, reportportal_color))
                         launch_url = schedule_jobs[0].request.reportportal.get('launch_url', None)
                         if launch_url:
-                            _print(6, launch_url)
+                            _print(_indent(3), launch_url)
                 for schedule_job in schedule_jobs:
                     # Get suite description to print with REQ line if it differs from launch
                     suite_description = None
@@ -224,11 +240,17 @@ def print_state_dirs(
                     if full and suite_description and suite_description != launch_description:
                         # Use cyan color for entire REQ line in full mode
                         req_line = f'{schedule_job.request.id} - {suite_description}'
-                        _print(8, colorize_text(req_line, Colors.CYAN))
-                        status_indent = 10  # Extra indent for status when description is shown
+                        _print(_indent(4), colorize_text(req_line, Colors.CYAN))
+                        # Extra indent for status when description is shown
+                        status_indent = _indent(5)
                     else:
                         # Use cyan color for REQ ID in non-full mode
-                        _print(8, colorize_text(schedule_job.request.id, Colors.CYAN), end='')
+                        _print(
+                            _indent(4),
+                            colorize_text(
+                                schedule_job.request.id,
+                                Colors.CYAN),
+                            end='')
                         status_indent = 0  # Status continues on same line
                     execute_file_prefix = (f'{EXECUTE_FILE_PREFIX}{event_job.event.short_id}-'
                                            f'{event_job.short_id}-{jira_job.jira.id}-'
