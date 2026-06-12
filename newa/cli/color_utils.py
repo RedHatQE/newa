@@ -13,6 +13,7 @@ DEFAULT_COLORS = {
     'BLUE': '\033[38;5;75m',  # medium blue
     'ORANGE': '\033[38;5;208m',
     'PURPLE': '\033[38;5;141m',
+    'CYAN': '\033[36m',
     }
 
 
@@ -29,6 +30,7 @@ class Colors:
     BLUE = DEFAULT_COLORS['BLUE']
     ORANGE = DEFAULT_COLORS['ORANGE']
     PURPLE = DEFAULT_COLORS['PURPLE']
+    CYAN = DEFAULT_COLORS['CYAN']
 
     # Palette colors (for output elements)
     STATE_DIR: Optional[str] = None  # None means use default (no override)
@@ -62,6 +64,7 @@ class Colors:
         cls.BLUE = ''
         cls.ORANGE = ''
         cls.PURPLE = ''
+        cls.CYAN = ''
 
 
 def should_use_colors() -> bool:
