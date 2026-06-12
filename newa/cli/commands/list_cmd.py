@@ -81,7 +81,8 @@ def print_state_dirs(
         refresh: bool = False,
         refresh_all: bool = False,
         specific_state_dir: bool = False,
-        brief: bool = False) -> None:
+        brief: bool = False,
+        full: bool = False) -> None:
     """Print state directories with their event/issue/execution details.
 
     Args:
@@ -93,6 +94,7 @@ def print_state_dirs(
         refresh_all: Refresh all TF request statuses
         specific_state_dir: Whether printing a specific state dir (affects filtering)
         brief: Only show state dir headers (no events/issues/executions)
+        full: Show full details including RP launch and suite descriptions
     """
     def _print(indent: int, s: str, end: str = '\n') -> None:
         print(f'{" " * indent}{s}', end=end)
@@ -182,7 +184,7 @@ def print_state_dirs(
                     # Show indicator only when auto_schedule is false
                     auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)
                     auto_schedule_indicator = ' [no-auto-schedule]' if not auto_schedule else ''
-                    _print(6, f'recipe: {jira_job.recipe.url}{auto_schedule_indicator}')
+                    _print(4, f'recipe: {jira_job.recipe.url}{auto_schedule_indicator}')
                 # Skip schedule/execute details if --issues flag is set
                 if issues:
                     continue
@@ -194,6 +196,7 @@ def print_state_dirs(
                         filter_actions=True))
                 # print RP launch URL, should be common for all execute jobs
                 reportportal_color = Colors.REPORTPORTAL or Colors.PURPLE
+                launch_description = None
                 if schedule_jobs and schedule_jobs[0].request.reportportal:
                     launch_name = schedule_jobs[0].request.reportportal.get('launch_name', None)
                     if launch_name:
@@ -202,12 +205,31 @@ def print_state_dirs(
                             colorize_text(
                                 f'ReportPortal launch: {launch_name}',
                                 reportportal_color))
+                        # Print launch description before URL only if --full is set
+                        launch_description = schedule_jobs[0].request.reportportal.get(
+                            'launch_description', None)
+                        if full and launch_description:
+                            _print(6, colorize_text(launch_description, reportportal_color))
                         launch_url = schedule_jobs[0].request.reportportal.get('launch_url', None)
                         if launch_url:
                             _print(6, launch_url)
-                request_id_color = Colors.REQUEST_ID or Colors.GREEN
                 for schedule_job in schedule_jobs:
-                    _print(6, colorize_text(schedule_job.request.id, request_id_color), end='')
+                    # Get suite description to print with REQ line if it differs from launch
+                    suite_description = None
+                    if schedule_job.request.reportportal:
+                        suite_description = schedule_job.request.reportportal.get(
+                            'suite_description', None)
+                    # Print REQ ID with suite description on same line if --full is set
+                    # and it differs from launch description
+                    if full and suite_description and suite_description != launch_description:
+                        # Use cyan color for entire REQ line in full mode
+                        req_line = f'{schedule_job.request.id} - {suite_description}'
+                        _print(8, colorize_text(req_line, Colors.CYAN))
+                        status_indent = 10  # Extra indent for status when description is shown
+                    else:
+                        # Use cyan color for REQ ID in non-full mode
+                        _print(8, colorize_text(schedule_job.request.id, Colors.CYAN), end='')
+                        status_indent = 0  # Status continues on same line
                     execute_file_prefix = (f'{EXECUTE_FILE_PREFIX}{event_job.event.short_id}-'
                                            f'{event_job.short_id}-{jira_job.jira.id}-'
                                            f'{schedule_job.request.id}')
@@ -243,13 +265,25 @@ def print_state_dirs(
                                 # Apply color formatting to state and result
                                 colored_state = colorize_state(state)
                                 colored_result = colorize_result(result.value)
-                                print(
-                                    f' - state: {colored_state}, '
-                                    f'result: {colored_result}, '
-                                    f'artifacts: {url}{arch_suffix}')
+                                if status_indent > 0:
+                                    # Status on new line with extra indent
+                                    _print(
+                                        status_indent,
+                                        f'state: {colored_state}, '
+                                        f'result: {colored_result}, '
+                                        f'artifacts: {url}{arch_suffix}')
+                                else:
+                                    # Status continues on same line
+                                    print(
+                                        f' - state: {colored_state}, '
+                                        f'result: {colored_result}, '
+                                        f'artifacts: {url}{arch_suffix}')
                     else:
                         # Apply color formatting to 'not executed' state
-                        print(f' - {colorize_state("not executed")}')
+                        if status_indent > 0:
+                            _print(status_indent, f'{colorize_state("not executed")}')
+                        else:
+                            print(f' - {colorize_state("not executed")}')
         print()
 
 
@@ -293,6 +327,12 @@ def print_state_dirs(
     help='Refresh all Testing Farm request statuses before listing (overrides --refresh). '
          'Requires -D/--state-dir, -P/--prev-state-dir, or --event-filter.',
     )
+@click.option(
+    '--full',
+    is_flag=True,
+    default=False,
+    help='Show full details including ReportPortal launch and suite descriptions.',
+    )
 @click.pass_obj
 def cmd_list(
         ctx: CLIContext,
@@ -301,7 +341,8 @@ def cmd_list(
         events: bool,
         issues: bool,
         refresh: bool,
-        refresh_all: bool) -> None:
+        refresh_all: bool,
+        full: bool) -> None:
     """List NEWA execution details from state directories."""
     ctx.enter_command('list')
     # Initialize colors based on environment, terminal capabilities, and config
@@ -350,7 +391,8 @@ def cmd_list(
         issues=issues,
         refresh=refresh,
         refresh_all=refresh_all,
-        specific_state_dir=specific_state_dir)
+        specific_state_dir=specific_state_dir,
+        full=full)
 
     # restore logger level and statedir
     ctx.logger.setLevel(saved_logger_level)
