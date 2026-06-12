@@ -321,7 +321,8 @@ def cmd_search(
             refresh=False,
             refresh_all=False,
             specific_state_dir=False,
-            brief=show_brief)
+            brief=show_brief,
+            full=full)
         # Build description of search criteria
         search_desc_parts = []
         if text:
