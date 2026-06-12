@@ -194,7 +194,7 @@ def print_state_dirs(
                 if jira_job.jira.action_tags:
                     tags_str = ', '.join(jira_job.jira.action_tags)
                     _print(_indent(2), f'tags: {tags_str}')
-                if jira_job.recipe and jira_job.recipe.url:
+                if full and jira_job.recipe and jira_job.recipe.url:
                     # Show indicator only when auto_schedule is false
                     auto_schedule = getattr(jira_job.recipe, 'auto_schedule', True)
                     auto_schedule_indicator = ' [no-auto-schedule]' if not auto_schedule else ''
