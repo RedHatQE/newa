@@ -53,12 +53,12 @@ class Arch(Enum):
         if not preset:
             return _default
         # 'noarch' should be tested on all architectures
-        if Arch('noarch') in preset:
+        if Arch.NOARCH in preset:
             return _default
         # 'multi' is given for container advisories
-        if Arch('multi') in preset:
+        if Arch.MULTI in preset:
             return _default
-        return list(set(_valid).intersection(set(preset)))
+        return [a for a in preset if a in _valid]
 
 
 class ErratumCommentTrigger(Enum):
