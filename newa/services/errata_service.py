@@ -262,6 +262,8 @@ class ErrataTool:
             deduplicated_candidates = candidate_errata
 
         # Create Erratum objects from deduplicated candidates
+        from newa.cli.utils import derive_compose
+
         for candidate in deduplicated_candidates:
             errata.append(
                 Erratum(
@@ -276,7 +278,9 @@ class ErrataTool:
                     builds=candidate['builds'],
                     blocking_builds=candidate['blocking_builds'],
                     blocking_errata=[e.id for e in blocking_errata],
-                    archs=Arch.architectures([Arch(a) for a in candidate['archs']]),
+                    archs=Arch.architectures(
+                        [Arch(a) for a in candidate['archs']],
+                        compose=derive_compose(candidate['release'])),
                     components=candidate['components'],
                     url=urllib.parse.urljoin(self.url, f"/advisory/{event.id}"),
                     people_assigned_to=info_json["people"]["assigned_to"],

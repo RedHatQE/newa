@@ -29,7 +29,7 @@ def _determine_architectures(
         compose: Optional[str]) -> list[Arch]:
     """Determine which architectures to use for scheduling."""
     if arch_options:
-        return Arch.architectures([Arch(a.strip()) for a in arch_options])
+        return Arch.architectures([Arch(a.strip()) for a in arch_options], compose=compose)
 
     if jira_job.erratum and jira_job.erratum.archs:
         return jira_job.erratum.archs
