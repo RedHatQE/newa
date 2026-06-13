@@ -18,3 +18,39 @@ def test_arch_ok():
     assert set(default_list_rhel7) == set(noarch_list_rhel7)
     assert set(default_list) == set(exp_default_list)
     assert set(subset) == set(intersect)
+
+
+def test_arch_rhel6_default():
+    default = Arch.architectures(compose='RHEL-6.10-ZStream')
+    assert set(default) == {Arch.X86_64, Arch.S390X, Arch.I386}
+
+
+def test_arch_rhel6_preset_includes_i386():
+    preset = [Arch.I386, Arch.S390X, Arch.S390, Arch.X86_64]
+    result = Arch.architectures(preset, compose='RHEL-6.10-ZStream')
+    assert Arch.I386 in result
+    assert Arch.X86_64 in result
+    assert Arch.S390X in result
+    assert Arch.S390 not in result
+
+
+def test_arch_rhel6_noarch_returns_default():
+    result = Arch.architectures([Arch.NOARCH], compose='RHEL-6.10-ZStream')
+    assert set(result) == {Arch.X86_64, Arch.S390X, Arch.I386}
+
+
+def test_arch_rhel6_multi_returns_default():
+    result = Arch.architectures([Arch.MULTI], compose='RHEL-6.10-ZStream')
+    assert set(result) == {Arch.X86_64, Arch.S390X, Arch.I386}
+
+
+def test_arch_i386_excluded_without_rhel6():
+    preset = [Arch.I386, Arch.X86_64, Arch.S390X]
+    result = Arch.architectures(preset)
+    assert Arch.I386 not in result
+
+    result_rhel8 = Arch.architectures(preset, compose='RHEL-8.10.0.Z.MAIN')
+    assert Arch.I386 not in result_rhel8
+
+    result_rhel9 = Arch.architectures(preset, compose='RHEL-9.6.0.Z.MAIN')
+    assert Arch.I386 not in result_rhel9

@@ -41,24 +41,24 @@ class Arch(Enum):
                       preset: Optional[list['Arch']] = None,
                       compose: Optional[str] = None) -> list['Arch']:
 
-        _exclude = [Arch.MULTI, Arch.SRPMS, Arch.NOARCH, Arch.I386, Arch.I686, Arch.S390]
-        _all = [Arch(a) for a in Arch.__members__.values() if a not in _exclude]
-        _default = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'aarch64']]
-        _default_rhel7 = [Arch(a) for a in ['x86_64', 's390x', 'ppc64le', 'ppc64']]
+        _valid = [Arch.X86_64, Arch.AARCH64, Arch.S390X, Arch.PPC64LE, Arch.PPC64]
+        _default = [Arch.X86_64, Arch.S390X, Arch.PPC64LE, Arch.AARCH64]
 
-        if compose and re.match('^rhel-7', compose, flags=re.IGNORECASE):
-            default = _default_rhel7
-        else:
-            default = _default
+        if compose and re.match(r'^rhel-6', compose, flags=re.IGNORECASE):
+            _valid = [*_valid, Arch.I386]
+            _default = [Arch.X86_64, Arch.S390X, Arch.I386]
+        elif compose and re.match(r'^rhel-7', compose, flags=re.IGNORECASE):
+            _default = [Arch.X86_64, Arch.S390X, Arch.PPC64LE, Arch.PPC64]
+
         if not preset:
-            return default
+            return _default
         # 'noarch' should be tested on all architectures
         if Arch('noarch') in preset:
-            return default
+            return _default
         # 'multi' is given for container advisories
         if Arch('multi') in preset:
-            return default
-        return list(set(_all).intersection(set(preset)))
+            return _default
+        return list(set(_valid).intersection(set(preset)))
 
 
 class ErratumCommentTrigger(Enum):
