@@ -258,6 +258,7 @@ def main(click_context: click.Context,
             'to identify the source directory.')
 
     # handle state_dir settings
+    state_dir_explicit = bool(state_dir) or prev_state_dir
     if prev_state_dir and state_dir:
         raise Exception('Use either --state-dir or --prev-state-dir')
     if prev_state_dir:
@@ -309,6 +310,7 @@ def main(click_context: click.Context,
         state_dirpath=Path(os.path.expandvars(state_dir)),
         cli_environment={},
         cli_context={},
+        state_dir_explicit=state_dir_explicit,
         prev_state_dirpath=prev_state_dirpath,
         force=force,
         no_comments=no_comments,
