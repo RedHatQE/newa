@@ -391,6 +391,8 @@ def cmd_list(
         ctx.logger.setLevel(logging.WARN)
     # when existing state-dir has been provided, use it
     specific_state_dir = saved_state_dir.is_dir()
+    if ctx.state_dir_explicit and not specific_state_dir:
+        raise click.UsageError(f'State directory does not exist: {saved_state_dir}')
     if specific_state_dir:
         state_dirs = [ctx.state_dirpath]
     # otherwise choose last N dirs or all dirs

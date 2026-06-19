@@ -239,6 +239,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
                                                      else RequestResult(r))
                                                     for r in results])
     new_state_dir: bool = False
+    state_dir_explicit: bool = False
     prev_state_dirpath: Optional[Path] = None
     force: bool = False
     no_comments: bool = False
