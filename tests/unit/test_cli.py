@@ -1000,3 +1000,113 @@ def test_normalize_request_ids():
 
     # Test empty list
     assert normalize_request_ids([]) == []
+
+
+@pytest.fixture
+def _mock_errata_tool_same_compose(monkeypatch):
+    """Patch ErrataTool to return two releases that map to the same compose."""
+
+    def mock_get_request(url: str):
+        return {"mock_key": "mock_response"}
+
+    def mock_et_fetch_info(self, id: str):
+        return {
+            "id": 168676,
+            "synopsis": "testing errata",
+            "content_types": ["rpm"],
+            "people": {
+                "assigned_to": "user@domain.com",
+                "package_owner": "user2@domain.com",
+                "qe_group": "group1@domain.com",
+                "devel_group": "group2@domain.com",
+                },
+            "respin_count": "1",
+            "revision": "2",
+            }
+
+    def mock_et_fetch_releases(self, id: str):
+        return {
+            "RHEL-8.8.0.Z.E4S": [
+                {
+                    "somepkg-1.2-1.el8_8": {
+                        "BaseOS-8.8.0.Z.E4S": {
+                            "x86_64": ["somepkg-1.2-1.el8_8.x86_64.rpm"],
+                            },
+                        },
+                    },
+                ],
+            "RHEL-8.8.0.Z.TUS": [
+                {
+                    "somepkg-1.2-1.el8_8": {
+                        "BaseOS-8.8.0.Z.TUS": {
+                            "x86_64": ["somepkg-1.2-1.el8_8.x86_64.rpm"],
+                            },
+                        },
+                    },
+                ],
+            }
+
+    def mock_et_fetch_blocking_errata(self, id: str):
+        return {}
+
+    def mock_et_fetch_jira_issues(self, id: str):
+        return []
+
+    def mock_et_fetch_system_info(self):
+        return {"errata_version": "v1.5.3"}
+
+    monkeypatch.setenv("NEWA_ET_URL", "https://fake.erratatool.com")
+    monkeypatch.setattr(newa, 'get_request', mock_get_request)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_info', mock_et_fetch_info)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_releases', mock_et_fetch_releases)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_blocking_errata', mock_et_fetch_blocking_errata)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_jira_issues', mock_et_fetch_jira_issues)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_system_info', mock_et_fetch_system_info)
+
+
+def _run_event_command(extra_args=None, env=None):
+    """Run ``newa event --erratum 168676`` in an isolated filesystem."""
+    runner = CliRunner()
+    with runner.isolated_filesystem() as temp_dir:
+        args = ['--state-dir', temp_dir, 'event', '--erratum', '168676']
+        if extra_args:
+            args.extend(extra_args)
+        result = runner.invoke(cli.main, args, env=env)
+        assert result.exit_code == 0
+        return list(Path(temp_dir).glob('event-168676*'))
+
+
+@pytest.mark.usefixtures('_mock_errata_tool_same_compose')
+def test_deduplicate_releases_config_without_cli_flag():
+    """Test that deduplicate_releases from config works without the CLI flag."""
+    event_files = _run_event_command(env={'NEWA_ET_DEDUPLICATE_RELEASES': 'true'})
+    assert len(event_files) == 1, (
+        f"Expected 1 event file after deduplication, got {len(event_files)}: "
+        f"{[f.name for f in event_files]}")
+
+
+@pytest.mark.usefixtures('_mock_errata_tool_same_compose')
+def test_deduplicate_releases_cli_flag_overrides_config():
+    """Test that the --deduplicate-releases CLI flag works independently of config."""
+    event_files = _run_event_command(extra_args=['--deduplicate-releases'])
+    assert len(event_files) == 1, (
+        f"Expected 1 event file after deduplication, got {len(event_files)}: "
+        f"{[f.name for f in event_files]}")
+
+
+@pytest.mark.usefixtures('_mock_errata_tool_same_compose')
+def test_no_deduplication_without_config_or_flag():
+    """Test that without config or CLI flag, no deduplication occurs."""
+    event_files = _run_event_command()
+    assert len(event_files) == 2, (
+        f"Expected 2 event files without deduplication, got {len(event_files)}: "
+        f"{[f.name for f in event_files]}")
+
+
+@pytest.mark.usefixtures('_mock_errata_tool_same_compose')
+def test_no_deduplication_when_config_explicitly_false():
+    """Test that explicitly disabling deduplication via config is respected."""
+    event_files = _run_event_command(env={'NEWA_ET_DEDUPLICATE_RELEASES': 'false'})
+    assert len(event_files) == 2, (
+        f"Expected 2 event files with deduplication explicitly disabled, got {len(event_files)}: "
+        f"{[f.name for f in event_files]}")

@@ -273,7 +273,7 @@ def process_event_jira_keys(ctx: CLIContext, jira_keys: list[str]) -> None:
 @click.option(
     '--deduplicate-releases',
     is_flag=True,
-    default=False,
+    default=None,
     help='Deduplicate erratum releases that map to the same Testing Farm compose',
     )
 @click.option(
