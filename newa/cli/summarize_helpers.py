@@ -139,8 +139,12 @@ def format_launch_test_items(item_type: str, data: dict[str, Any]) -> list[str]:
 
     # Print individual failures
     for failure in data.get('failures', []):
-        issue_keys = ', '.join(failure['issue_ids'])
-        output.append(f'{4 * " "}{failure["name"]} [{issue_keys}]: {failure["comment"]}')
+        valid_keys = [k for k in failure['issue_ids'] if k != JIRA_NONE_ID]
+        if valid_keys:
+            issue_keys = ', '.join(valid_keys)
+            output.append(f'{4 * " "}{failure["name"]} [{issue_keys}]: {failure["comment"]}')
+        else:
+            output.append(f'{4 * " "}{failure["name"]}: {failure["comment"]}')
 
     return output
 

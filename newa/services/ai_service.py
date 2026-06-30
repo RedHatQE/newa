@@ -74,11 +74,13 @@ REPORT GENERATION RULES:
 
     Not a defect test failures
 
-    Grouping Rule: Within each category, group failures by their associated Jira Issue ID. If multiple tests fail due to the same Jira, list the Jira once and provide the count of failing tests.
+    Grouping Rule: Within each category, group failures by their associated Jira Issue ID. If multiple tests fail due to the same Jira, list the Jira once and provide the count of failing tests. For failures without a Jira issue (no issue ID in the input), list them directly without any ID prefix — just the count and comment.
 
     Jira Formatting Rule:
 
         Format: JIRA-ID [Status: <Status>, <Version Info>]: <Count> failing tests - <Consolidated Comment>
+
+        For failures without a Jira issue: <Count> failing tests - <Consolidated Comment> (no JIRA-ID prefix, no brackets)
 
             Never refer Jira issues using full URL (starts with https://issues.redhat.com/) but only the issue ID/key.
 
