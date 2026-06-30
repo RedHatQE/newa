@@ -56,6 +56,7 @@ def get_launch_test_items_data(
                 'page.size': '1024',
                 'page.number': str(page_number),
                 'filter.eq.issueType': TEST_ITEM_TYPE_MAPPING[item_type],
+                'filter.eq.hasChildren': 'false',
                 })
 
         if not test_items or not test_items.get('content'):
@@ -79,6 +80,13 @@ def get_launch_test_items_data(
         return {'count': 0, 'issues': {}, 'failures': []}
 
     count = len(all_content)
+
+    if logger:
+        for i in all_content:
+            logger.debug(
+                f'{item_type}: test item: {i.get("name", "Unknown")}'
+                f' (id={i.get("id", "?")},'
+                f' issueType={i.get("issue", {}).get("issueType", "?")})')
 
     if item_type == 'To Investigate':
         return {'count': count, 'issues': {}, 'failures': []}
@@ -242,11 +250,18 @@ def collect_launch_details(
         output.append(f'Error: Could not retrieve launch details for launch ID {launch_id}')
         return output, set()
 
+    # Log raw RP statistics for debugging
+    if logger:
+        rp_stats = launch_details.get('statistics', {})
+        logger.debug(f'RP raw statistics: {rp_stats}')
+
     # Read test items data for all item types
     all_data = {}
     all_jira_issues = set()
     for item_type in TEST_ITEM_TYPE_MAPPING:
         all_data[item_type] = get_launch_test_items_data(rp, launch_id, item_type, logger)
+        if logger:
+            logger.debug(f'{item_type}: {all_data[item_type]["count"]} items fetched')
         # Collect Jira issue keys (excluding JIRA_NONE_ID)
         for issue_key in all_data[item_type]['issues']:
             if issue_key != JIRA_NONE_ID:
