@@ -33,8 +33,8 @@ def fetch_jira_issues_bulk(jira_connection: JiraConnection,
     if not issue_keys:
         return {}
 
-    # Remove '???' entries if present
-    valid_keys = [k for k in issue_keys if k != '???']
+    # Remove JIRA_NONE_ID entries if present
+    valid_keys = [k for k in issue_keys if k != JIRA_NONE_ID]
     if not valid_keys:
         return {}
 

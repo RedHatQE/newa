@@ -98,7 +98,7 @@ REPORT GENERATION RULES:
 
     Triggers (Include this section only if these exist):
 
-        Missing Jira: Any failure categorized as a bug but missing a Jira ID (often indicated by "???").
+        Missing Jira: Any failure categorized as a bug but missing a Jira ID (indicated by "{jira_none_id}").
 
         Missing Link: Failures missing both a Jira ID and a Pull Request URL.
 
@@ -242,7 +242,8 @@ class AIService:
             The AI model's response text
         """
         if system_prompt is None:
-            system_prompt = SYSTEM_PROMPT
+            from newa.cli.constants import JIRA_NONE_ID
+            system_prompt = SYSTEM_PROMPT.format(jira_none_id=JIRA_NONE_ID)
 
         if not self.api_url:
             raise Exception("AI API URL is not configured")
