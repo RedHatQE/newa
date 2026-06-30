@@ -6,6 +6,7 @@ import textwrap
 from typing import Any, Optional
 
 from newa import ReportPortal
+from newa.cli.constants import JIRA_NONE_ID
 
 # Test item type mapping for ReportPortal
 TEST_ITEM_TYPE_MAPPING = {
@@ -100,7 +101,7 @@ def get_launch_test_items_data(
         failures.append({
             'name': i.get('name', 'Unknown'),
             'comment': comment,
-            'issue_ids': issue_ids or ['???'],
+            'issue_ids': issue_ids or [JIRA_NONE_ID],
             })
 
         # Store issues with their comments (for backward compatibility)
@@ -110,7 +111,7 @@ def get_launch_test_items_data(
                     issues[issue_id] = comment
         else:
             # No issue ID found
-            issues['???'] = comment
+            issues[JIRA_NONE_ID] = comment
 
     return {'count': count, 'issues': issues, 'failures': failures}
 
@@ -242,9 +243,9 @@ def collect_launch_details(
     all_jira_issues = set()
     for item_type in TEST_ITEM_TYPE_MAPPING:
         all_data[item_type] = get_launch_test_items_data(rp, launch_id, item_type, logger)
-        # Collect Jira issue keys (excluding '???')
+        # Collect Jira issue keys (excluding JIRA_NONE_ID)
         for issue_key in all_data[item_type]['issues']:
-            if issue_key != '???':
+            if issue_key != JIRA_NONE_ID:
                 all_jira_issues.add(issue_key)
 
     # Print launch header
