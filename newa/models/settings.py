@@ -53,7 +53,7 @@ class Settings:  # type: ignore[no-untyped-def]
     newa_color_config: str = ''
     et_url: str = ''
     et_enable_comments: bool = False
-    et_deduplicate_releases: bool = False
+    et_deduplicate_releases: bool = True
     rog_enable_comments: bool = False
     jira_enable_comments: bool = True
     rp_url: str = ''
@@ -125,7 +125,8 @@ class Settings:  # type: ignore[no-untyped-def]
                 _get(
                     cp,
                     'erratatool/deduplicate_releases',
-                    'NEWA_ET_DEDUPLICATE_RELEASES')),
+                    'NEWA_ET_DEDUPLICATE_RELEASES',
+                    default='1')),
             rog_enable_comments=_str_to_bool(
                 _get(
                     cp,

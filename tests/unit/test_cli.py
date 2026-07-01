@@ -1095,11 +1095,11 @@ def test_deduplicate_releases_cli_flag_overrides_config():
 
 
 @pytest.mark.usefixtures('_mock_errata_tool_same_compose')
-def test_no_deduplication_without_config_or_flag():
-    """Test that without config or CLI flag, no deduplication occurs."""
+def test_deduplication_enabled_by_default():
+    """Test that deduplication is enabled by default without config or CLI flag."""
     event_files = _run_event_command()
-    assert len(event_files) == 2, (
-        f"Expected 2 event files without deduplication, got {len(event_files)}: "
+    assert len(event_files) == 1, (
+        f"Expected 1 event file with deduplication enabled by default, got {len(event_files)}: "
         f"{[f.name for f in event_files]}")
 
 
