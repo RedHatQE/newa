@@ -3,7 +3,7 @@
 import os
 import re
 import time
-import urllib
+import urllib.parse
 
 # common sleep times to avoid too frequent Jira API requests
 SHORT_SLEEP = 1
