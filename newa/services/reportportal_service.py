@@ -23,6 +23,18 @@ if TYPE_CHECKING:
 HTTP_STATUS_CODES_OK = [200, 201]
 
 
+class ReportPortalError(Exception):
+    """Raised when a ReportPortal API request fails with a non-OK status code."""
+
+    def __init__(self, status_code: int, url: str, response_text: str):
+        self.status_code = status_code
+        self.url = url
+        self.response_text = response_text
+        super().__init__(
+            f"ReportPortal API request failed: {status_code} {url}\n"
+            f"Response: {response_text[:500]}")
+
+
 @define
 class ReportPortal:
     """ReportPortal integration service."""
@@ -34,7 +46,7 @@ class ReportPortal:
     def create_launch(self,
                       launch_name: str,
                       description: str,
-                      attributes: Optional[dict[str, str]] = None) -> Optional[str]:
+                      attributes: Optional[dict[str, str]] = None) -> str:
         query_data: JSON = {
             "attributes": [],
             "name": launch_name,
@@ -45,32 +57,25 @@ class ReportPortal:
             for key, value in attributes.items():
                 query_data['attributes'].append({"key": key.strip(), "value": value.strip()})
         data = self.post_request('/launch', json=query_data)
-        if data:
-            return str(data['id'])
-        return None
+        return str(data['id'])
 
-    def finish_launch(self, launch_uuid: str, description: Optional[str] = None) -> Optional[str]:
+    def finish_launch(self, launch_uuid: str, description: Optional[str] = None) -> str:
         query_data: JSON = {
             'endTime': str(int(time.time() * 1000)),
             "status": "PASSED",
             }
         if description:
             query_data['description'] = description
-        data = self.put_request(f'/launch/{launch_uuid}/finish', json=query_data)
-        if data:
-            return launch_uuid
-        return None
+        self.put_request(f'/launch/{launch_uuid}/finish', json=query_data)
+        return launch_uuid
 
     def update_launch(self,
                       launch_uuid: str,
                       description: Optional[str] = None,
                       attributes: Optional[dict[str, str]] = None,
-                      extend: bool = False) -> Optional[str]:
+                      extend: bool = False) -> str:
         # RP API for update requires launch ID, not UUID
         info = self.get_launch_info(launch_uuid)
-        if not info:
-            raise Exception(
-                f"Could not find launch {launch_uuid} in ReportPortal project {self.project}")
         launch_id = info['id']
         query_data: JSON = {
             "mode": "DEFAULT",
@@ -87,10 +92,8 @@ class ReportPortal:
                 query_data['attributes'] = []
             for key, value in attributes.items():
                 query_data['attributes'].append({"key": key.strip(), "value": value.strip()})
-        data = self.put_request(f'/launch/{launch_id}/update', json=query_data, version=1)
-        if data:
-            return launch_uuid
-        return None
+        self.put_request(f'/launch/{launch_id}/update', json=query_data, version=1)
+        return launch_uuid
 
     def get_launch_info(self, launch_uuid: str) -> 'JSON':
         return self.get_request(f'/launch/uuid/{launch_uuid}')
@@ -107,16 +110,16 @@ class ReportPortal:
         req = requests.get(url, headers=headers)
         if req.status_code in HTTP_STATUS_CODES_OK:
             return req.json()
-        return None
+        raise ReportPortalError(req.status_code, url, req.text)
 
     def check_connection(self, rp_url: str, logger: 'logging.Logger') -> None:
         try:
             rp_user_info = self.get_current_user_info()
             logger.debug(f"ReportPortal user is={rp_user_info['id']}")
-            if not rp_user_info:
-                raise Exception("Could not get ReportPortal user info.")
-        except Exception as e:
-            raise Exception(f"ReportPortal is not available at {rp_url}.") from e
+        except ReportPortalError as e:
+            raise ReportPortalError(
+                e.status_code, e.url,
+                f"ReportPortal is not available at {rp_url}") from e
 
     def check_for_empty_launch(self, launch_uuid: str,
                                logger: Optional['logging.Logger'] = None) -> bool:
@@ -141,7 +144,7 @@ class ReportPortal:
         req = requests.get(url, headers=headers)
         if req.status_code in HTTP_STATUS_CODES_OK:
             return req.json()
-        return None
+        raise ReportPortalError(req.status_code, url, req.text)
 
     def put_request(self,
                     path: str,
@@ -154,7 +157,7 @@ class ReportPortal:
         req = requests.put(url, headers=headers, json=json)
         if req.status_code in HTTP_STATUS_CODES_OK:
             return req.json()
-        return None
+        raise ReportPortalError(req.status_code, url, req.text)
 
     def post_request(self,
                      path: str,
@@ -168,7 +171,7 @@ class ReportPortal:
         req = requests.post(url, headers=headers, json=json)
         if req.status_code in HTTP_STATUS_CODES_OK:
             return req.json()
-        return None
+        raise ReportPortalError(req.status_code, url, req.text)
 
     def delete_request(self,
                        path: str,
@@ -197,8 +200,9 @@ class ReportPortal:
             True if suite was found and removed, False otherwise
         """
         # First get launch info to retrieve numeric launch ID
-        launch_info = self.get_launch_info(launch_uuid)
-        if not launch_info:
+        try:
+            launch_info = self.get_launch_info(launch_uuid)
+        except ReportPortalError:
             if logger:
                 logger.warning(f'Could not find launch {launch_uuid} in ReportPortal')
             return False
@@ -228,9 +232,12 @@ class ReportPortal:
             paginated_params['page.page'] = str(page)
             paginated_params['page.size'] = str(page_size)
 
-            items = self.get_request('/item', params=paginated_params, version=1)
+            try:
+                items = self.get_request('/item', params=paginated_params, version=1)
+            except ReportPortalError:
+                break
 
-            if not items or not items.get('content'):
+            if not items.get('content'):
                 # No more items on this page
                 break
 

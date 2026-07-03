@@ -183,13 +183,11 @@ def _create_or_reuse_rp_launch(
         launch_attrs['erratum'] = str(schedule_jobs[0].erratum.id)
 
     # Create the launch
-    new_launch_uuid: Optional[str] = rp.create_launch(
+    new_launch_uuid = rp.create_launch(
         launch_name, launch_description, attributes=launch_attrs)
-    if not new_launch_uuid:
-        raise Exception('Failed to create RP launch')
 
     ctx.logger.info(f'Created RP launch {new_launch_uuid} for issue {jira_id}')
-    return str(new_launch_uuid)
+    return new_launch_uuid
 
 
 def _update_schedule_jobs_with_launch(

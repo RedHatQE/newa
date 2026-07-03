@@ -4,7 +4,7 @@ from typing import Any
 
 import click
 
-from newa import CLIContext, ExecuteJob
+from newa import CLIContext, ExecuteJob, ReportPortalError
 from newa.cli.constants import JIRA_NONE_ID
 from newa.cli.initialization import initialize_rp_connection
 from newa.cli.summarize_helpers import (
@@ -141,13 +141,8 @@ def process_execute_job_for_summary(
     # Get launch info to convert UUID to ID
     try:
         launch_info = rp.get_launch_info(launch_uuid)
-        if not launch_info:
-            ctx.logger.warning(
-                f'Could not find launch {launch_uuid} in ReportPortal project '
-                f'{ctx.settings.rp_project}')
-            return
         launch_id = launch_info['id']
-    except Exception as e:
+    except ReportPortalError as e:
         ctx.logger.error(f'Error getting launch info for {launch_uuid}: {e}')
         return
 

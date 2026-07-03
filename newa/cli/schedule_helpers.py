@@ -13,6 +13,7 @@ from newa import (
     RawRecipeReportPortalConfigDimension,
     RawRecipeTFConfigDimension,
     RecipeConfig,
+    ReportPortalError,
     Request,
     get_url_basename,
     render_template,
@@ -228,12 +229,12 @@ def _process_jira_job(
 
         # Fetch launch metadata once (outside the request loop)
         ctx.logger.info(f'Fetching ReportPortal launch {rp_launch_uuid}')
-        launch_info = rp.get_launch_info(rp_launch_uuid)
-
-        if not launch_info:
+        try:
+            launch_info = rp.get_launch_info(rp_launch_uuid)
+        except ReportPortalError as e:
             ctx.logger.error(
                 f'ERROR: Could not find ReportPortal launch {rp_launch_uuid} '
-                f'in project {rp.project}')
+                f'in project {rp.project}: {e}')
             sys.exit(1)
 
         # Store metadata to apply to all requests

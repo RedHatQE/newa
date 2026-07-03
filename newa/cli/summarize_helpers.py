@@ -5,7 +5,7 @@ import re
 import textwrap
 from typing import Any, Optional
 
-from newa import ReportPortal
+from newa import ReportPortal, ReportPortalError
 from newa.cli.constants import JIRA_NONE_ID
 
 # Test item type mapping for ReportPortal
@@ -49,17 +49,20 @@ def get_launch_test_items_data(
     total_pages = 1
 
     while page_number <= total_pages:
-        test_items = rp.get_request(
-            '/item',
-            {
-                'filter.eq.launchId': str(launch_id),
-                'page.size': '1024',
-                'page.number': str(page_number),
-                'filter.eq.issueType': TEST_ITEM_TYPE_MAPPING[item_type],
-                'filter.eq.hasChildren': 'false',
-                })
+        try:
+            test_items = rp.get_request(
+                '/item',
+                {
+                    'filter.eq.launchId': str(launch_id),
+                    'page.size': '1024',
+                    'page.number': str(page_number),
+                    'filter.eq.issueType': TEST_ITEM_TYPE_MAPPING[item_type],
+                    'filter.eq.hasChildren': 'false',
+                    })
+        except ReportPortalError:
+            break
 
-        if not test_items or not test_items.get('content'):
+        if not test_items.get('content'):
             break
 
         all_content.extend(test_items['content'])
@@ -244,9 +247,9 @@ def collect_launch_details(
     output = []
 
     # Read launch details
-    launch_details = rp.get_request(f'/launch/{launch_id}')
-
-    if not launch_details:
+    try:
+        launch_details = rp.get_request(f'/launch/{launch_id}')
+    except ReportPortalError:
         output.append(f'Error: Could not retrieve launch details for launch ID {launch_id}')
         return output, set()
 
