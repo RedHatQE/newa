@@ -60,6 +60,10 @@ def get_launch_test_items_data(
                     'filter.eq.hasChildren': 'false',
                     })
         except ReportPortalError:
+            if logger:
+                logger.warning(
+                    f'Failed to fetch page {page_number} of test items '
+                    f'for launch {launch_id}, results may be incomplete')
             break
 
         if not test_items.get('content'):

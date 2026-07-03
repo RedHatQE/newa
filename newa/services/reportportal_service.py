@@ -118,8 +118,11 @@ class ReportPortal:
             logger.debug(f"ReportPortal user is={rp_user_info['id']}")
         except ReportPortalError as e:
             raise ReportPortalError(
-                e.status_code, e.url,
-                f"ReportPortal is not available at {rp_url}") from e
+                e.status_code, rp_url,
+                f"ReportPortal is not available. "
+                f"API response from {e.url}: {e.response_text}") from e
+        except requests.RequestException as e:
+            raise Exception(f"ReportPortal is not available at {rp_url}.") from e
 
     def check_for_empty_launch(self, launch_uuid: str,
                                logger: Optional['logging.Logger'] = None) -> bool:
@@ -235,6 +238,10 @@ class ReportPortal:
             try:
                 items = self.get_request('/item', params=paginated_params, version=1)
             except ReportPortalError:
+                if logger:
+                    logger.warning(
+                        f'Failed to fetch page {page} of test suites '
+                        f'for launch {launch_uuid}, cleanup may be incomplete')
                 break
 
             if not items.get('content'):
