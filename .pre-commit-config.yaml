@@ -16,11 +16,11 @@ repos:
       - id: check-toml
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: "v1.14.1"
+    rev: "v1.20.2"
     hooks:
       - id: mypy
         additional_dependencies:
-          - "click>=8.0.3,!=8.1.4"
+          - "click>=8.0.3,!=8.1.4,<8.2.0"
           - "attrs>=20.3.0"
           - "ruamel.yaml>=0.16.6"
           - "jinja2>=2.11.3"
