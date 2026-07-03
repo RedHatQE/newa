@@ -64,6 +64,7 @@ from newa.services import (
     JiraField,
     JiraIssueLinkType,
     ReportPortal,
+    ReportPortalError,
     RoGTool,
     )
 
@@ -142,6 +143,7 @@ __all__ = [
     'RecipeEnvironment',
     'ReportPortal',
     'ReportPortalAttributes',
+    'ReportPortalError',
     'Request',
     'RequestResult',
     'ResponseContentType',
