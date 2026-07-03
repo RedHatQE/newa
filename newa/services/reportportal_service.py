@@ -117,10 +117,7 @@ class ReportPortal:
             rp_user_info = self.get_current_user_info()
             logger.debug(f"ReportPortal user is={rp_user_info['id']}")
         except ReportPortalError as e:
-            raise ReportPortalError(
-                e.status_code, rp_url,
-                f"ReportPortal is not available. "
-                f"API response from {e.url}: {e.response_text}") from e
+            raise ReportPortalError(e.status_code, e.url, e.response_text) from e
         except requests.RequestException as e:
             raise Exception(f"ReportPortal is not available at {rp_url}.") from e
 

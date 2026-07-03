@@ -253,8 +253,9 @@ def collect_launch_details(
     # Read launch details
     try:
         launch_details = rp.get_request(f'/launch/{launch_id}')
-    except ReportPortalError:
-        output.append(f'Error: Could not retrieve launch details for launch ID {launch_id}')
+    except ReportPortalError as e:
+        output.append(
+            f'Error: Could not retrieve launch details for launch ID {launch_id}: {e}')
         return output, set()
 
     # Log raw RP statistics for debugging
