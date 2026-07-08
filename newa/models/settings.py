@@ -67,6 +67,7 @@ class Settings:  # type: ignore[no-untyped-def]
     jira_project: str = ''
     tf_token: str = ''
     tf_recheck_delay: str = ''
+    use_urls_in_logs: bool = False
     rog_token: str = ''
     ai_api_url: str = ''
     ai_api_token: str = ''
@@ -183,6 +184,11 @@ class Settings:  # type: ignore[no-untyped-def]
                 'testingfarm/recheck_delay',
                 'NEWA_TF_RECHECK_DELAY',
                 "60"),
+            use_urls_in_logs=_str_to_bool(
+                _get(
+                    cp,
+                    'newa/use_urls_in_logs',
+                    'NEWA_USE_URLS_IN_LOGS')),
             rog_token=_get(
                 cp,
                 'rog/token',
