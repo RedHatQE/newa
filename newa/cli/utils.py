@@ -2,8 +2,9 @@
 
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from newa import CLIContext
 from newa.cli.constants import STATEDIR_NAME_PATTERN
@@ -77,6 +78,21 @@ def initialize_state_dir(ctx: CLIContext) -> None:
 def test_file_presence(statedir: Path, prefix: str) -> bool:
     """Check if files with given prefix exist in state directory."""
     return any(child.name.startswith(prefix) for child in statedir.iterdir())
+
+
+def test_filtered_file_presence(
+        ctx: CLIContext,
+        prefix: str,
+        load_jobs: Callable[..., Iterator[Any]]) -> bool:
+    """Check if files with given prefix exist, respecting active filters.
+
+    When filters are active, uses the provided job loader to check only
+    among matching jobs. Otherwise falls back to a fast filesystem check.
+    """
+    if (ctx.action_id_filter_pattern or ctx.issue_id_filter_pattern or
+            ctx.event_filter_pattern or ctx.action_tag_filter_pattern):
+        return next(load_jobs(filter_actions=True), None) is not None
+    return test_file_presence(ctx.state_dirpath, prefix)
 
 
 def apply_release_mapping(string: str,

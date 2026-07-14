@@ -21,7 +21,7 @@ from newa import (
     ScheduleJob,
     )
 from newa.cli.constants import JIRA_NONE_ID, RP_LAUNCH_DESCR_CHARS_LIMIT
-from newa.cli.utils import test_file_presence
+from newa.cli.utils import test_filtered_file_presence
 
 
 def normalize_request_ids(request_ids: list[str]) -> list[str]:
@@ -96,9 +96,10 @@ def _validate_execute_parameters(
 
 def _check_execute_file_conflicts(ctx: CLIContext) -> None:
     """Check for execute file conflicts in state directory."""
-    if (test_file_presence(ctx.state_dirpath, EXECUTE_FILE_PREFIX) and
-            not ctx.continue_execution and
-            not ctx.force):
+    if ctx.continue_execution or ctx.force:
+        return
+
+    if test_filtered_file_presence(ctx, EXECUTE_FILE_PREFIX, ctx.load_execute_jobs):
         ctx.logger.error(
             f'"{EXECUTE_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
             'use --force to override')
