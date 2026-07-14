@@ -7,7 +7,7 @@ import click
 
 from newa import SCHEDULE_FILE_PREFIX, CLIContext
 from newa.cli.schedule_helpers import _process_jira_job
-from newa.cli.utils import initialize_state_dir, test_file_presence
+from newa.cli.utils import initialize_state_dir, test_filtered_file_presence
 
 
 @click.command(name='schedule')
@@ -79,7 +79,8 @@ def cmd_schedule(
     if ctx.settings.newa_clear_on_subcommand:
         ctx.remove_job_files(SCHEDULE_FILE_PREFIX)
 
-    if test_file_presence(ctx.state_dirpath, SCHEDULE_FILE_PREFIX) and not ctx.force:
+    if (not ctx.force and
+            test_filtered_file_presence(ctx, SCHEDULE_FILE_PREFIX, ctx.load_schedule_jobs)):
         ctx.logger.error(
             f'"{SCHEDULE_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
             'use --force to override')

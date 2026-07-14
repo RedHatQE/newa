@@ -20,7 +20,7 @@ from newa.cli.jira_helpers import (
     _parse_issue_mapping,
     _process_issue_config,
     )
-from newa.cli.utils import initialize_state_dir, test_file_presence
+from newa.cli.utils import initialize_state_dir, test_filtered_file_presence
 
 
 @click.command(name='jira')
@@ -105,7 +105,8 @@ def cmd_jira(
         ctx.remove_job_files(JIRA_FILE_PREFIX)
 
     # Check for existing files unless --force is used
-    if test_file_presence(ctx.state_dirpath, JIRA_FILE_PREFIX) and not ctx.force:
+    if (not ctx.force and
+            test_filtered_file_presence(ctx, JIRA_FILE_PREFIX, ctx.load_jira_jobs)):
         ctx.logger.error(
             f'"{JIRA_FILE_PREFIX}" files already exist in state-dir {ctx.state_dirpath}, '
             'use --force to override')
