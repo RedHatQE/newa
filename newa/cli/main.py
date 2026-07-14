@@ -448,6 +448,8 @@ def main(click_context: click.Context,
             operation='copy',
             logger=ctx.logger)
 
+        ctx.new_state_dir = False
+
     def _split(s: str) -> tuple[str, str]:
         """Split key='some value' into a tuple (key, value)."""
         r = re.match(r"""^\s*([a-zA-Z0-9_][a-zA-Z0-9_\-]*)=["']?(.*?)["']?\s*$""", s)
