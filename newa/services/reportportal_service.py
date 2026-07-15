@@ -66,7 +66,13 @@ class ReportPortal:
             }
         if description:
             query_data['description'] = description
-        self.put_request(f'/launch/{launch_uuid}/finish', json=query_data)
+        try:
+            self.put_request(f'/launch/{launch_uuid}/finish', json=query_data)
+        except ReportPortalError as e:
+            if e.status_code == 406 and '40023' in e.response_text:
+                pass
+            else:
+                raise
         return launch_uuid
 
     def update_launch(self,

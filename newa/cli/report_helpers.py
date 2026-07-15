@@ -14,7 +14,6 @@ from newa import (
     ExecuteHow,
     ExecuteJob,
     ReportPortal,
-    ReportPortalError,
     RequestResult,
     RoGCommentTrigger,
     RoGTool,
@@ -198,13 +197,7 @@ def _finalize_rp_launch(
         launch_url: Optional[str],
         launch_description: str) -> None:
     """Finalize ReportPortal launch by finishing and updating description."""
-    try:
-        rp.finish_launch(launch_uuid)
-    except ReportPortalError as e:
-        if e.status_code == 406 and '40023' in e.response_text:
-            ctx.logger.warning(f'Launch {launch_uuid} is already finished, skipping finish step.')
-        else:
-            raise
+    rp.finish_launch(launch_uuid)
     ctx.logger.info(f'Updating launch description, {launch_url}')
     rp.update_launch(launch_uuid, description=launch_description)
 
