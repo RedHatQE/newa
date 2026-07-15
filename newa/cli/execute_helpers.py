@@ -439,5 +439,5 @@ def _finalize_rp_launches(
     if not ctx.no_wait:
         for uuid in launch_list:
             ctx.logger.info(f'Finishing launch {uuid}')
-            rp.finish_launch(uuid)
+            rp.finish_launch(uuid, logger=ctx.logger)
             rp.check_for_empty_launch(uuid, logger=ctx.logger)

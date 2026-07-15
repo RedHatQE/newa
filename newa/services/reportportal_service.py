@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 
 HTTP_STATUS_CODES_OK = [200, 201]
 
+RP_LAUNCH_ALREADY_FINISHED_STATUS = 406
+RP_LAUNCH_ALREADY_FINISHED_ERROR = '40023'
+
 
 class ReportPortalError(Exception):
     """Raised when a ReportPortal API request fails with a non-OK status code."""
@@ -59,7 +62,13 @@ class ReportPortal:
         data = self.post_request('/launch', json=query_data)
         return str(data['id'])
 
-    def finish_launch(self, launch_uuid: str, description: Optional[str] = None) -> str:
+    def finish_launch(self, launch_uuid: str, description: Optional[str] = None,
+                      logger: Optional['logging.Logger'] = None) -> str:
+        """Finish a ReportPortal launch.
+
+        This method is idempotent: if the launch has already been finished,
+        it logs a debug message and returns normally instead of raising.
+        """
         query_data: JSON = {
             'endTime': str(int(time.time() * 1000)),
             "status": "PASSED",
@@ -69,8 +78,13 @@ class ReportPortal:
         try:
             self.put_request(f'/launch/{launch_uuid}/finish', json=query_data)
         except ReportPortalError as e:
-            if e.status_code == 406 and '40023' in e.response_text:
-                pass
+            if e.status_code == RP_LAUNCH_ALREADY_FINISHED_STATUS \
+                    and RP_LAUNCH_ALREADY_FINISHED_ERROR in e.response_text:
+                if logger:
+                    logger.debug(
+                        f'ReportPortal launch {launch_uuid} already finished '
+                        f'(status_code={e.status_code}, '
+                        f'error_code={RP_LAUNCH_ALREADY_FINISHED_ERROR})')
             else:
                 raise
         return launch_uuid
