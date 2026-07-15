@@ -197,7 +197,7 @@ def _finalize_rp_launch(
         launch_url: Optional[str],
         launch_description: str) -> None:
     """Finalize ReportPortal launch by finishing and updating description."""
-    rp.finish_launch(launch_uuid)
+    rp.finish_launch(launch_uuid, logger=ctx.logger)
     ctx.logger.info(f'Updating launch description, {launch_url}')
     rp.update_launch(launch_uuid, description=launch_description)
 
