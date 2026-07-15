@@ -315,9 +315,10 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         transition_name: Optional[str] = None
 
         for field_name, value in fields.items():
-            # Skip Reporter field during updates as it cannot be changed after creation
-            if for_update and field_name == 'Reporter':
-                if self.logger:
+            # Skip Reporter field - handled separately during creation
+            # and cannot be changed after creation
+            if field_name.lower() == 'reporter':
+                if self.logger and for_update:
                     self.logger.debug("Skipping Reporter field (cannot be updated after creation)")
                 continue
 
@@ -491,10 +492,14 @@ class IssueHandler:  # type: ignore[no-untyped-def]
         else:
             raise Exception(f"Unknown issue type {action.type}!")
 
-        # handle fields['Reporter'] already during ticket creation
-        if fields and 'Reporter' in fields and isinstance(fields['Reporter'], str):
-            user_field = self._get_user_field_name()
-            data |= {"reporter": {user_field: self.get_user_name(fields['Reporter'])}}
+        # handle Reporter field during ticket creation (case-insensitive)
+        if fields:
+            reporter_value = next(
+                (v for k, v in fields.items() if k.lower() == 'reporter'), None)
+            if isinstance(reporter_value, str):
+                user_field = self._get_user_field_name()
+                data |= {"reporter": {
+                    user_field: self.get_user_name(reporter_value)}}
 
         try:
             jira_issue = self.connection.create_issue(data)
