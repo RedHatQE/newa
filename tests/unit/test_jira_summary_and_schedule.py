@@ -428,8 +428,8 @@ class TestScheduleAndRecipeFunctionality:
             )
 
         # Verify override log message
-        mock_ctx.logger.info.assert_any_call(
-            f'Scheduling jira job {JIRA_NONE_ID}-123 - overridden by filter.',
+        mock_ctx.logger.debug.assert_any_call(
+            f'Processing jira job {JIRA_NONE_ID}-123 - overridden by filter.',
             )
 
         # Verify schedule job files WERE created (filter overrides auto_schedule=False)
@@ -466,8 +466,8 @@ class TestScheduleAndRecipeFunctionality:
             )
 
         # Verify override log message
-        mock_ctx.logger.info.assert_any_call(
-            f'Scheduling jira job {JIRA_NONE_ID}-123 - overridden by filter.',
+        mock_ctx.logger.debug.assert_any_call(
+            f'Processing jira job {JIRA_NONE_ID}-123 - overridden by filter.',
             )
 
         # Verify schedule job files WERE created (filter overrides auto_schedule=False)
@@ -513,8 +513,8 @@ class TestScheduleAndRecipeFunctionality:
             )
 
         # Verify override log message
-        mock_ctx.logger.info.assert_any_call(
-            f'Scheduling jira job {JIRA_NONE_ID}-123 - overridden by filter.',
+        mock_ctx.logger.debug.assert_any_call(
+            f'Processing jira job {JIRA_NONE_ID}-123 - overridden by filter.',
             )
 
         # Verify schedule job files WERE created (filter overrides auto_schedule=False)
@@ -548,8 +548,8 @@ class TestScheduleAndRecipeFunctionality:
             )
 
         # Verify override log message
-        mock_ctx.logger.info.assert_any_call(
-            f'Scheduling jira job {JIRA_NONE_ID}-123 - overridden by --schedule-all.',
+        mock_ctx.logger.debug.assert_any_call(
+            f'Processing jira job {JIRA_NONE_ID}-123 - overridden by --schedule-all.',
             )
 
         # Verify schedule job files WERE created (--schedule-all overrides auto_schedule=False)
@@ -731,3 +731,146 @@ class TestScheduleAndRecipeFunctionality:
             schedule_job = ScheduleJob.from_yaml_file(schedule_file)
             assert schedule_job.request.testingfarm is not None
             assert schedule_job.request.testingfarm['cli_args'] == '--new-arg value'
+
+    def test_skip_scheduled_skips_already_scheduled_job(self, mock_ctx):
+        """Test that --skip-scheduled skips jira jobs with existing schedule files."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml'),
+            )
+
+        # Create a fake existing schedule file matching this jira job
+        prefix = mock_ctx.get_schedule_job_file_prefix(jira_job)
+        (mock_ctx.state_dirpath / f"{prefix}request-1.yaml").touch()
+
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            skip_scheduled=True,
+            )
+
+        # Verify skip log message
+        mock_ctx.logger.info.assert_any_call(
+            f'Skipping jira job {JIRA_NONE_ID}-123 - already scheduled '
+            f'(1 schedule file(s) found)',
+            )
+
+        # Verify no NEW schedule job files were created (only the pre-existing fake one)
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) == 1
+
+    def test_skip_scheduled_processes_not_yet_scheduled_job(self, mock_ctx):
+        """Test that --skip-scheduled still schedules jobs without existing schedule files."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml'),
+            )
+
+        # No pre-existing schedule files
+
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            skip_scheduled=True,
+            )
+
+        # Verify schedule job files WERE created
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) > 0
+
+    def test_skip_scheduled_with_schedule_all_skips_already_scheduled(self, mock_ctx):
+        """Test --schedule-all --skip-scheduled skips already-scheduled jobs."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml', auto_schedule=False),
+            )
+
+        # Create a fake existing schedule file matching this jira job
+        prefix = mock_ctx.get_schedule_job_file_prefix(jira_job)
+        (mock_ctx.state_dirpath / f"{prefix}request-1.yaml").touch()
+
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            schedule_all=True,
+            skip_scheduled=True,
+            )
+
+        # Verify skip log message (--skip-scheduled takes priority over --schedule-all)
+        mock_ctx.logger.info.assert_any_call(
+            f'Skipping jira job {JIRA_NONE_ID}-123 - already scheduled '
+            f'(1 schedule file(s) found)',
+            )
+
+        # Verify no NEW schedule job files were created
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) == 1
+
+    def test_skip_scheduled_with_schedule_all_processes_not_yet_scheduled(self, mock_ctx):
+        """Test --schedule-all --skip-scheduled schedules not-yet-scheduled auto_schedule=False."""
+        from newa import Compose, Recipe
+        from newa.cli.constants import JIRA_NONE_ID
+        from newa.cli.schedule_helpers import _process_jira_job
+
+        jira_job = JiraJob(
+            event=Event(id='12345', type_=EventType.ERRATUM),
+            erratum=None,
+            compose=Compose('RHEL-9.0'),
+            rog=None,
+            jira=Issue(f'{JIRA_NONE_ID}-123', summary='Test Issue'),
+            recipe=Recipe(url='tests/unit/data/sample_recipe.yaml', auto_schedule=False),
+            )
+
+        # No pre-existing schedule files
+
+        _process_jira_job(
+            ctx=mock_ctx,
+            jira_job=jira_job,
+            arch_options=['x86_64'],
+            fixtures=[],
+            no_reportportal=True,
+            schedule_all=True,
+            skip_scheduled=True,
+            )
+
+        # Verify override log message from --schedule-all
+        mock_ctx.logger.debug.assert_any_call(
+            f'Processing jira job {JIRA_NONE_ID}-123 - overridden by --schedule-all.',
+            )
+
+        # Verify schedule job files WERE created
+        schedule_job_files = list(Path(mock_ctx.state_dirpath).glob('schedule-*'))
+        assert len(schedule_job_files) > 0
