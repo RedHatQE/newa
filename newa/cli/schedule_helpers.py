@@ -184,7 +184,8 @@ def _process_jira_job(
         no_reportportal: bool,
         rp_launch_uuid: Optional[str] = None,
         extra_tf_cli_args: Optional[str] = None,
-        schedule_all: bool = False) -> None:
+        schedule_all: bool = False,
+        skip_scheduled: bool = False) -> None:
     """Process a single jira_job and create schedule jobs."""
     from newa import ScheduleJob
 
@@ -214,11 +215,21 @@ def _process_jira_job(
                 f'--action-tag-filter to override.')
             return
         # Filters are present, so we override auto_schedule
-        ctx.logger.info(
-            f'Scheduling jira job {jira_job.jira.id} - overridden by filter.')
+        ctx.logger.debug(
+            f'Processing jira job {jira_job.jira.id} - overridden by filter.')
     elif schedule_all and not auto_schedule:
-        ctx.logger.info(
-            f'Scheduling jira job {jira_job.jira.id} - overridden by --schedule-all.')
+        ctx.logger.debug(
+            f'Processing jira job {jira_job.jira.id} - overridden by --schedule-all.')
+
+    # Skip jira jobs that have already been scheduled
+    if skip_scheduled:
+        prefix = ctx.get_schedule_job_file_prefix(jira_job)
+        existing = list(ctx.state_dirpath.glob(f"{prefix}*.yaml"))
+        if existing:
+            ctx.logger.info(
+                f'Skipping jira job {jira_job.jira.id} - already scheduled '
+                f'({len(existing)} schedule file(s) found)')
+            return
 
     # Initialize ReportPortal connection if --rp-launch-uuid is provided
     rp = None

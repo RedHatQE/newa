@@ -405,12 +405,18 @@ class CLIContext:  # type: ignore[no-untyped-def]
         return self.state_dirpath / \
             f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}.yaml'
 
+    def get_schedule_job_file_prefix(
+            self,
+            job: 'JiraJob',
+            filename_prefix: str = SCHEDULE_FILE_PREFIX) -> str:
+        return f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-'
+
     def get_schedule_job_filepath(
             self,
             job: 'ScheduleJob',
             filename_prefix: str = SCHEDULE_FILE_PREFIX) -> Path:
         return self.state_dirpath / \
-            f'{filename_prefix}{job.event.short_id}-{job.short_id}-{job.jira.id}-{job.request.id}.yaml'
+            f'{self.get_schedule_job_file_prefix(job)}{job.request.id}.yaml'
 
     def get_execute_job_filepath(
             self,

@@ -47,6 +47,14 @@ from newa.cli.utils import initialize_state_dir, test_filtered_file_presence
     help=('Schedule all jobs including those with schedule: false. '
           'This overrides the auto_schedule attribute from issue-config.'),
     )
+@click.option(
+    '--skip-scheduled',
+    is_flag=True,
+    default=False,
+    help=('Skip jira jobs that have already been scheduled (i.e. have existing '
+          'schedule-* files in the state directory). Useful with --force to avoid '
+          'duplicating already-scheduled test requests.'),
+    )
 @click.pass_obj
 def cmd_schedule(
         ctx: CLIContext,
@@ -55,7 +63,8 @@ def cmd_schedule(
         no_reportportal: bool,
         rp_launch_uuid: Optional[str] = None,
         extra_tf_cli_args: Optional[str] = None,
-        schedule_all: bool = False) -> None:
+        schedule_all: bool = False,
+        skip_scheduled: bool = False) -> None:
     """
     Schedule subcommand - creates schedule jobs from jira jobs.
 
@@ -102,4 +111,5 @@ def cmd_schedule(
             no_reportportal=no_reportportal,
             rp_launch_uuid=rp_launch_uuid,
             extra_tf_cli_args=extra_tf_cli_args,
-            schedule_all=schedule_all)
+            schedule_all=schedule_all,
+            skip_scheduled=skip_scheduled)

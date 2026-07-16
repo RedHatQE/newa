@@ -1849,6 +1849,27 @@ Example (force all tests to run):
 $ newa --prev-state-dir --clear schedule --schedule-all execute report
 ```
 
+#### Option `--skip-scheduled`
+
+Skips jira jobs that have already been scheduled, i.e. those that already have
+corresponding `schedule-*` YAML files in the state directory. This is useful
+when re-running the `schedule` command with `--force` to schedule only new
+jira jobs without duplicating already-scheduled test requests.
+
+This option is orthogonal to `--schedule-all`:
+- `--schedule-all` expands which jobs are eligible (includes `auto_schedule=False`)
+- `--skip-scheduled` shrinks which eligible jobs are processed (excludes already-scheduled)
+- Combined: schedules all not-yet-scheduled jobs, including those with `schedule: false`
+
+Example (schedule only new jira jobs, skip already-scheduled ones):
+```
+$ newa --prev-state-dir --force schedule --skip-scheduled execute report
+```
+
+Example (schedule all not-yet-scheduled jobs including those with schedule: false):
+```
+$ newa --prev-state-dir --force schedule --schedule-all --skip-scheduled execute report
+```
 
 ### Subcommand `cancel`
 
