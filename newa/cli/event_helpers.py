@@ -69,8 +69,7 @@ def parse_event_filter(event_filter: str) -> 'EventFilter':
 def should_filter_by_event(
         event_filter: 'EventFilter',
         job: Union['ArtifactJob', 'JiraJob', 'ScheduleJob', 'ExecuteJob'],
-        logger: logging.Logger,
-        log_message: bool = True) -> bool:
+        logger: logging.Logger) -> bool:
     """
     Check if a job should be filtered out based on event filter pattern.
 
@@ -78,7 +77,6 @@ def should_filter_by_event(
         event_filter: EventFilter with object type, attribute, and pattern
         job: Job to check (ArtifactJob or any subclass: JiraJob, ScheduleJob, ExecuteJob)
         logger: Logger instance for messages
-        log_message: Whether to log info messages (vs debug only)
 
     Returns:
         True if the job should be skipped, False if it should be processed.
@@ -104,30 +102,22 @@ def should_filter_by_event(
 
     # If the artifact type doesn't match the filter, skip it
     if artifact_type is None:
-        if log_message:
-            logger.debug(
-                f"Skipping job {job.id} - it doesn't have a "
-                f"{event_filter.object_type} artifact")
+        logger.debug(
+            f"Skipping job {job.id} - it doesn't have a "
+            f"{event_filter.object_type} artifact")
         return True
 
-    # If we couldn't extract a value, skip it
     if not value_to_check:
-        if log_message:
-            logger.debug(
-                f"Skipping job {job.id} - {event_filter.object_type}.{event_filter.attribute} "
-                "has no value")
+        logger.debug(
+            f"Skipping job {job.id} - {event_filter.object_type}.{event_filter.attribute} "
+            "has no value")
         return True
 
     # Check if the value matches the pattern
     if not event_filter.pattern.fullmatch(value_to_check):
-        if log_message:
-            logger.info(
-                f"Skipping job {job.id} - {event_filter.object_type}.{event_filter.attribute}="
-                f'"{value_to_check}" doesn\'t match the --event-filter regular expression.')
-        else:
-            logger.debug(
-                f"Skipping job {job.id} - {event_filter.object_type}.{event_filter.attribute}="
-                f'"{value_to_check}" doesn\'t match the --event-filter regular expression.')
+        logger.debug(
+            f"Skipping job {job.id} - {event_filter.object_type}.{event_filter.attribute}="
+            f'"{value_to_check}" doesn\'t match the --event-filter regular expression.')
         return True
 
     logger.debug(
