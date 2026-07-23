@@ -293,7 +293,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
         from newa.models.jobs import ArtifactJob
         job = ArtifactJob.from_yaml_file(filepath)
 
-        self.logger.info(f'Discovered event job {job.id} in {filepath}')
+        self.logger.debug(f'Discovered event job {job.id} in {filepath}')
 
         return job
 
@@ -308,13 +308,14 @@ class CLIContext:  # type: ignore[no-untyped-def]
             job = self.load_artifact_job(child.resolve())
             if filter_events and self.should_filter_job(job):
                 continue
+            self.logger.info(f'Processing event job {job.id} from {child.resolve()}')
             yield job
 
     def load_jira_job(self, filepath: Path) -> 'JiraJob':
         from newa.models.jobs import JiraJob
         job = JiraJob.from_yaml_file(filepath)
 
-        self.logger.info(f'Discovered jira job {job.id} in {filepath}')
+        self.logger.debug(f'Discovered jira job {job.id} in {filepath}')
 
         return job
 
@@ -336,13 +337,14 @@ class CLIContext:  # type: ignore[no-untyped-def]
                     continue
                 if self.should_filter_job(job):
                     continue
+            self.logger.info(f'Processing jira job {job.id} from {child.resolve()}')
             yield job
 
     def load_schedule_job(self, filepath: Path) -> 'ScheduleJob':
         from newa.models.jobs import ScheduleJob
         job = ScheduleJob.from_yaml_file(filepath)
 
-        self.logger.info(f'Discovered schedule job {job.id} in {filepath}')
+        self.logger.debug(f'Discovered schedule job {job.id} in {filepath}')
 
         return job
 
@@ -364,13 +366,14 @@ class CLIContext:  # type: ignore[no-untyped-def]
                     continue
                 if self.should_filter_job(job):
                     continue
+            self.logger.info(f'Processing schedule job {job.id} from {child.resolve()}')
             yield job
 
     def load_execute_job(self, filepath: Path) -> 'ExecuteJob':
         from newa.models.jobs import ExecuteJob
         job = ExecuteJob.from_yaml_file(filepath)
 
-        self.logger.info(f'Discovered execute job {job.id} in {filepath}')
+        self.logger.debug(f'Discovered execute job {job.id} in {filepath}')
 
         return job
 
@@ -392,6 +395,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
                     continue
                 if self.should_filter_job(job):
                     continue
+            self.logger.info(f'Processing execute job {job.id} from {child.resolve()}')
             yield job
 
     def get_artifact_job_filepath(
@@ -468,8 +472,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
     def _should_filter_by_action_id(
             self,
-            action_id: Optional[str],
-            log_message: bool = True) -> bool:
+            action_id: Optional[str]) -> bool:
         """Check if job should be filtered out based on action_id pattern.
 
         Returns True if the job should be skipped, False if it should be processed.
@@ -478,14 +481,9 @@ class CLIContext:  # type: ignore[no-untyped-def]
             return False
 
         if not action_id or not self.action_id_filter_pattern.fullmatch(action_id):
-            if log_message:
-                self.logger.info(
-                    f"Skipping action {action_id} as it doesn't match "
-                    "the --action-id-filter regular expression.")
-            else:
-                self.logger.debug(
-                    f"Skipping action {action_id} as it doesn't match "
-                    "the --action-id-filter regular expression.")
+            self.logger.debug(
+                f"Skipping action {action_id} as it doesn't match "
+                "the --action-id-filter regular expression.")
             return True
 
         self.logger.debug(
@@ -495,8 +493,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
     def _should_filter_by_issue_id(
             self,
-            issue_id: Optional[str],
-            log_message: bool = True) -> bool:
+            issue_id: Optional[str]) -> bool:
         """Check if job should be filtered out based on issue_id pattern.
 
         Returns True if the job should be skipped, False if it should be processed.
@@ -505,14 +502,9 @@ class CLIContext:  # type: ignore[no-untyped-def]
             return False
 
         if not issue_id or not self.issue_id_filter_pattern.fullmatch(issue_id):
-            if log_message:
-                self.logger.info(
-                    f"Skipping issue {issue_id} as it doesn't match "
-                    "the --issue-id-filter regular expression.")
-            else:
-                self.logger.debug(
-                    f"Skipping issue {issue_id} as it doesn't match "
-                    "the --issue-id-filter regular expression.")
+            self.logger.debug(
+                f"Skipping issue {issue_id} as it doesn't match "
+                "the --issue-id-filter regular expression.")
             return True
 
         self.logger.debug(
@@ -522,8 +514,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
 
     def _should_filter_by_action_tags(
             self,
-            action_tags: Optional[list[str]],
-            log_message: bool = True) -> bool:
+            action_tags: Optional[list[str]]) -> bool:
         """Check if job should be filtered out based on action_tags filter.
 
         Returns True if the job should be skipped, False if it should be processed.
@@ -537,23 +528,13 @@ class CLIContext:  # type: ignore[no-untyped-def]
         should_filter = should_filter_by_action_tags(action_tags, self.action_tag_filter_pattern)
 
         if should_filter:
-            # Action should be filtered out - log it
             if not action_tags:
-                if log_message:
-                    self.logger.info(
-                        "Skipping action with no tags as --action-tag-filter is specified.")
-                else:
-                    self.logger.debug(
-                        "Skipping action with no tags as --action-tag-filter is specified.")
+                self.logger.debug(
+                    "Skipping action with no tags as --action-tag-filter is specified.")
             else:
-                if log_message:
-                    self.logger.info(
-                        f"Skipping action with tags {action_tags} as they don't match "
-                        "the --action-tag-filter expression.")
-                else:
-                    self.logger.debug(
-                        f"Skipping action with tags {action_tags} as they don't match "
-                        "the --action-tag-filter expression.")
+                self.logger.debug(
+                    f"Skipping action with tags {action_tags} as they don't match "
+                    "the --action-tag-filter expression.")
         else:
             # Action matches - log at debug level
             self.logger.debug(
@@ -578,7 +559,7 @@ class CLIContext:  # type: ignore[no-untyped-def]
         if action_id and action_id in filtered_id_list:
             self.logger.debug(f"Action {action_id} matches the user provided filter.")
             return False
-        self.logger.info(
+        self.logger.debug(
             f"Skipping action {action_id} as it doesn't match the user provided filter.")
         return True
 

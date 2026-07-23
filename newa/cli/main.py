@@ -101,7 +101,7 @@ def _should_filter_yaml_file(
 
             # Create job from already-loaded YAML data (avoids double parsing)
             job = ArtifactJob(**yaml_data)
-            if should_filter_by_event(event_filter_pattern, job, logger, log_message=False):
+            if should_filter_by_event(event_filter_pattern, job, logger):
                 logger.debug(f'Filtering {yaml_file.name} (event filter)')
                 return True
 

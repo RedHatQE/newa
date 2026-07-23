@@ -85,22 +85,12 @@ class TestActionIdFilter:
         """When action_id doesn't match pattern, should filter (return True)."""
         result = ctx_with_action_filter._should_filter_by_action_id('build_x86')
         assert result is True
-        # Check info log was called (log_message=True by default)
-        ctx_with_action_filter.logger.info.assert_called_once()
+        ctx_with_action_filter.logger.debug.assert_called_once()
 
     def test_none_action_id_returns_true(self, ctx_with_action_filter):
         """When action_id is None, should filter (return True)."""
         result = ctx_with_action_filter._should_filter_by_action_id(None)
         assert result is True
-
-    def test_log_message_false_uses_debug(self, ctx_with_action_filter):
-        """When log_message=False, should use debug log for skips."""
-        result = ctx_with_action_filter._should_filter_by_action_id(
-            'build_x86', log_message=False)
-        assert result is True
-        # Check debug log was called, not info
-        ctx_with_action_filter.logger.debug.assert_called_once()
-        ctx_with_action_filter.logger.info.assert_not_called()
 
 
 class TestIssueIdFilter:
@@ -122,22 +112,12 @@ class TestIssueIdFilter:
         """When issue_id doesn't match pattern, should filter (return True)."""
         result = ctx_with_issue_filter._should_filter_by_issue_id('RHEL-99999')
         assert result is True
-        # Check info log was called (log_message=True by default)
-        ctx_with_issue_filter.logger.info.assert_called_once()
+        ctx_with_issue_filter.logger.debug.assert_called_once()
 
     def test_none_issue_id_returns_true(self, ctx_with_issue_filter):
         """When issue_id is None, should filter (return True)."""
         result = ctx_with_issue_filter._should_filter_by_issue_id(None)
         assert result is True
-
-    def test_log_message_false_uses_debug(self, ctx_with_issue_filter):
-        """When log_message=False, should use debug log for skips."""
-        result = ctx_with_issue_filter._should_filter_by_issue_id(
-            'RHEL-99999', log_message=False)
-        assert result is True
-        # Check debug log was called, not info
-        ctx_with_issue_filter.logger.debug.assert_called_once()
-        ctx_with_issue_filter.logger.info.assert_not_called()
 
 
 class TestBothFilters:
@@ -471,32 +451,21 @@ class TestActionTagFilter:
         result = ctx_with_tag_filter._should_filter_by_action_tags(
             ['performance', 'nightly'])
         assert result is True
-        # Check info log was called for skip message (log_message=True by default)
-        ctx_with_tag_filter.logger.info.assert_called_once()
+        ctx_with_tag_filter.logger.debug.assert_called_once()
 
     def test_none_action_tags_returns_true(self, ctx_with_tag_filter):
         """When action_tags is None, should filter (return True)."""
         result = ctx_with_tag_filter._should_filter_by_action_tags(None)
         assert result is True
-        # Check info log was called with "no tags" message (log_message=True by default)
-        ctx_with_tag_filter.logger.info.assert_called_once_with(
+        ctx_with_tag_filter.logger.debug.assert_called_once_with(
             "Skipping action with no tags as --action-tag-filter is specified.")
 
     def test_empty_action_tags_returns_true(self, ctx_with_tag_filter):
         """When action_tags is empty list, should filter (return True)."""
         result = ctx_with_tag_filter._should_filter_by_action_tags([])
         assert result is True
-        # Check info log was called with "no tags" message (log_message=True by default)
-        ctx_with_tag_filter.logger.info.assert_called_once_with(
+        ctx_with_tag_filter.logger.debug.assert_called_once_with(
             "Skipping action with no tags as --action-tag-filter is specified.")
-
-    def test_log_message_false_uses_debug(self, ctx_with_tag_filter):
-        """When log_message=False, should use debug log for skips."""
-        result = ctx_with_tag_filter._should_filter_by_action_tags(
-            ['performance', 'nightly'], log_message=False)
-        assert result is True
-        # Check debug log was called (logging now always uses debug)
-        ctx_with_tag_filter.logger.debug.assert_called_once()
 
     def test_pattern_matches_full_tag_only(self, ctx_with_tag_filter):
         """Pattern should match full tag, not partial."""
