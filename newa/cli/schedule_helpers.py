@@ -121,9 +121,10 @@ def _render_request_attributes(
     evaluated during build_requests() and contains references to variables
     that may be None, which would cause errors if re-rendered.
     """
-    for attr in ("reportportal", "tmt", "testingfarm", "environment", "context", "compose"):
-        # compose value is a string, not dict
-        if attr == 'compose':
+    for attr in ("reportportal", "tmt", "testingfarm", "environment", "context",
+                 "compose", "description"):
+        # compose and description values are strings, not dicts
+        if attr in ('compose', 'description'):
             value = getattr(request, attr, '')
             new_value = render_template(str(value), **jinja_vars)
             if new_value:

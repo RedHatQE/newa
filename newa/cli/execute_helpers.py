@@ -155,7 +155,8 @@ def _prepare_launch_description(
         issue_url = urllib.parse.urljoin(jira_url, f"/browse/{jira_id}")
         launch_description += f'[{jira_id}]({issue_url}): '
 
-    launch_description += f'{len(schedule_jobs)} request(s) in total'
+    rp_count = sum(1 for j in schedule_jobs if j.request.reportportal)
+    launch_description += f'{rp_count} request(s) in total'
     return launch_description
 
 
@@ -427,10 +428,12 @@ def _finalize_rp_launches(
     # Update launch descriptions for each Jira ID with TF request URLs if --no-wait
     if ctx.no_wait:
         for jira_id, execute_jobs in jira_execute_job_mapping.items():
-            if not execute_jobs[0].request.reportportal:
+            # Not all jobs in the group may have reportportal configured
+            rp_job = _find_rp_job(execute_jobs)
+            if not rp_job or not rp_job.request.reportportal:
                 continue
 
-            launch_uuid = execute_jobs[0].request.reportportal.get('launch_uuid', '')
+            launch_uuid = rp_job.request.reportportal.get('launch_uuid', '')
             if not launch_uuid:
                 continue
 
@@ -438,13 +441,15 @@ def _finalize_rp_launches(
             launch_description = _prepare_launch_description(
                 jira_id, execute_jobs, ctx.settings.jira_url)
 
-            # Add TF request URLs for this Jira ID's execute jobs
+            # Add TF request URLs for this Jira ID's RP-enabled execute jobs
             rp_chars_limit = (ctx.settings.rp_launch_descr_chars_limit or
                               RP_LAUNCH_DESCR_CHARS_LIMIT)
             rp_launch_descr_updated = launch_description + "\n"
             rp_launch_descr_dots = True
 
             for execute_job in execute_jobs:
+                if not execute_job.request.reportportal:
+                    continue
                 req_link = f"[{execute_job.request.id}]({execute_job.execution.request_api})\n"
                 if len(req_link) + len(rp_launch_descr_updated) < int(rp_chars_limit):
                     rp_launch_descr_updated += req_link

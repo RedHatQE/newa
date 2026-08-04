@@ -158,6 +158,64 @@ def test_reportportal_null_in_fixtures():
         assert r.reportportal is None
 
 
+def test_description_attribute():
+    """description attribute is set on requests and merged correctly."""
+    config = RecipeConfig.from_yaml_file(
+        Path('tests/unit/data/recipe_description.yaml').absolute())
+    reqs = list(config.build_requests(initial_config={}, cli_config={}))
+
+    # 3 scenarios = 3 requests
+    assert len(reqs) == 3
+
+    full_req = next(r for r in reqs if r.context.get('scenario') == 'full')
+    smoke_req = next(r for r in reqs if r.context.get('scenario') == 'smoke')
+    minimal_req = next(r for r in reqs if r.context.get('scenario') == 'minimal')
+
+    # description is set from dimensions
+    assert full_req.description == 'full scenario'
+    assert smoke_req.description == 'smoke scenario'
+    # minimal has no description
+    assert minimal_req.description is None
+
+    # smoke has RP disabled, full and minimal have RP enabled
+    assert smoke_req.reportportal is None
+    assert full_req.reportportal is not None
+    assert minimal_req.reportportal is not None
+
+    # minimal has explicit suite_description in reportportal
+    assert minimal_req.reportportal['suite_description'] == 'explicit suite desc'
+
+
+def test_description_missing_backward_compat():
+    """Requests from old YAMLs without description field work correctly."""
+    config = RecipeConfig.from_yaml_file(
+        Path('tests/unit/data/sample_recipe.yaml').absolute())
+    reqs = list(config.build_requests(initial_config={}, cli_config={}))
+
+    # old recipe has no description attribute — defaults to None
+    for r in reqs:
+        assert r.description is None
+
+
+def test_description_merge_as_string():
+    """description merges as a string — later value overrides earlier."""
+    config = RecipeConfig(fixtures={}, dimensions={})
+
+    merged = config.merge_combination_data((
+        {'description': 'from fixtures'},
+        {'description': 'from dimension'},
+        ))
+    assert merged['description'] == 'from dimension'
+
+    # description alongside other keys
+    merged = config.merge_combination_data((
+        {'description': 'test', 'compose': 'Fedora-1'},
+        {'compose': 'Fedora-2'},
+        ))
+    assert merged['description'] == 'test'
+    assert merged['compose'] == 'Fedora-2'
+
+
 def test_merge_combination_data_preserves_existing_behavior():
     """Existing merge behavior is preserved after adding null handling."""
     config = RecipeConfig(fixtures={}, dimensions={})

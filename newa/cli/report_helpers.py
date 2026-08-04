@@ -62,11 +62,18 @@ def execute_jobs_summary(ctx: CLIContext,
             'uuid': job.execution.request_uuid,
             'url': url,
             'plan': job.request.tmt.get('plan', '')}
+        desc = getattr(job.request, 'description', '') or ''
         if job.request.reportportal:
-            results[job.request.id]['suite_desc'] = job.request.reportportal.get(
-                'suite_description', '')
+            results[job.request.id]['suite_desc'] = (
+                desc
+                or job.request.reportportal.get('suite_description', '')
+                or '')
+            results[job.request.id]['has_rp'] = 'yes'
         else:
-            results[job.request.id]['suite_desc'] = ''
+            rp_note = '(not reported to RP)'
+            results[job.request.id]['suite_desc'] = (
+                f'{desc} {rp_note}' if desc else rp_note)
+            results[job.request.id]['has_rp'] = ''
     if not jira_id.startswith(JIRA_NONE_ID):
         jira_url = ctx.settings.jira_url
         issue_url = urllib.parse.urljoin(
@@ -76,11 +83,17 @@ def execute_jobs_summary(ctx: CLIContext,
             summary += f'[{jira_id}]({issue_url}): '
         else:
             summary += f'{jira_id}: '
-    summary += f'{len(execute_jobs)} request(s) in total:'
+    if target == 'ReportPortal':
+        rp_count = sum(1 for r in results.values() if r['has_rp'])
+        summary += f'{rp_count} request(s) in total:'
+    else:
+        summary += f'{len(execute_jobs)} request(s) in total:'
     for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
         # it would be nice to use hyperlinks in launch description however we
         # would hit launch description length limit. Therefore using plain text
         if target == 'ReportPortal':
+            if not results[req]['has_rp']:
+                continue
             new_line = "{id}: {state}, {result}".format(**results[req])
         else:
             # replace "|" with unicode "Fullwidth Vertical Line"
