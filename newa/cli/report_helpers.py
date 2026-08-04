@@ -20,6 +20,7 @@ from newa import (
     TFRequest,
     )
 from newa.cli.constants import JIRA_NONE_ID
+from newa.cli.execute_helpers import _find_rp_job
 from newa.cli.initialization import issue_transition
 from newa.utils.helpers import short_sleep
 
@@ -42,7 +43,7 @@ def execute_jobs_summary(ctx: CLIContext,
     magic_number = len(separator + msg_next_comment)
     # add configured RP description if available;
     # not all jobs in the group may have reportportal configured
-    rp_job = next((j for j in execute_jobs if j.request.reportportal), None)
+    rp_job = _find_rp_job(execute_jobs)
     if rp_job and rp_job.request.reportportal:
         launch_description = rp_job.request.reportportal.get(
             'launch_description', '')
@@ -183,7 +184,7 @@ def _get_rp_launch_details(
     launch_url = None
 
     # Not all jobs in the group may have reportportal configured
-    rp_job = next((j for j in execute_jobs if j.request.reportportal), None)
+    rp_job = _find_rp_job(execute_jobs)
     if rp_job and rp_job.request.reportportal:
         launch_uuid = rp_job.request.reportportal.get('launch_uuid', None)
         launch_url = rp_job.request.reportportal.get('launch_url', None)
