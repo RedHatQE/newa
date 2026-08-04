@@ -40,9 +40,11 @@ def execute_jobs_summary(ctx: CLIContext,
     summary = ''
     msg_next_comment = 'TBC in the next comment...'
     magic_number = len(separator + msg_next_comment)
-    # add configured RP description if available
-    if execute_jobs[0].request.reportportal:
-        launch_description = execute_jobs[0].request.reportportal.get(
+    # add configured RP description if available;
+    # not all jobs in the group may have reportportal configured
+    rp_job = next((j for j in execute_jobs if j.request.reportportal), None)
+    if rp_job and rp_job.request.reportportal:
+        launch_description = rp_job.request.reportportal.get(
             'launch_description', '')
         summary += launch_description + 2 * separator if launch_description else ''
     # prepare content with individual results
@@ -168,9 +170,11 @@ def _get_rp_launch_details(
     launch_uuid = None
     launch_url = None
 
-    if execute_jobs[0].request.reportportal:
-        launch_uuid = execute_jobs[0].request.reportportal.get('launch_uuid', None)
-        launch_url = execute_jobs[0].request.reportportal.get('launch_url', None)
+    # Not all jobs in the group may have reportportal configured
+    rp_job = next((j for j in execute_jobs if j.request.reportportal), None)
+    if rp_job and rp_job.request.reportportal:
+        launch_uuid = rp_job.request.reportportal.get('launch_uuid', None)
+        launch_url = rp_job.request.reportportal.get('launch_url', None)
 
     return launch_uuid, launch_url
 

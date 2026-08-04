@@ -129,13 +129,25 @@ def _create_jira_job_mapping(
     return jira_job_mapping
 
 
+def _find_rp_job(
+        jobs: Union[list[ScheduleJob], list[ExecuteJob]]) -> Optional[
+            Union[ScheduleJob, ExecuteJob]]:
+    """Find the first job in a group that has reportportal configured."""
+    for job in jobs:
+        if job.request.reportportal:
+            return job
+    return None
+
+
 def _prepare_launch_description(
         jira_id: str,
         schedule_jobs: Union[list[ScheduleJob], list[ExecuteJob]],
         jira_url: str) -> str:
     """Prepare the launch description for ReportPortal."""
+    # Not all jobs in the group may have reportportal configured
+    rp_job = _find_rp_job(schedule_jobs)
     launch_description: str = str(
-        schedule_jobs[0].request.reportportal.get('launch_description', ''))
+        rp_job.request.reportportal.get('launch_description', '') if rp_job else '')
     if launch_description:
         launch_description += '<br><br>'
 
@@ -154,8 +166,13 @@ def _create_or_reuse_rp_launch(
         schedule_jobs: list[ScheduleJob],
         launch_description: str) -> Optional[str]:
     """Create or reuse a ReportPortal launch for the given jira_id."""
+    # Not all jobs in the group may have reportportal configured
+    rp_job = _find_rp_job(schedule_jobs)
+    if not rp_job or not rp_job.request.reportportal:
+        return None
+
     # Check if launch already exists
-    existing_launch_uuid: Optional[str] = schedule_jobs[0].request.reportportal.get(
+    existing_launch_uuid: Optional[str] = rp_job.request.reportportal.get(
         'launch_uuid', None)
     if existing_launch_uuid:
         ctx.logger.debug(
@@ -163,11 +180,11 @@ def _create_or_reuse_rp_launch(
         return str(existing_launch_uuid)
 
     # Create new launch
-    launch_name: str = str(schedule_jobs[0].request.reportportal['launch_name']).strip()
+    launch_name: str = str(rp_job.request.reportportal['launch_name']).strip()
     if not launch_name:
         raise Exception("RP launch name is not configured")
 
-    launch_attrs: dict[str, Any] = schedule_jobs[0].request.reportportal.get(
+    launch_attrs: dict[str, Any] = rp_job.request.reportportal.get(
         'launch_attributes', {})
     launch_attrs.update({'newa_statedir': str(ctx.state_dirpath)})
 
@@ -201,6 +218,8 @@ def _update_schedule_jobs_with_launch(
     """Update schedule jobs with launch UUID and URL."""
     launch_url = rp.get_launch_url(launch_uuid)
     for job in jira_schedule_job_mapping[jira_id]:
+        if not job.request.reportportal:
+            continue
         job.request.reportportal['launch_uuid'] = launch_uuid
         job.request.reportportal['launch_url'] = launch_url
         ctx.save_schedule_job(job)
@@ -306,9 +325,11 @@ def _process_rp_launches_and_jira_updates(
 
     for jira_id, schedule_jobs in jira_schedule_job_mapping.items():
         job = schedule_jobs[0]
+        # Not all jobs in the group may have reportportal configured
+        rp_job = _find_rp_job(schedule_jobs)
 
         # Handle ReportPortal launch creation
-        if schedule_jobs[0].request.reportportal:
+        if rp_job and rp_job.request.reportportal:
             launch_description = _prepare_launch_description(jira_id, schedule_jobs, jira_url)
             launch_uuid = _create_or_reuse_rp_launch(
                 ctx, rp, jira_id, schedule_jobs, launch_description)
@@ -316,7 +337,7 @@ def _process_rp_launches_and_jira_updates(
             if launch_uuid:
                 launch_list.append(launch_uuid)
                 # Update schedule jobs if launch was just created
-                if launch_uuid != schedule_jobs[0].request.reportportal.get('launch_uuid', None):
+                if launch_uuid != rp_job.request.reportportal.get('launch_uuid', None):
                     launch_url = _update_schedule_jobs_with_launch(
                         ctx, rp, jira_id, schedule_jobs, launch_uuid, jira_schedule_job_mapping)
                 else:
