@@ -70,9 +70,8 @@ def execute_jobs_summary(ctx: CLIContext,
                 or '')
             results[job.request.id]['has_rp'] = 'yes'
         else:
-            rp_note = '(not reported to RP)'
-            results[job.request.id]['suite_desc'] = (
-                f'{desc} {rp_note}' if desc else rp_note)
+            results[job.request.id]['state'] += ' (not reported to RP)'
+            results[job.request.id]['suite_desc'] = desc
             results[job.request.id]['has_rp'] = ''
     if not jira_id.startswith(JIRA_NONE_ID):
         jira_url = ctx.settings.jira_url
