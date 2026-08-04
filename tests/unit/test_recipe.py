@@ -147,6 +147,17 @@ def test_merge_combination_data_null_override():
     assert merged['reportportal'] is None
 
 
+def test_reportportal_null_in_fixtures():
+    """reportportal: null in fixtures disables RP for all combinations."""
+    config = RecipeConfig.from_yaml_file(
+        Path('tests/unit/data/recipe_rp_null_fixtures.yaml').absolute())
+    reqs = list(config.build_requests(initial_config={}, cli_config={}))
+
+    assert len(reqs) == 2
+    for r in reqs:
+        assert r.reportportal is None
+
+
 def test_merge_combination_data_preserves_existing_behavior():
     """Existing merge behavior is preserved after adding null handling."""
     config = RecipeConfig(fixtures={}, dimensions={})
