@@ -940,7 +940,17 @@ In this example, `full` scenario combinations will report to ReportPortal as con
 
 **Note:** Once `reportportal` is set to `null` for a combination, it cannot be overridden back to a non-null value by later merge sources, including CLI-provided options (e.g. `--fixture`). This is a deliberate deviation from the general priority rule where CLI options and fixtures normally take precedence. The rationale is that an explicit `null` represents an intentional opt-out from RP reporting for that combination.
 
-To disable ReportPortal reporting for all combinations at once, use the `schedule --no-reportportal` CLI option instead.
+To disable ReportPortal reporting for all combinations of a recipe, set `reportportal: null` in `fixtures`. This has the same effect as the `schedule --no-reportportal` CLI option but is scoped to the recipe itself:
+
+```yaml
+fixtures:
+    reportportal: null
+    tmt:
+        url: https://github.com/example/tests.git
+        ...
+```
+
+Alternatively, use the `schedule --no-reportportal` CLI option to disable RP reporting globally across all recipes in a scheduling run.
 
 #### when
 A condition that restricts when an item should be used. See "In-config tests" section for examples.

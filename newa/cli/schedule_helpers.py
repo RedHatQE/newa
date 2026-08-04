@@ -101,8 +101,8 @@ def _configure_recipe(
         for architecture in architectures:
             config.dimensions['arch'].append({'arch': architecture})
 
-    # If RP launch name is not specified in the recipe, set it based on the recipe filename
-    if not config.fixtures.get('reportportal', None):
+    # If RP is not mentioned in the recipe, set a default; explicit null is preserved
+    if 'reportportal' not in config.fixtures:
         config.fixtures['reportportal'] = RawRecipeReportPortalConfigDimension()
 
     # Populate default for config.fixtures['reportportal']['launch_name']
