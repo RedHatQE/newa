@@ -917,6 +917,31 @@ Example:
       trigger: build
 ```
 
+##### Disabling ReportPortal for specific combinations
+
+To disable ReportPortal reporting for specific combinations, set `reportportal: null` in the corresponding dimension or adjustment item. This overrides any `reportportal` configuration inherited from `fixtures`.
+
+Example:
+```yaml
+fixtures:
+    reportportal:
+        launch_name: "my-tests"
+        launch_description: "My test launch"
+dimensions:
+    scenario:
+        - context:
+              scenario: full
+        - context:
+              scenario: smoke
+          reportportal: null    # no RP reporting for smoke test combinations
+```
+
+In this example, `full` scenario combinations will report to ReportPortal as configured in `fixtures`, while `smoke` scenario combinations will skip RP reporting entirely.
+
+**Note:** Once `reportportal` is set to `null` for a combination, it cannot be overridden back to a non-null value by later merge sources, including CLI-provided options (e.g. `--fixture`). This is a deliberate deviation from the general priority rule where CLI options and fixtures normally take precedence. The rationale is that an explicit `null` represents an intentional opt-out from RP reporting for that combination.
+
+To disable ReportPortal reporting for all combinations at once, use the `schedule --no-reportportal` CLI option instead.
+
 #### when
 A condition that restricts when an item should be used. See "In-config tests" section for examples.
 
