@@ -870,6 +870,42 @@ Example:
     swtpm: yes
 ```
 
+#### description
+
+Defines a human-readable description for a combination. This attribute is independent of the `reportportal` section and can be used even when ReportPortal reporting is disabled for the combination.
+
+The `description` value appears in the Jira comment summary table. When ReportPortal reporting is enabled, it also serves as a fallback for `reportportal.suite_description` if that is not explicitly set.
+
+For the Jira comment table, the value is resolved in this order:
+ 1. `description` (this attribute)
+ 2. `reportportal.suite_description` (legacy fallback)
+ 3. `(not reported to RP)` for combinations with `reportportal: null`
+
+For the ReportPortal suite description, the value is resolved in this order:
+ 1. `reportportal.suite_description` (explicit RP setting)
+ 2. `description` (fallback)
+
+The `description` attribute supports Jinja2 templates.
+
+Example:
+```yaml
+fixtures:
+    description: "tier {{ CONTEXT.tier }} on {{ ENVIRONMENT.CITY }}"
+dimensions:
+    scenario:
+        - context:
+              tier: 1
+          environment:
+              CITY: Brno
+        - context:
+              tier: 2
+          environment:
+              CITY: Boston
+          reportportal: null
+```
+
+In this example, both combinations have a description shown in the Jira comment. The second combination additionally shows `(not reported to RP)` after its description since it has ReportPortal disabled.
+
 #### how
 
 Optional attribute. Defines if requests should be run through Testing Farm or `tmt`. The default value is `testingfarm`.

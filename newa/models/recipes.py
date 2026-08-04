@@ -66,6 +66,7 @@ class RawRecipeConfigDimension(TypedDict, total=False):
     context: RecipeContext
     environment: RecipeEnvironment
     compose: Optional[str]
+    description: Optional[str]
     arch: Optional[Arch]
     tmt: Optional[RawRecipeTmtConfigDimension]
     testingfarm: Optional[RawRecipeTFConfigDimension]
@@ -74,7 +75,8 @@ class RawRecipeConfigDimension(TypedDict, total=False):
 
 
 _RecipeConfigDimensionKey = Literal['context', 'environment',
-                                    'tmt', 'testingfarm', 'reportportal', 'when', 'arch']
+                                    'tmt', 'testingfarm', 'reportportal',
+                                    'when', 'arch', 'description']
 
 
 # A list of recipe config dimensions, as stored in a recipe config file.

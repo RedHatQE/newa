@@ -106,6 +106,7 @@ class Request(Cloneable, Serializable):
     environment: RecipeEnvironment = field(factory=dict)
     arch: Optional[Arch] = field(converter=Arch, default=Arch.X86_64)
     compose: Optional[str] = None
+    description: Optional[str] = None
     tmt: Optional[RawRecipeTmtConfigDimension] = None
     testingfarm: Optional[RawRecipeTFConfigDimension] = None
     reportportal: Optional[RawRecipeReportPortalConfigDimension] = None
@@ -156,12 +157,13 @@ class Request(Cloneable, Serializable):
                         '--context',
                         'newa_report_rp=1',
                         ]
-            if self.reportportal.get("suite_description", None):
+            desc = (self.reportportal.get("suite_description", None)
+                    or self.description)
+            if desc:
                 # we are intentionally using suite_description, not launch description
                 # as due to SUITE_PER_PLAN enabled the launch description will end up
                 # in suite description as well once
                 # https://github.com/teemtee/tmt/issues/2990 is implemented
-                desc = self.reportportal.get("suite_description")
                 command += [
                     '--tmt-environment',
                     f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION="{desc}"'"""]
@@ -268,12 +270,13 @@ class Request(Cloneable, Serializable):
                 'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH': f"{self.reportportal['launch_name']}",
                 'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN': '1',
                 })
-            if self.reportportal.get("suite_description", None):
+            desc = (self.reportportal.get("suite_description", None)
+                    or self.description)
+            if desc:
                 # we are intentionally using suite_description, not launch description
                 # as due to SUITE_PER_PLAN enabled the launch description will end up
                 # in suite description as well once
                 # https://github.com/teemtee/tmt/issues/2990 is implemented
-                desc = self.reportportal.get("suite_description")
                 environment['TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION'] = f"{desc}"
             if rp_test_param_filter:
                 environment['TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES'] = \
