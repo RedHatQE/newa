@@ -117,12 +117,19 @@ def test_merge_combination_data_null_override():
     """Direct test of merge_combination_data with null values."""
     config = RecipeConfig(fixtures={}, dimensions={})
 
-    # null overrides an existing dict
+    # null overrides an existing dict; other keys still merge normally
     merged = config.merge_combination_data((
-        {'reportportal': {'launch_name': 'test'}},
-        {'reportportal': None},
+        {
+            'reportportal': {'launch_name': 'test'},
+            'environment': {'name': 'dev'},
+            },
+        {
+            'reportportal': None,
+            'environment': {'name': 'prod'},
+            },
         ))
     assert merged['reportportal'] is None
+    assert merged['environment'] == {'name': 'prod'}
 
     # null is sticky — later dict cannot un-null
     merged = config.merge_combination_data((

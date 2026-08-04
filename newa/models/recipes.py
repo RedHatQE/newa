@@ -381,10 +381,11 @@ class RecipeConfig(Cloneable, Serializable):
                 dest[key] = copy.deepcopy(src[key])  # type: ignore[literal-required]
             # Null override is intentionally limited to 'reportportal' key;
             # other keys (context, environment, etc.) are not safe to null out.
-            elif key == 'reportportal' and src[key] is None:  # type: ignore[literal-required]
+            # Once null, the value stays null (sticky) — later records cannot
+            # un-null it, which prevents the isinstance checks below from raising.
+            elif key == 'reportportal' and (
+                    src[key] is None or dest[key] is None):  # type: ignore[literal-required]
                 dest[key] = None  # type: ignore[literal-required]
-            elif key == 'reportportal' and dest[key] is None:  # type: ignore[literal-required]
-                pass
             elif isinstance(dest[key], dict) and isinstance(src[key], dict):  # type: ignore[literal-required]
                 dest[key].update(src[key])  # type: ignore[literal-required]
             elif isinstance(dest[key], list) and isinstance(src[key], list):  # type: ignore[literal-required]
