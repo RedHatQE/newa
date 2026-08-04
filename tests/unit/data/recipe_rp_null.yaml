@@ -1,0 +1,26 @@
+fixtures:
+    tmt:
+        url: https://github.com/RedHatQE/newa.git
+        ref: main
+        path: demodata
+        plan: /plan/plan1
+    reportportal:
+        launch_name: "test-launch"
+        launch_description: "test description"
+    context:
+        tier: 1
+    environment:
+        DESCRIPTION: "fixtures description"
+    compose: Fedora-fix
+dimensions:
+    arch:
+       - context:
+             arch: x86_64
+       - context:
+             arch: aarch64
+    scenario:
+       - context:
+             scenario: full
+       - context:
+             scenario: smoke
+         reportportal: null
