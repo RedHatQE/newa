@@ -126,6 +126,10 @@ def _render_request_attributes(
         # compose and description values are strings, not dicts
         if attr in ('compose', 'description'):
             value = getattr(request, attr, '')
+            # skip when None or empty — str(None) would produce the string
+            # "None" which then gets saved as the attribute value
+            if not value:
+                continue
             new_value = render_template(str(value), **jinja_vars)
             if new_value:
                 setattr(request, attr, new_value)
