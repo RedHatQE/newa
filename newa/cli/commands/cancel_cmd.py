@@ -6,12 +6,21 @@ import sys
 import click
 
 from newa import CLIContext, ExecuteHow, RequestResult, TFRequest
-from newa.cli.utils import initialize_state_dir
+from newa.cli.execute_helpers import normalize_request_ids
+from newa.cli.utils import initialize_state_dir, test_patterns_match
 
 
 @click.command(name='cancel')
+@click.option('--request',
+              '-R',
+              default=[],
+              multiple=True,
+              help=('Cancel NEWA request with the given request ID. '
+                    'Can be specified multiple times. '
+                    'Example: --request REQ-1.2.1'),
+              )
 @click.pass_obj
-def cmd_cancel(ctx: CLIContext) -> None:
+def cmd_cancel(ctx: CLIContext, request: list[str]) -> None:
     """Cancel running Testing Farm requests."""
     ctx.enter_command('cancel')
 
@@ -30,7 +39,15 @@ def cmd_cancel(ctx: CLIContext) -> None:
         raise ValueError("TESTING_FARM_API_TOKEN not set!")
     os.environ["TESTING_FARM_API_TOKEN"] = tf_token
 
+    normalized_request = normalize_request_ids(list(request))
+
     for execute_job in ctx.load_execute_jobs(filter_actions=True):
+        if normalized_request:
+            (match, _) = test_patterns_match(
+                execute_job.request.id, normalized_request)
+            if not match:
+                continue
+
         if execute_job.request.how == ExecuteHow.TESTING_FARM:
             tf_request = TFRequest(
                 api=execute_job.execution.request_api,

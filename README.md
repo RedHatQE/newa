@@ -1944,11 +1944,19 @@ $ newa --prev-state-dir --force schedule --schedule-all --skip-scheduled execute
 
 ### Subcommand `cancel`
 
-Cancels TF reqests found in `execute-` files within the given state-dir.
+Cancels TF requests found in `execute-` files within the given state-dir.
 
 Example:
 ```
 $ newa --prev-state-dir cancel
+```
+
+#### Option `--request`, `-R`
+This option can be used to cancel a specific NEWA request, specified by the request ID (e.g. `--request REQ-1.2.1`). This option can be used multiple times.
+
+Example:
+```
+newa --prev-state-dir cancel -R REQ-1.2.1 -R REQ-2.2.2
 ```
 
 ### Subcommand `execute`

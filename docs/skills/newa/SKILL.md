@@ -184,9 +184,9 @@ newa -D /path/to/state-dir --action-id-filter 'task_regression_swtpm' report
 
 ## Cancelling Testing Farm Requests
 
-The `cancel` subcommand cancels all running Testing Farm requests in a state-dir.
+The `cancel` subcommand cancels running Testing Farm requests in a state-dir.
 
-**Critical: always scope `cancel` with a filter** to avoid cancelling requests you want to keep running — same rules as `report` and `summarize`:
+**Critical: always scope `cancel` with a filter or `--request`** to avoid cancelling requests you want to keep running — same rules as `report` and `summarize`:
 
 ```
 # Cancel requests for a specific Jira task
@@ -194,6 +194,15 @@ newa -D /path/to/state-dir --issue-id-filter BASEQESEC-12345 cancel
 
 # Cancel requests for a specific action type
 newa -D /path/to/state-dir --action-id-filter 'task_image_mode' cancel
+
+# Cancel specific request(s) by ID
+newa -D /path/to/state-dir cancel -R REQ-1.2.1
+
+# Cancel multiple specific requests
+newa -D /path/to/state-dir cancel -R REQ-1.2.1 -R REQ-2.2.2
+
+# Cancel all requests scoped to a Jira task
+newa -D /path/to/state-dir --issue-id-filter JIRA-12345 cancel
 ```
 
 **When unscoped `cancel` is acceptable:** only when you intentionally want to cancel **all** TF requests in the state-dir.
@@ -239,4 +248,6 @@ https://raw.githubusercontent.com/RedHatQE/newa/refs/heads/main/README.md
 | Report results (scoped) | `newa -D <path> --issue-id-filter <KEY> report` |
 | Report progress | `newa -D <path> --issue-id-filter <KEY> report --progress` |
 | Summarize (scoped) | `newa -D <path> --issue-id-filter <KEY> summarize` |
-| Cancel requests | `newa -D <path> cancel` |
+| Cancel all requests | `newa -D <path> cancel` |
+| Cancel specific request | `newa -D <path> cancel -R <REQ-ID>` |
+| Cancel requests (scoped) | `newa -D <path> --issue-id-filter <KEY> cancel` |
