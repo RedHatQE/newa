@@ -2570,9 +2570,9 @@ newa event --compose CentOS-Stream-9 jira --issue-config config.yaml schedule --
 x86_64  aarch64  ppc64le  s390x
 ```
 
-## Claude Code Agent
+## Claude Code Skill
 
-NEWA includes a specialized agent definition for [Claude Code](https://claude.com/claude-code) that enables AI-assisted test orchestration and workflow management. The agent understands NEWA's command structure and can help with:
+NEWA includes a skill definition for [Claude Code](https://claude.com/claude-code) that enables AI-assisted test orchestration and workflow management. The skill teaches Claude Code how to use NEWA's command structure and can help with:
 
 - Listing and monitoring test runs
 - Starting new test execution sessions for errata, composes, and merge requests
@@ -2580,30 +2580,29 @@ NEWA includes a specialized agent definition for [Claude Code](https://claude.co
 - Rescheduling failed or errored tests
 - Finalizing test results and generating reports
 
-### Enabling the Agent Locally
+### Installing the Skill
 
-To use the NEWA agent with Claude Code:
+To use the NEWA skill with Claude Code:
 
-1. **Locate the agent definition**: The agent configuration is stored in `docs/agents/claude-newa.md`
+1. **Locate the skill definition**: The skill is stored in `docs/skills/newa/SKILL.md`
 
-2. **Deploy to Claude Code**: Copy the agent definition to your Claude Code agents directory:
+2. **Deploy to Claude Code**: Copy the skill directory to your Claude Code skills directory:
    ```bash
-   mkdir -p ~/.claude/agents
-   cp docs/agents/claude-newa.md ~/.claude/agents/newa.md
+   mkdir -p ~/.claude/skills
+   cp -r docs/skills/newa ~/.claude/skills/
    ```
 
-3. **Configure Claude Code**: Claude Code will automatically detect and load the agent from the `~/.claude/agents/` directory
+3. **Verify installation**: Claude Code will automatically detect and load the skill from the `~/.claude/skills/` directory. You can invoke it with the `/newa` slash command.
 
-### Using the Agent
+### Using the Skill
 
-Once configured, you can interact with the NEWA agent by addressing it directly with `@agent-newa` followed by your request:
+Once installed, you can invoke the skill using the `/newa` slash command, or Claude Code will automatically use it when your request involves NEWA test workflows:
 
-- `@agent-newa list the most recent NEWA runs`
-- `@agent-newa start NEWA tests for erratum RHSA-2024:12345`
-- `@agent-newa what's the status of my NEWA tests?`
-- `@agent-newa reschedule all failed tests from the last run`
+- `Start tests for opencryptoki erratum 12345, use newa-stage command.`
+- `What is the current testing status of erratum 12345?`
+- `Reschedule all failed requests from the Image mode testing task.`
 
-The agent will execute appropriate NEWA commands and provide detailed status updates throughout the test execution workflow.
+Claude Code will execute appropriate NEWA commands and provide detailed status updates throughout the test execution workflow.
 
 ## Contribute
 
