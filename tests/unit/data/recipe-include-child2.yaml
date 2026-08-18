@@ -6,3 +6,10 @@ fixtures:
     environment:
         DESCRIPTION: "child2 description"
         LAST_CHILD: 2
+dimensions:
+    arch:
+       - context:
+             arch: ppc64le
+    stream:
+       - context:
+             stream: child2
