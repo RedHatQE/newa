@@ -53,6 +53,20 @@ def test_recipe_include():
     assert r.fixtures["context"]["verbosity"] == 99
 
 
+def test_recipe_include_dimensions():
+    # 'variant' dimension is a new axis contributed by child1
+    assert [v["context"]["variant"] for v in r.dimensions["variant"]] == \
+        ["Server", "Workstation"]
+    # 'arch' dimension is defined in both parent and child2; the base (parent)
+    # recipe wins on the name collision, so child2's ppc64le is discarded
+    assert [v["context"]["arch"] for v in r.dimensions["arch"]] == \
+        ["x86_64", "aarch64"]
+    # 'stream' dimension is defined in child1 and child2 but not in the parent;
+    # child2 is included after child1, so the later include wins
+    assert [v["context"]["stream"] for v in r.dimensions["stream"]] == \
+        ["child2"]
+
+
 def test_issue_config_conditional_include_enabled():
     # Load config with ENABLE_FEATURE set to True
     config = IssueConfig.read_file(

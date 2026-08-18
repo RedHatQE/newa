@@ -338,6 +338,10 @@ class RecipeConfig(Cloneable, Serializable):
         # process each include
         fixtures_combination = []
         adjustments = []
+        # Dimensions merged from includes, keyed by dimension name. Later definitions
+        # (subsequent includes, and finally the base recipe) override earlier ones with
+        # the same name; new names are added as additional dimensions.
+        dimensions: RawRecipeConfigDimensions = {}
         for source in base_config.includes:
             if stack and source in stack:
                 raise Exception(
@@ -351,6 +355,8 @@ class RecipeConfig(Cloneable, Serializable):
                 fixtures_combination.append(source_config.fixtures)
             if source_config.adjustments:
                 adjustments.extend(source_config.adjustments)
+            if source_config.dimensions:
+                dimensions.update(source_config.dimensions)
         if base_config.fixtures:
             fixtures_combination.append(base_config.fixtures)
         if base_config.adjustments:
@@ -359,6 +365,10 @@ class RecipeConfig(Cloneable, Serializable):
             merged_fixtures = base_config.merge_combination_data(tuple(fixtures_combination))
             base_config.fixtures = copy.deepcopy(merged_fixtures)
         base_config.adjustments = copy.deepcopy(adjustments)
+        # base recipe dimensions override same-named dimensions from includes
+        if dimensions:
+            dimensions.update(base_config.dimensions or {})
+            base_config.dimensions = copy.deepcopy(dimensions)
         return base_config
 
     def merge_combination_data(
