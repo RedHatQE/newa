@@ -121,8 +121,21 @@ def _render_request_attributes(
     evaluated during build_requests() and contains references to variables
     that may be None, which would cause errors if re-rendered.
     """
-    for attr in ("reportportal", "tmt", "testingfarm", "environment", "context",
-                 "compose", "description"):
+    # Render the template variables (ENVIRONMENT and CONTEXT) first. Their values
+    # may themselves be Jinja templates (e.g. BUILDS: "{{ ROG.builds|join(' ') }}"),
+    # and other attributes (e.g. tmt/testingfarm cli_args) may reference them via
+    # filters like 'split' that would otherwise operate on the raw template text.
+    # jinja_vars['ENVIRONMENT']/['CONTEXT'] alias request.environment/request.context
+    # (see _prepare_jinja_vars_for_request), so rendering them in place resolves both
+    # the variables and the corresponding request attributes at once.
+    for var in ("ENVIRONMENT", "CONTEXT"):
+        mapping = jinja_vars.get(var) or {}
+        for (key, value) in mapping.items():
+            if key == 'when':
+                continue
+            mapping[key] = render_template(str(value), **jinja_vars)
+
+    for attr in ("reportportal", "tmt", "testingfarm", "compose", "description"):
         # compose and description values are strings, not dicts
         if attr in ('compose', 'description'):
             value = getattr(request, attr, '')
