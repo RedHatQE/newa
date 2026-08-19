@@ -81,10 +81,10 @@ def cmd_execute(
         ctx: CLIContext,
         workers: int,
         _continue: bool,
-        request: list[str],
+        request: tuple[str, ...],
         no_wait: bool,
-        restart_request: list[str],
-        restart_result: list[str],
+        restart_request: tuple[str, ...],
+        restart_result: tuple[str, ...],
         rp_purge: bool) -> None:
     """
     Execute scheduled test jobs.

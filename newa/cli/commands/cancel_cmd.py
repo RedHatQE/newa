@@ -19,7 +19,7 @@ from newa.cli.utils import initialize_state_dir, test_patterns_match
                     'Example: --request REQ-1.2.1'),
               )
 @click.pass_obj
-def cmd_cancel(ctx: CLIContext, request: list[str]) -> None:
+def cmd_cancel(ctx: CLIContext, request: tuple[str, ...]) -> None:
     """Cancel running Testing Farm requests."""
     ctx.enter_command('cancel')
 
