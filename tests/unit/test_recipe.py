@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from newa import RecipeConfig
+from newa import Compose, RecipeConfig
 
 
 def test_recipeconfig_ok():
@@ -249,3 +249,32 @@ def test_merge_combination_data_preserves_existing_behavior():
     assert 'cond1' in merged['when']
     assert 'cond2' in merged['when']
     assert 'and' in merged['when']
+
+
+def test_when_original_namespace_matches_untransformed_compose():
+    """A 'when' guard can reference ORIGINAL.COMPOSE even when the combination
+    transforms COMPOSE into a derived value."""
+    config = RecipeConfig.from_yaml_file(
+        Path('tests/unit/data/recipe_original_namespace.yaml').absolute())
+
+    # RHEL compose: both the standard and the image-mode combinations apply
+    reqs = list(config.build_requests(
+        initial_config={},
+        cli_config={},
+        jinja_vars={'COMPOSE': Compose(id='RHEL-9.4.0-Nightly')}))
+    modes = sorted(r.context['mode'] for r in reqs)
+    assert modes == ['image', 'standard']
+
+
+def test_when_original_namespace_filters_non_matching_compose():
+    """The image-mode combination is dropped when ORIGINAL.COMPOSE does not match."""
+    config = RecipeConfig.from_yaml_file(
+        Path('tests/unit/data/recipe_original_namespace.yaml').absolute())
+
+    # non-RHEL compose: only the standard combination applies
+    reqs = list(config.build_requests(
+        initial_config={},
+        cli_config={},
+        jinja_vars={'COMPOSE': Compose(id='CentOS-Stream-9-Nightly')}))
+    modes = sorted(r.context['mode'] for r in reqs)
+    assert modes == ['standard']

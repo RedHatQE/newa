@@ -733,6 +733,32 @@ PLANET=Earth, STATE=India, CITY=Delhi, STREET="Chandni Chowk"
 
 Individual dimension values may also contain additional keys like `context`, `reportportal` etc. Individual options are described below.
 
+##### `when` conditions in `adjustments` and `dimensions`
+
+A `when` condition restricts the applicability of an adjustment or dimension value. It is evaluated for each generated combination and has access to the following variables:
+
+- `EVENT`, `ERRATUM`, `COMPOSE`, `ROG` - event data. **Note:** these reflect the combination's own (possibly transformed) values. If the combination overrides an attribute — e.g. `compose: "{{ COMPOSE.id | replace('Nightly', 'image-mode') }}"` — then `COMPOSE` in the same combination's `when` refers to that overridden value, which at evaluation time is still an unrendered template.
+- `CONTEXT`, `ENVIRONMENT`, `ARCH` - the combination's `context`, `environment` and `arch` values.
+- `ORIGINAL` - a namespace exposing the **untransformed** event values as they arrived from the event, regardless of any combination overrides: `ORIGINAL.EVENT`, `ORIGINAL.ERRATUM`, `ORIGINAL.COMPOSE`, `ORIGINAL.ROG`.
+
+Use `ORIGINAL` when a condition needs to guard on the incoming event while the combination transforms the corresponding attribute. For example, applying an "image mode" variant only for RHEL composes while also rewriting the compose id:
+
+```yaml
+dimensions:
+  matrix:
+    # Standard mode
+    - context:
+        deployment-mode: standard
+    # Image mode - only for RHEL composes
+    - compose: "{{ COMPOSE.id | replace('Nightly', 'image-mode') }}"
+      context:
+        deployment-mode: image
+        distro: "{{ COMPOSE.id | replace('Nightly', 'image-mode') }}"
+      when: ORIGINAL.COMPOSE.id is match("RHEL-.*")
+```
+
+Here `when: COMPOSE.id is match("RHEL-.*")` would **not** work, because `COMPOSE` in this combination is the transformed `compose` value (an unrendered `{{ ... }}` template at evaluation time). `ORIGINAL.COMPOSE.id` correctly refers to the incoming compose id.
+
 #### Jinja2 Template Support in Recipes
 
 Recipe files support Jinja2 template strings at multiple levels, allowing for dynamic recipe generation and improved reusability. Templates can be used in four ways:

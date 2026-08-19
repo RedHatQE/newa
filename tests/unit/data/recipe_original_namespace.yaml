@@ -1,0 +1,19 @@
+fixtures:
+    tmt:
+        url: https://github.com/example/tests.git
+        ref: main
+    reportportal:
+        launch_name: test-launch
+dimensions:
+    matrix:
+        # Standard Mode
+        - context:
+              mode: standard
+        # Image Mode - only applicable for RHEL composes. The 'when' guard must
+        # reference the ORIGINAL (untransformed) compose, because the combination
+        # transforms COMPOSE into a derived value.
+        - compose: "{{ COMPOSE.id | replace('Nightly', 'image-mode') }}"
+          context:
+              mode: image
+              distro: "{{ COMPOSE.id | replace('Nightly', 'image-mode') }}"
+          when: ORIGINAL.COMPOSE.id is match("RHEL-.*")
