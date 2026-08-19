@@ -454,8 +454,24 @@ class RecipeConfig(Cloneable, Serializable):
                 compose: Optional[str] = combination.get('compose', '')
                 arch = combination.get('arch', None)
                 # Start with jinja_vars (EVENT, ERRATUM, ROG, etc), then override with
-                # combination-specific values (COMPOSE, ENVIRONMENT, CONTEXT, ARCH)
+                # combination-specific values (COMPOSE, ENVIRONMENT, CONTEXT, ARCH).
+                # These top-level names reflect the combination's own (possibly
+                # transformed) values, preserving backward compatibility with existing
+                # 'when' conditions that guard on dimension/adjustment values.
                 test_vars = dict(jinja_vars or {})
+                # The ORIGINAL namespace exposes the untransformed event values
+                # (EVENT, ERRATUM, COMPOSE, ROG) so a condition can guard on the incoming
+                # event even when the combination overrides those attributes with derived
+                # templates, e.g. compose: "{{ COMPOSE.id | replace('Nightly', 'x') }}".
+                # Combination overrides are raw, unrendered templates at this point, so
+                # rendering them here would be unsafe (they may reference event-type
+                # specific data that is only valid once the condition itself passes).
+                # ORIGINAL.COMPOSE is the event Compose instance (Optional[Compose]),
+                # matching the type of the top-level COMPOSE built below, so conditions
+                # can use the same attribute access (e.g. .id) on either. jinja_vars is
+                # always built internally with a fixed key set, so it never carries an
+                # 'ORIGINAL' key of its own.
+                test_vars['ORIGINAL'] = dict(jinja_vars or {})
                 test_vars.update({
                     'COMPOSE': Compose(compose) if compose else None,
                     'ARCH': arch.value if arch else None,
