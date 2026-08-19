@@ -4,6 +4,7 @@ import datetime
 import os
 import sys
 import urllib.parse
+from collections.abc import Sequence
 from typing import Any, Optional, Union
 
 import jira
@@ -24,7 +25,7 @@ from newa.cli.constants import JIRA_NONE_ID, RP_LAUNCH_DESCR_CHARS_LIMIT
 from newa.cli.utils import test_filtered_file_presence
 
 
-def normalize_request_ids(request_ids: list[str]) -> list[str]:
+def normalize_request_ids(request_ids: Sequence[str]) -> list[str]:
     """
     Normalize request IDs by replacing non-breaking hyphens with regular hyphens.
 
@@ -40,7 +41,7 @@ def normalize_request_ids(request_ids: list[str]) -> list[str]:
     return [req_id.replace('\u2011', '-') for req_id in request_ids]
 
 
-def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[RequestResult]:
+def sanitize_restart_result(ctx: CLIContext, results: Sequence[str]) -> list[RequestResult]:
     """Validate and sanitize restart result values."""
     sanitized = []
     for result in results:
@@ -74,8 +75,8 @@ def sanitize_restart_result(ctx: CLIContext, results: list[str]) -> list[Request
 def _validate_execute_parameters(
         ctx: CLIContext,
         _continue: bool,
-        restart_request: list[str],
-        restart_result: list[str]) -> None:
+        restart_request: Sequence[str],
+        restart_result: Sequence[str]) -> None:
     """Validate and configure execute parameters."""
     ctx.continue_execution = _continue
 
