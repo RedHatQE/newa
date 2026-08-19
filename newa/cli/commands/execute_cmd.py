@@ -20,9 +20,10 @@ from newa.cli.execute_helpers import (
     _initialize_execute_environment,
     _process_rp_launches_and_jira_updates,
     _validate_execute_parameters,
+    normalize_request_ids,
     )
 from newa.cli.initialization import initialize_et_connection, initialize_rp_connection
-from newa.cli.utils import initialize_state_dir
+from newa.cli.utils import initialize_state_dir, test_patterns_match
 
 
 @click.command(name='execute')
@@ -55,6 +56,13 @@ from newa.cli.utils import initialize_state_dir
                     'Can be specified multiple times. Implies --continue. '
                     'Example: --restart-result error'),
               )
+@click.option('--request',
+              default=[],
+              multiple=True,
+              help=('Execute only the NEWA request with the given request ID. '
+                    'Can be specified multiple times. '
+                    'Example: --request REQ-1.2.1'),
+              )
 @click.option(
     '--no-wait',
     is_flag=True,
@@ -73,6 +81,7 @@ def cmd_execute(
         ctx: CLIContext,
         workers: int,
         _continue: bool,
+        request: list[str],
         no_wait: bool,
         restart_request: list[str],
         restart_result: list[str],
@@ -109,6 +118,14 @@ def cmd_execute(
 
     # Load schedule jobs and validate there are jobs to execute
     schedule_job_list = list(ctx.load_schedule_jobs(filter_actions=True))
+
+    # Filter by --request if specified
+    if request:
+        normalized_request = normalize_request_ids(list(request))
+        schedule_job_list = [
+            job for job in schedule_job_list
+            if test_patterns_match(job.request.id, normalized_request)[0]]
+
     if not schedule_job_list:
         ctx.logger.warning('Warning: There are no previously scheduled jobs to execute')
         return

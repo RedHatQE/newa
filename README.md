@@ -1951,12 +1951,12 @@ Example:
 $ newa --prev-state-dir cancel
 ```
 
-#### Option `--request`, `-R`
+#### Option `--request`
 This option can be used to cancel a specific NEWA request, specified by the request ID (e.g. `--request REQ-1.2.1`). This option can be used multiple times.
 
 Example:
 ```
-newa --prev-state-dir cancel -R REQ-1.2.1 -R REQ-2.2.2
+newa --prev-state-dir cancel --request REQ-1.2.1 --request REQ-2.2.2
 ```
 
 ### Subcommand `execute`
@@ -2038,6 +2038,16 @@ newa --prev-state-dir execute -R REQ-1.2.1 -R REQ-2.2.2 report
 
 #### Option `--restart-result`, `-r`
 This option can be used to reschedule NEWA requests that have ended with a particular result - `passed, failed, error`. For example, `--restart-result error`. Result can be either `passed`, `failed` or `error` where 'error' means that test execution hasn't been finished correctly. This option can be used multiple times. Implies `--continue`.
+
+#### Option `--request`
+This option can be used to execute only specific NEWA requests, specified by the request ID (e.g. `--request REQ-1.2.1`). All other scheduled requests are skipped. This option can be used multiple times.
+
+Unlike `--restart-request`, this option does not imply `--continue` and works on fresh executions as well.
+
+Example:
+```
+newa --prev-state-dir schedule execute --request REQ-1.2.1 report
+```
 
 #### Option `--rp-purge`, `-X`
 
