@@ -12,7 +12,6 @@ from newa.cli.utils import initialize_state_dir, test_patterns_match
 
 @click.command(name='cancel')
 @click.option('--request',
-              '-R',
               default=[],
               multiple=True,
               help=('Cancel NEWA request with the given request ID. '
