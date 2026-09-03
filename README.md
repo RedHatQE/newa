@@ -2157,7 +2157,7 @@ It processes multiple files with the `execute-` prefix from the state directory.
 
 The AI service configuration must be provided in the `newa.conf` file under the `[ai]` section or via environment variables `NEWA_AI_API_URL`, `NEWA_AI_API_TOKEN`, and `NEWA_AI_API_MODEL`.
 
-The summarize command supports both OpenAI-compatible APIs and Google Gemini APIs. The API type is automatically detected based on the URL.
+The summarize command supports OpenAI-compatible APIs, Google Gemini APIs, and Google Vertex AI. The API type is automatically detected based on the URL.
 
 #### AI Configuration
 
@@ -2240,6 +2240,38 @@ For enhanced security, you can use OAuth2 authentication instead of API keys wit
    ```
 
 **Note**: If both `api_token` and `oauth2_client_secret_file` are configured, OAuth2 takes precedence for Gemini APIs.
+
+**Google Vertex AI Configuration:**
+
+For Google Cloud Vertex AI, NEWA uses Application Default Credentials (ADC) for authentication. The API type is auto-detected when the URL contains `aiplatform.googleapis.com`.
+
+1. **Install Vertex AI dependencies**:
+   ```bash
+   pip install newa[vertex]
+   ```
+
+2. **Set up Application Default Credentials**:
+   ```bash
+   gcloud auth application-default login
+   ```
+   Alternatively, set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to point to a service account key file.
+
+3. **Configure NEWA**:
+   ```
+   [ai]
+   api_url = https://REGION-aiplatform.googleapis.com/v1/projects/PROJECT_ID/locations/REGION
+   api_model = gemini-2.5-flash
+   ```
+
+   Replace `REGION` with your GCP region (e.g., `us-central1`) and `PROJECT_ID` with your GCP project ID. NEWA will automatically construct the full endpoint URL using the `api_model` setting.
+
+   You can also provide the full endpoint URL directly (the `api_model` setting will be ignored):
+   ```
+   [ai]
+   api_url = https://us-central1-aiplatform.googleapis.com/v1/projects/my-project/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent
+   ```
+
+**Note**: Vertex AI does not require `api_token` or `oauth2_client_secret_file` — authentication is handled entirely through ADC.
 
 **OpenAI-compatible API Configuration:**
 

@@ -226,9 +226,10 @@ def cmd_summarize(ctx: CLIContext, preview: bool) -> None:
         return
 
     # Check AI configuration
-    # Require either API token OR OAuth2 client secret file
+    # Require either API token, OAuth2 client secret file, or Vertex AI URL (uses ADC)
     has_api_token = bool(ctx.settings.ai_api_token)
     has_oauth2 = bool(ctx.settings.ai_oauth2_client_secret_file)
+    is_vertex = 'aiplatform.googleapis.com' in ctx.settings.ai_api_url
 
     if not ctx.settings.ai_api_url:
         ctx.logger.error(
@@ -236,12 +237,13 @@ def cmd_summarize(ctx: CLIContext, preview: bool) -> None:
             'via NEWA_AI_API_URL environment variable')
         return
 
-    if not has_api_token and not has_oauth2:
+    if not has_api_token and not has_oauth2 and not is_vertex:
         ctx.logger.error(
             'AI authentication must be configured with either:\n'
             '  - API token (api_token in [ai] section or NEWA_AI_API_TOKEN env var), or\n'
             '  - OAuth2 (oauth2_client_secret_file in [ai] section or '
-            'NEWA_AI_OAUTH2_CLIENT_SECRET_FILE env var)')
+            'NEWA_AI_OAUTH2_CLIENT_SECRET_FILE env var), or\n'
+            '  - Vertex AI URL (uses Application Default Credentials)')
         return
 
     # Initialize services

@@ -2,6 +2,7 @@
 
 import json
 import os
+import warnings
 from pathlib import Path
 from typing import Any, Optional
 
@@ -12,14 +13,21 @@ try:
 except ModuleNotFoundError:
     from attr import define, field
 
-# Optional OAuth2 dependencies
+# Core google-auth (for Vertex AI ADC and OAuth2 token refresh)
 try:
+    import google.auth
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
     HAS_GOOGLE_AUTH = True
 except ImportError:
     HAS_GOOGLE_AUTH = False
+
+# OAuth2 interactive flow (for Gemini direct API OAuth2)
+try:
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    HAS_GOOGLE_AUTH_OAUTHLIB = True
+except ImportError:
+    HAS_GOOGLE_AUTH_OAUTHLIB = False
 
 
 # System prompt for AI model
@@ -144,7 +152,7 @@ class AIService:
         Raises:
             Exception: If OAuth2 libraries are not available or authentication fails
         """
-        if not HAS_GOOGLE_AUTH:
+        if not HAS_GOOGLE_AUTH or not HAS_GOOGLE_AUTH_OAUTHLIB:
             raise Exception(
                 "OAuth2 authentication requires google-auth-oauthlib and google-auth packages. "
                 "Install them with: pip install newa[oauth2]")
@@ -230,6 +238,43 @@ class AIService:
             self.oauth2_client_secret_file)).expanduser()
         return expanded_path.exists()
 
+    def _get_vertex_credentials(self) -> Any:
+        """Get Google Cloud ADC credentials for Vertex AI.
+
+        Returns:
+            Google Cloud credentials object
+
+        Raises:
+            Exception: If google-auth is not available or credentials cannot be obtained
+        """
+        if not HAS_GOOGLE_AUTH:
+            raise Exception(
+                "Vertex AI requires the google-auth package. "
+                "Install it with: pip install newa[vertex]")
+
+        if self._credentials and self._credentials.valid:
+            return self._credentials
+
+        if self._credentials and self._credentials.expired:
+            try:
+                self._credentials.refresh(Request())
+                return self._credentials
+            except Exception:
+                self._credentials = None
+
+        creds: Any
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message="Your application has authenticated using end user credentials")
+            creds, _ = google.auth.default(
+                scopes=['https://www.googleapis.com/auth/cloud-platform'])
+
+        if not creds.valid:
+            creds.refresh(Request())
+
+        self._credentials = creds
+        return creds
+
     def query_ai_model(self, user_message: str, system_prompt: Optional[str] = None) -> str:
         """Query the AI model with the given prompts.
 
@@ -252,12 +297,45 @@ class AIService:
 
         # Detect API type based on URL
         is_gemini = 'generativelanguage.googleapis.com' in self.api_url
+        is_vertex = 'aiplatform.googleapis.com' in self.api_url
 
         # Determine authentication method
         use_oauth2 = is_gemini and self._is_oauth2_configured()
 
         payload: dict[str, Any]
-        if use_oauth2:
+        if is_vertex:
+            # Google Vertex AI - uses Application Default Credentials
+            creds = self._get_vertex_credentials()
+
+            # Construct URL
+            if '/publishers/' in self.api_url and ':generateContent' in self.api_url:
+                url_with_key = self.api_url
+            else:
+                base_url = self.api_url.rstrip('/')
+                url_with_key = (
+                    f"{base_url}/publishers/google/models/"
+                    f"{self.model}:generateContent")
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {creds.token}",
+                }
+
+            payload = {
+                "systemInstruction": {
+                    "parts": [{
+                        "text": system_prompt,
+                        }],
+                    },
+                "contents": [{
+                    "role": "user",
+                    "parts": [{
+                        "text": user_message,
+                        }],
+                    }],
+                }
+
+        elif use_oauth2:
             # OAuth2 authentication for Gemini
             creds = self._get_oauth2_credentials()
             access_token = creds.token
@@ -340,7 +418,7 @@ class AIService:
             result = response.json()
 
             # Extract response based on API type
-            if is_gemini:
+            if is_gemini or is_vertex:
                 return str(result['candidates'][0]['content']['parts'][0]['text'])
             return str(result['choices'][0]['message']['content'])
         except requests.exceptions.HTTPError as e:
