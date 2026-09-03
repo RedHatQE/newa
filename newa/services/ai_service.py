@@ -303,11 +303,39 @@ class AIService:
         use_oauth2 = is_gemini and self._is_oauth2_configured()
 
         payload: dict[str, Any]
-        if is_vertex:
-            # Google Vertex AI - uses Application Default Credentials
+        is_vertex_anthropic = is_vertex and self.model.startswith('claude')
+
+        if is_vertex_anthropic:
+            # Vertex AI with Anthropic Claude models - uses rawPredict endpoint
             creds = self._get_vertex_credentials()
 
-            # Construct URL
+            if '/publishers/' in self.api_url and ':rawPredict' in self.api_url:
+                url_with_key = self.api_url
+            else:
+                base_url = self.api_url.rstrip('/')
+                url_with_key = (
+                    f"{base_url}/publishers/anthropic/models/"
+                    f"{self.model}:rawPredict")
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {creds.token}",
+                }
+
+            payload = {
+                "anthropic_version": "vertex-2023-10-16",
+                "system": system_prompt,
+                "messages": [{
+                    "role": "user",
+                    "content": user_message,
+                    }],
+                "max_tokens": 4096,
+                }
+
+        elif is_vertex:
+            # Google Vertex AI with Gemini models - uses generateContent endpoint
+            creds = self._get_vertex_credentials()
+
             if '/publishers/' in self.api_url and ':generateContent' in self.api_url:
                 url_with_key = self.api_url
             else:
@@ -418,6 +446,8 @@ class AIService:
             result = response.json()
 
             # Extract response based on API type
+            if is_vertex_anthropic:
+                return str(result['content'][0]['text'])
             if is_gemini or is_vertex:
                 return str(result['candidates'][0]['content']['parts'][0]['text'])
             return str(result['choices'][0]['message']['content'])
