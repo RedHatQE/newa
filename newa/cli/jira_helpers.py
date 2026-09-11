@@ -312,6 +312,7 @@ def _find_or_create_issue(
     search_result: dict[str, dict[str, str]] = {}
 
     # Get transition settings
+    transition_initiated = None
     transition_passed = None
     transition_processed = None
     transition_updated = None
@@ -321,6 +322,8 @@ def _find_or_create_issue(
         transition_updated = jira_handler.transitions.updated[0]
 
     if action.auto_transition:
+        if jira_handler.transitions.initiated:
+            transition_initiated = jira_handler.transitions.initiated[0]
         if jira_handler.transitions.passed:
             transition_passed = jira_handler.transitions.passed[0]
         if jira_handler.transitions.processed:
@@ -333,6 +336,7 @@ def _find_or_create_issue(
             group=config.group,
             url=urllib.parse.urljoin(f'{jira_handler.jira_connection.url}/',
                                      f'browse/{issue_mapping[action.id].strip()}'),
+            transition_initiated=transition_initiated,
             transition_passed=transition_passed,
             transition_processed=transition_processed)
         jira_issue = jira_handler.get_details(mapped_issue)
@@ -370,6 +374,7 @@ def _find_or_create_issue(
                         url=urllib.parse.urljoin(f'{jira_handler.jira_connection.url}/',
                                                  f'browse/{jira_issue_key}'),
                         closed=jira_issue["status"] == "closed",
+                        transition_initiated=transition_initiated,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
             elif jira_issue["status"] == "opened":
@@ -382,6 +387,7 @@ def _find_or_create_issue(
                         url=urllib.parse.urljoin(f'{jira_handler.jira_connection.url}/',
                                                  f'browse/{jira_issue_key}'),
                         closed=False,
+                        transition_initiated=transition_initiated,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
             else:
@@ -394,6 +400,7 @@ def _find_or_create_issue(
                         url=urllib.parse.urljoin(f'{jira_handler.jira_connection.url}/',
                                                  f'browse/{jira_issue_key}'),
                         closed=True,
+                        transition_initiated=transition_initiated,
                         transition_passed=transition_passed,
                         transition_processed=transition_processed))
 
@@ -486,6 +493,7 @@ def _find_or_create_issue(
                 assignee_email=rendered_assignee,
                 parent=parent,
                 group=config.group,
+                transition_initiated=transition_initiated,
                 transition_passed=transition_passed,
                 transition_processed=transition_processed,
                 fields=rendered_fields,

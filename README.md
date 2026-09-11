@@ -538,6 +538,7 @@ The following transitions can be defined:
 
  - `closed` - Required, multiple states can be listed. Used to identify closed Jira issues.
  - `dropped` - Required, single state required. Tells NEWA which state to use when an issue is obsoleted by a newer issue.
+ - `initiated` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when automated test execution is initiated by NEWA (during the `execute` phase).
  - `processed` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when issue processing is finished by NEWA.
  - `passed` - Optional, single state required. Necessary when `auto_transition` is `True`. This state is used when all automated tests scheduled by NEWA pass.
  - `updated` - Optional, single state required. Used when an issue is updated for a new respin with `on_respin: update`. This state is applied after the issue is updated with the new NEWA ID, allowing you to automatically reopen closed issues or transition them to a specific status when they are updated for a new respin. This transition is applied regardless of the `auto_transition` setting.
@@ -549,8 +550,10 @@ transitions:
     - Closed
   dropped:
     - Closed.Obsolete
-  processed:
+  initiated:
     - In Progress
+  processed:
+    - Code Review
   passed:
     - Closed.Done
   updated:

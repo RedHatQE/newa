@@ -356,6 +356,17 @@ def _process_rp_launches_and_jira_updates(
                 _add_jira_comment_for_execution(
                     ctx, jira_connection, jira_id, job, launch_url)
 
+            # Apply initiated transition if configured
+            if job.jira.transition_initiated:
+                from newa.cli.initialization import issue_transition
+                issue_transition(
+                    jira_connection,
+                    job.jira.transition_initiated,
+                    jira_id)
+                ctx.logger.info(
+                    f'Issue {jira_id} state changed to '
+                    f'{job.jira.transition_initiated}')
+
             # Update Errata Tool if needed
             if et and launch_url:
                 _add_erratum_comment_for_execution(

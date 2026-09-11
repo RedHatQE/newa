@@ -448,6 +448,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                      assignee_email: Optional[str] = None,
                      parent: Optional[Issue] = None,
                      group: Optional[str] = None,
+                     transition_initiated: Optional[str] = None,
                      transition_passed: Optional[str] = None,
                      transition_processed: Optional[str] = None,
                      fields: Optional[dict[str, Union[str, float, list[str]]]] = None,
@@ -541,6 +542,7 @@ class IssueHandler:  # type: ignore[no-untyped-def]
                               summary=summary,
                               url=urllib.parse.urljoin(f'{self.jira_connection.url}/',
                                                        f'browse/{jira_issue.key}'),
+                              transition_initiated=transition_initiated,
                               transition_passed=transition_passed,
                               transition_processed=transition_processed,
                               action_id=action.id)

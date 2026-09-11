@@ -98,6 +98,7 @@ class Issue(Serializable):  # type: ignore[no-untyped-def]
     summary: Optional[str] = None
     closed: Optional[bool] = None
     url: Optional[str] = None
+    transition_initiated: Optional[str] = None
     transition_processed: Optional[str] = None
     transition_passed: Optional[str] = None
     action_id: Optional[str] = None
@@ -178,6 +179,7 @@ class IssueAction(Serializable):  # type: ignore[no-untyped-def]
 class IssueTransitions(Serializable):
     closed: list[str] = field()
     dropped: list[str] = field()
+    initiated: Optional[list[str]] = None
     processed: Optional[list[str]] = None
     passed: Optional[list[str]] = None
     updated: Optional[list[str]] = None
