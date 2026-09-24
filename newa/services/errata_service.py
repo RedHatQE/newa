@@ -131,13 +131,12 @@ class ErrataTool:
             krb=True,
             response_content=ResponseContentType.JSON)
 
-    def fetch_system_info(self) -> 'JSON':
+    def fetch_product_info(self, shortname: str) -> 'JSON':
         return get_request(
             url=urllib.parse.urljoin(
                 self.url,
-                "/system_info.json"),
-            # not using krb=True due to an authentization error/bug, we did auth already
-            # krb=True,
+                f"/products/{shortname}.json"),
+            krb=True,
             response_content=ResponseContentType.JSON)
 
     def fetch_blocking_errata(self, erratum_id: str) -> 'JSON':
@@ -161,10 +160,10 @@ class ErrataTool:
 
     def check_connection(self, et_url: str, logger: 'logging.Logger') -> None:
         try:
-            et_system_info = self.fetch_system_info()
-            logger.debug(f"ErrataTool system version is={et_system_info['errata_version']}")
-            if not et_system_info:
-                raise Exception("Could not get ErrataTool system version info.")
+            # just do a query against an authenticated endpoint
+            et_product_info = self.fetch_product_info('rhel')
+            if not et_product_info:
+                raise Exception("Could not read data from ErrataTool authenticated endpoint.")
         except Exception as e:
             raise Exception(f"ErrataTool is not available at {et_url}.") from e
 

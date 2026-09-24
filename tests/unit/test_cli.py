@@ -68,10 +68,11 @@ def _mock_errata_tool(monkeypatch):
         """ Return a list of Jira issues for testing link rendering """
         return [{"key": "JIRA-1"}, {"key": "JIRA-2"}]
 
-    def mock_et_fetch_system_info(self):
-        """ Return dictionary with information about ErrataTool system """
+    def mock_et_fetch_product_info(self, shortname: str):
+        """ Return dictionary with information about an ErrataTool product """
         return {
-            "errata_version": "v1.5.3",
+            "id": 1,
+            "shortname": shortname,
             }
 
     # TODO in the future we might want to do more complex patching of the class
@@ -82,7 +83,7 @@ def _mock_errata_tool(monkeypatch):
     monkeypatch.setattr(newa.ErrataTool, 'fetch_releases', mock_et_fetch_releases)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_blocking_errata', mock_et_fetch_blocking_errata)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_jira_issues', mock_et_fetch_jira_issues)
-    monkeypatch.setattr(newa.ErrataTool, 'fetch_system_info', mock_et_fetch_system_info)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_product_info', mock_et_fetch_product_info)
 
 
 # TODO There's still not much logic to test in cli. These test is just a stub to
@@ -1052,8 +1053,8 @@ def _mock_errata_tool_same_compose(monkeypatch):
     def mock_et_fetch_jira_issues(self, id: str):
         return []
 
-    def mock_et_fetch_system_info(self):
-        return {"errata_version": "v1.5.3"}
+    def mock_et_fetch_product_info(self, shortname: str):
+        return {"id": 1, "shortname": shortname}
 
     monkeypatch.setenv("NEWA_ET_URL", "https://fake.erratatool.com")
     monkeypatch.setattr(newa, 'get_request', mock_get_request)
@@ -1061,7 +1062,7 @@ def _mock_errata_tool_same_compose(monkeypatch):
     monkeypatch.setattr(newa.ErrataTool, 'fetch_releases', mock_et_fetch_releases)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_blocking_errata', mock_et_fetch_blocking_errata)
     monkeypatch.setattr(newa.ErrataTool, 'fetch_jira_issues', mock_et_fetch_jira_issues)
-    monkeypatch.setattr(newa.ErrataTool, 'fetch_system_info', mock_et_fetch_system_info)
+    monkeypatch.setattr(newa.ErrataTool, 'fetch_product_info', mock_et_fetch_product_info)
 
 
 def _run_event_command(extra_args=None, env=None):
