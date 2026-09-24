@@ -21,6 +21,7 @@ from newa.cli.commands.report_cmd import cmd_report
 from newa.cli.commands.schedule_cmd import cmd_schedule
 from newa.cli.commands.search_cmd import cmd_search
 from newa.cli.commands.summarize_cmd import cmd_summarize
+from newa.cli.commands.validate_auth_cmd import cmd_validate_auth
 from newa.cli.constants import NEWA_DEFAULT_CONFIG
 from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
 from newa.cli.filter_helpers import should_filter_by_action_tags
@@ -490,3 +491,4 @@ main.add_command(cmd_report)
 main.add_command(cmd_cancel)
 main.add_command(cmd_search)
 main.add_command(cmd_summarize)
+main.add_command(cmd_validate_auth)

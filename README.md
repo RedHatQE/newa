@@ -1971,6 +1971,50 @@ Example (schedule all not-yet-scheduled jobs including those with schedule: fals
 $ newa --prev-state-dir --force schedule --schedule-all --skip-scheduled execute report
 ```
 
+### Subcommand `validate-auth`
+
+Validates connectivity and authentication for all configured API endpoints used by NEWA. This subcommand is useful for diagnosing configuration issues and verifying that all necessary credentials are correctly set up.
+
+The command uses existing NEWA connection infrastructure to test each service, ensuring that validation results match actual runtime behavior. It tests:
+
+- **Errata Tool** - Kerberos authentication (requires valid Kerberos ticket from `kinit`)
+- **Jira** - Supports both Jira Cloud (Basic Auth) and Jira Server (Bearer Token)
+- **ReportPortal** - Bearer token authentication
+- **Testing Farm** - API token validation
+- **RoG/GitLab** - Bearer token authentication (optional)
+
+Example:
+```
+$ newa validate-auth
+======================================================================
+NEWA Configuration Validation
+======================================================================
+
+Testing Errata Tool... ✓ Connected and authenticated
+Testing Jira... ✓ Connected and authenticated
+Testing ReportPortal... ✓ Connected and authenticated | Project: baseosqe
+Testing Testing Farm... ✓ Token configured
+Testing RoG (GitLab)... ✗ Token not configured (optional)
+
+======================================================================
+Summary
+======================================================================
+Passed: 4/5
+```
+
+**Key features:**
+- Checks for configuration file presence at `~/.newa`
+- Returns non-zero exit code if validation fails (useful for CI/scripts)
+- Reports clear error messages for troubleshooting
+- Shows tested service URLs in summary
+- Gracefully handles optional services (RoG)
+
+**Use cases:**
+- Verifying configuration after initial setup
+- Troubleshooting "authentication failed" errors
+- Checking configuration before running NEWA workflows
+- Validating credentials after credential rotation
+
 ### Subcommand `cancel`
 
 Cancels TF requests found in `execute-` files within the given state-dir.
