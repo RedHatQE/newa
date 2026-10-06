@@ -44,6 +44,19 @@ def test_arch_rhel6_multi_returns_default():
     assert set(result) == {Arch.X86_64, Arch.S390X, Arch.I386}
 
 
+def test_arch_excluded_only_returns_empty():
+    # an artifact targeting only unsupported architectures (e.g. riscv64)
+    # must resolve to an empty list, not a fallback to the defaults
+    assert Arch.architectures([Arch.RISCV64]) == []
+    assert Arch.architectures([Arch.SRPMS]) == []
+
+
+def test_arch_mixed_supported_and_excluded():
+    # unsupported architectures are dropped while supported ones are kept
+    result = Arch.architectures([Arch.X86_64, Arch.RISCV64])
+    assert result == [Arch.X86_64]
+
+
 def test_arch_i386_excluded_without_rhel6():
     preset = [Arch.I386, Arch.X86_64, Arch.S390X]
     result = Arch.architectures(preset)
