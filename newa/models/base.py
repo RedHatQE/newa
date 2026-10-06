@@ -32,6 +32,7 @@ class Arch(Enum):
     S390X = 's390x'
     PPC64LE = 'ppc64le'
     PPC64 = 'ppc64'
+    RISCV64 = 'riscv64'
     NOARCH = 'noarch'
     MULTI = 'multi'
     SRPMS = 'SRPMS'  # just to ease errata processing
