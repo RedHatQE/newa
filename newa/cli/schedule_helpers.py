@@ -32,8 +32,14 @@ def _determine_architectures(
     if arch_options:
         return Arch.architectures([Arch(a.strip()) for a in arch_options], compose=compose)
 
-    if jira_job.erratum and jira_job.erratum.archs:
+    # When the artifact carries architecture metadata, honor it verbatim - even
+    # when it is empty. An empty list is not missing metadata; it means the
+    # artifact targets only unsupported architectures (e.g. riscv64) and so must
+    # not fall back to the defaults below.
+    if jira_job.erratum:
         return jira_job.erratum.archs
+    if jira_job.rog:
+        return jira_job.rog.archs
 
     return Arch.architectures(compose=compose)
 
@@ -281,6 +287,15 @@ def _process_jira_job(
     # Determine compose and architectures
     compose = jira_job.compose.id if jira_job.compose else None
     architectures = _determine_architectures(ctx, arch_options, jira_job, compose)
+
+    # Skip artifacts that target only unsupported architectures. In that case
+    # the artifact has an explicitly empty supported-architecture set and there
+    # is nothing to schedule it on.
+    if (jira_job.erratum or jira_job.rog) and not arch_options and not architectures:
+        ctx.logger.info(
+            f'Skipping jira job {jira_job.jira.id} - artifact targets only '
+            f'unsupported architectures.')
+        return
 
     # Prepare initial and CLI configs
     initial_config = _prepare_initial_config(ctx, jira_job, compose)
