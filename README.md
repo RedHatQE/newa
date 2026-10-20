@@ -1062,6 +1062,27 @@ when: ERRATUM.release is not match("RHEL-9.7.0")
 #
 ```
 
+#### Compose attributes
+
+Besides the `id` attribute, the `COMPOSE` object provides two computed attributes, `prev_major` and `prev_minor`, holding the compose id of the previous major and minor release. They are derived from the current compose id on the fly (and therefore are not stored in the event state files) and can be used in `when` conditions and Jinja templates of both issue-config and recipe files:
+
+| Current compose id                  | `COMPOSE.prev_major`   | `COMPOSE.prev_minor`  |
+| ----------------------------------- | ---------------------- | --------------------- |
+| `RHEL-8.10.0-updates-20250811.3`    | `RHEL-7-LatestUpdated` | `RHEL-8.9.0-Nightly`  |
+| `RHEL-9.0.0-Nightly`                | `RHEL-8-Nightly`       | `_undefined_`         |
+| `RHEL-9.7.0-Nightly`                | `RHEL-8-Nightly`       | `RHEL-9.6.0-Nightly`  |
+| `RHEL-10.0-Nightly`                 | `RHEL-9-Nightly`       | `_undefined_`         |
+| `RHEL-10.1-Nightly`                 | `RHEL-9-Nightly`       | `RHEL-10.0-Nightly`   |
+| `Fedora-42-Updated`                 | `Fedora-41-Updated`    | `_undefined_`         |
+
+If there is no previous release (e.g. there is no previous minor for a `X.0` compose), or the compose id does not match any known pattern, the `_undefined_` value is returned instead:
+
+```yaml
+# Using the previous release compose in an environment variable
+- environment:
+    PREV_MINOR_COMPOSE: "{{ COMPOSE.prev_minor }}"
+```
+
 ## Quick demo
 
 Make sure you have your `$HOME/.newa` configuration file defined prior running this file.
