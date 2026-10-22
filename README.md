@@ -1992,6 +1992,66 @@ Example (schedule all not-yet-scheduled jobs including those with schedule: fals
 $ newa --prev-state-dir --force schedule --schedule-all --skip-scheduled execute report
 ```
 
+### Subcommand `validate-auth`
+
+Checks connectivity for configured services and validates credentials where
+the service check supports it. This subcommand helps diagnose configuration
+and authentication issues.
+
+The command uses existing NEWA connection infrastructure for Errata Tool, Jira,
+ReportPortal, and RoG. It calls the Testing Farm API to verify the token.
+
+It tests:
+
+- **Errata Tool** - Connectivity check using the existing Errata Tool client
+- **Jira** - Supports both Jira Cloud (Basic Auth) and Jira Server (Bearer Token)
+- **ReportPortal** - Bearer token authentication
+- **Testing Farm** - Authenticated API request to validate the token
+- **RoG/GitLab** - Bearer token authentication (optional)
+
+Output example:
+```
+$ newa validate-auth
+Using --state-dir=/var/tmp/newa/run-XX
+======================================================================
+NEWA Configuration Validation
+======================================================================
+
+Testing Errata Tool... ✓ OK
+Testing Jira...        ✓ OK
+Testing ReportPortal...✓ OK
+Testing Testing Farm...✓ OK
+Testing RoG (GitLab)...✗ FAIL
+
+======================================================================
+Summary
+======================================================================
+Passed: 4/5
+
+Services tested:
+  • Errata Tool: https://errata.devel.redhat.com
+  • Jira: https://redhat.atlassian.net
+  • ReportPortal: https://reportportal-rhel.apps.dno.ocp-hub.prod.psi.redhat.com
+  • Testing Farm: https://api.testing-farm.io/v0.1/whoami
+
+Failed services:
+  • RoG (GitLab): Token not configured (optional)
+
+Error: Configuration validation failed
+```
+
+**Key features:**
+- Returns non-zero exit code if validation fails (useful for CI/scripts)
+- Reports clear error messages for troubleshooting
+- Shows tested service URLs in summary
+- Reports missing RoG credentials in the failure summary
+
+**Use cases:**
+- Verifying configuration after initial setup
+- Troubleshooting "authentication failed" errors
+- Checking configuration before running NEWA workflows
+- Validating credentials after credential rotation
+
 ### Subcommand `cancel`
 
 Cancels TF requests found in `execute-` files within the given state-dir.

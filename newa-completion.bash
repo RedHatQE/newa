@@ -49,7 +49,7 @@ _newa_completion() {
 
     # Extract available commands from newa help
     # Look for lines that list commands, typically in format: "  command  Description"
-    all_commands=$(newa --help 2>/dev/null | grep -E '^  [a-z]+  ' | awk '{print $1}' | tr '\n' ' ')
+    all_commands=$(newa --help 2>/dev/null | grep -E '^  [a-z][a-z-]*  ' | awk '{print $1}' | tr '\n' ' ')
 
     for ((i=1; i < COMP_CWORD; i++)); do
         local word="${COMP_WORDS[i]}"
