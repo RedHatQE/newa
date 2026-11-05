@@ -286,6 +286,46 @@ class TestRoGNewaId:
         assert newa_id == '::: NEWA'
 
 
+class TestRoGMrNumber:
+    """Test suite for RoG.mr_number property."""
+
+    def _rog(self, url: str) -> RoG:
+        return RoG(
+            id=url,
+            content_type=ErratumContentType.RPM,
+            title='Test MR',
+            build_task_id='54321',
+            build_target='c9s-candidate',
+            archs=[],
+            builds=['bash-5.1.8-9.el9'],
+            components=['bash'],
+            )
+
+    def test_mr_number_is_parsed_from_id(self) -> None:
+        rog = self._rog(
+            'https://gitlab.com/redhat/centos-stream/rpms/bash/-/merge_requests/123')
+
+        assert rog.mr_number == '123'
+
+    def test_mr_number_with_trailing_slash(self) -> None:
+        rog = self._rog(
+            'https://gitlab.com/redhat/centos-stream/rpms/keylime/-/merge_requests/85/')
+
+        assert rog.mr_number == '85'
+
+    def test_mr_number_not_serialized_to_yaml(self) -> None:
+        rog = self._rog(
+            'https://gitlab.com/redhat/centos-stream/rpms/bash/-/merge_requests/123')
+
+        assert 'mr_number' not in rog.to_yaml()
+
+    def test_mr_number_invalid_id_raises(self) -> None:
+        rog = self._rog('https://gitlab.com/redhat/centos-stream/rpms/bash')
+
+        with pytest.raises(Exception, match='Failed to parse MR number'):
+            rog.mr_number  # noqa: B018 -- intentionally accessed to trigger the error
+
+
 class TestRoGEventShortId:
     """Test suite for RoG Event.short_id property."""
 

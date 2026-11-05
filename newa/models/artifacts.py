@@ -121,6 +121,18 @@ class RoG(Cloneable, Serializable):  # type: ignore[no-untyped-def]
     builds: list[str] = field(factory=list)
     components: list[str] = field(factory=list)
 
+    @property
+    def mr_number(self) -> str:
+        """Merge request number, parsed from the MR URL (id).
+
+        Not serialized into YAML, but available for Jinja templating
+        as ``{{ ROG.mr_number }}``.
+        """
+        match = re.search(r'/-/merge_requests/([0-9]+)', self.id)
+        if not match:
+            raise Exception(f'Failed to parse MR number from "{self.id}"')
+        return match.group(1)
+
 
 @define
 class JiraIssue(Cloneable, Serializable):
