@@ -141,6 +141,18 @@ def cmd_execute(
         ctx.logger.warning('Warning: There are no previously scheduled jobs to execute')
         return
 
+    # Restrict the requests actually submitted for execution to the requested
+    # architectures. This is computed up front so that, when the filter matches
+    # no scheduled request at all, we return before creating any ReportPortal
+    # launch or updating Jira/Errata (which would be a wasted side effect).
+    # The launch bookkeeping below still runs over the full schedule_job_list.
+    execute_job_list = filter_schedule_jobs_by_arch(schedule_job_list, arch)
+    if arch and not execute_job_list:
+        ctx.logger.warning(
+            'Warning: There are no scheduled requests matching '
+            f'architecture(s): {", ".join(sorted(a.strip() for a in arch))}')
+        return
+
     # Initialize ReportPortal connection
     rp = initialize_rp_connection(ctx)
 
@@ -174,15 +186,6 @@ def cmd_execute(
     # --continue) reuse the same launch and merge into a single results table.
     launch_list = _process_rp_launches_and_jira_updates(
         ctx, rp, et, rog, jira_schedule_job_mapping)
-
-    # Restrict the requests actually submitted for execution to the requested
-    # architectures. The launch bookkeeping above still covers every arch.
-    execute_job_list = filter_schedule_jobs_by_arch(schedule_job_list, arch)
-    if arch and not execute_job_list:
-        ctx.logger.warning(
-            'Warning: There are no scheduled requests matching '
-            f'architecture(s): {", ".join(sorted(a.strip() for a in arch))}')
-        return
 
     # Execute worker pool to process the selected schedule jobs
     try:
