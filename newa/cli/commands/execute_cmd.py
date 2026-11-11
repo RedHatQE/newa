@@ -20,6 +20,7 @@ from newa.cli.execute_helpers import (
     _initialize_execute_environment,
     _process_rp_launches_and_jira_updates,
     _validate_execute_parameters,
+    filter_schedule_jobs_by_arch,
     normalize_request_ids,
     )
 from newa.cli.initialization import initialize_et_connection, initialize_rp_connection
@@ -63,6 +64,15 @@ from newa.cli.utils import initialize_state_dir, test_patterns_match
                     'Can be specified multiple times. '
                     'Example: --request REQ-1.2.1'),
               )
+@click.option('--arch',
+              default=[],
+              multiple=True,
+              help=('Execute only scheduled requests targeting the given architecture. '
+                    'The ReportPortal launch is still prepared for all scheduled '
+                    'architectures, so separate per-architecture runs (using --continue) '
+                    'merge into a single results table. '
+                    'Can be specified multiple times. Example: --arch x86_64'),
+              )
 @click.option(
     '--no-wait',
     is_flag=True,
@@ -82,6 +92,7 @@ def cmd_execute(
         workers: int,
         _continue: bool,
         request: tuple[str, ...],
+        arch: tuple[str, ...],
         no_wait: bool,
         restart_request: tuple[str, ...],
         restart_result: tuple[str, ...],
@@ -156,13 +167,26 @@ def cmd_execute(
         dict[str, list[ScheduleJob]],
         _create_jira_job_mapping(schedule_job_list))
 
-    # Process RP launches and update Jira issues
+    # Process RP launches and update Jira issues.
+    # Note: this intentionally runs over the full schedule_job_list (all
+    # architectures) so the ReportPortal launch UUID is persisted to every
+    # scheduled request. This lets separate per-architecture runs (using
+    # --continue) reuse the same launch and merge into a single results table.
     launch_list = _process_rp_launches_and_jira_updates(
         ctx, rp, et, rog, jira_schedule_job_mapping)
 
-    # Execute worker pool to process all schedule jobs
+    # Restrict the requests actually submitted for execution to the requested
+    # architectures. The launch bookkeeping above still covers every arch.
+    execute_job_list = filter_schedule_jobs_by_arch(schedule_job_list, arch)
+    if arch and not execute_job_list:
+        ctx.logger.warning(
+            'Warning: There are no scheduled requests matching '
+            f'architecture(s): {", ".join(sorted(a.strip() for a in arch))}')
+        return
+
+    # Execute worker pool to process the selected schedule jobs
     try:
-        _execute_worker_pool(ctx, schedule_job_list, workers)
+        _execute_worker_pool(ctx, execute_job_list, workers)
     except KeyboardInterrupt:
         # Let _execute_worker_pool handle user-facing logging; just translate to Click's Abort.
         raise click.Abort from None
