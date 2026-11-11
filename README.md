@@ -2159,6 +2159,20 @@ Example:
 newa --prev-state-dir schedule execute --request REQ-1.2.1 report
 ```
 
+#### Option `--arch`
+
+This option restricts execution to scheduled requests targeting the given architecture. All other scheduled requests are skipped. This option can be used multiple times.
+
+Crucially, the ReportPortal launch (and the related Jira/Errata bookkeeping) is still prepared for **all** scheduled architectures, not just the one being executed. This means you can schedule multiple architectures at once and then execute them in separate passes while still having all results merged into a single ReportPortal launch and results table. Use `--continue` on the follow-up passes so `newa` reuses the existing launch.
+
+Example (schedule both architectures, execute x86_64 now and aarch64 later, merged in one launch):
+```
+$ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml schedule execute --arch x86_64 report
+Using --state-dir /var/tmp/newa/run-123
+...
+$ newa --state-dir /var/tmp/newa/run-123 execute --continue --arch aarch64 report
+```
+
 #### Option `--rp-purge`, `-X`
 
 Removes previous test results from the ReportPortal launch before executing new Testing Farm requests. This option is particularly useful when restarting specific TF requests to avoid duplicate test results in the same ReportPortal launch.

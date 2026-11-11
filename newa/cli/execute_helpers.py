@@ -41,6 +41,24 @@ def normalize_request_ids(request_ids: Sequence[str]) -> list[str]:
     return [req_id.replace('\u2011', '-') for req_id in request_ids]
 
 
+def filter_schedule_jobs_by_arch(
+        schedule_jobs: Sequence[ScheduleJob],
+        arches: Sequence[str]) -> list[ScheduleJob]:
+    """
+    Restrict schedule jobs to those targeting the given architectures.
+
+    When ``arches`` is empty all jobs are returned unchanged. Architecture
+    strings are matched against ``request.arch`` after stripping surrounding
+    whitespace.
+    """
+    if not arches:
+        return list(schedule_jobs)
+    requested = {a.strip() for a in arches}
+    return [
+        job for job in schedule_jobs
+        if job.request.arch is not None and job.request.arch.value in requested]
+
+
 def sanitize_restart_result(ctx: CLIContext, results: Sequence[str]) -> list[RequestResult]:
     """Validate and sanitize restart result values."""
     sanitized = []
