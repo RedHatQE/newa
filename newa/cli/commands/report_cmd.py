@@ -4,7 +4,7 @@ from typing import cast
 
 import click
 
-from newa import CLIContext, EventType, ExecuteJob, RoGTool
+from newa import CLIContext, EventType, ExecuteJob, RoGTool, ScheduleJob
 from newa.cli.execute_helpers import _create_jira_job_mapping
 from newa.cli.initialization import (
     initialize_et_connection,
@@ -76,8 +76,20 @@ def cmd_report(ctx: CLIContext, progress: bool) -> None:
         dict[str, list[ExecuteJob]],
         _create_jira_job_mapping(all_execute_jobs))
 
+    # Load schedule jobs so the report can list requests that were scheduled but
+    # not yet executed (e.g. when execution was restricted to a subset of
+    # architectures). These are shown as placeholder rows in the results table.
+    all_schedule_jobs = list(ctx.load_schedule_jobs(filter_actions=True))
+    jira_schedule_job_mapping = cast(
+        dict[str, list[ScheduleJob]],
+        _create_jira_job_mapping(all_schedule_jobs))
+
     # Process reports for each Jira ID
     for jira_id, execute_jobs in jira_execute_job_mapping.items():
+        executed_request_ids = {job.request.id for job in execute_jobs}
+        pending_jobs = [
+            job for job in jira_schedule_job_mapping.get(jira_id, [])
+            if job.request.id not in executed_request_ids]
         _process_jira_id_reports(
             ctx, jira_id, execute_jobs, rp, jira_connection, et, rog, jira_comment_limit,
-            progress_mode=progress)
+            progress_mode=progress, pending_jobs=pending_jobs)

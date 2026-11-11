@@ -2165,6 +2165,8 @@ This option restricts execution to scheduled requests targeting the given archit
 
 Crucially, the ReportPortal launch (and the related Jira/Errata bookkeeping) is still prepared for **all** scheduled architectures, not just the one being executed. This means you can schedule multiple architectures at once and then execute them in separate passes while still having all results merged into a single ReportPortal launch and results table. Use `--continue` on the follow-up passes so `newa` reuses the existing launch.
 
+The `report` subcommand lists every scheduled request, so requests that have been scheduled but not yet executed (e.g. the architecture executed in a later pass) appear in the Jira results table as placeholder rows with a `not executed` state. While any such request is still pending, the issue is not transitioned to its "passed"/"processed" state.
+
 Example (schedule both architectures, execute x86_64 now and aarch64 later, merged in one launch):
 ```
 $ newa event --compose CentOS-Stream-9 jira --job-recipe path/to/recipe.yaml schedule execute --arch x86_64 report
