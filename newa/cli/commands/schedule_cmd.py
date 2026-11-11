@@ -5,7 +5,7 @@ from typing import Optional
 
 import click
 
-from newa import SCHEDULE_FILE_PREFIX, CLIContext
+from newa import SCHEDULE_FILE_PREFIX, Arch, CLIContext
 from newa.cli.schedule_helpers import _process_jira_job
 from newa.cli.utils import initialize_state_dir, test_filtered_file_presence
 
@@ -15,7 +15,9 @@ from newa.cli.utils import initialize_state_dir, test_filtered_file_presence
               default=[],
               multiple=True,
               help=('Restrics system architectures to use when scheduling. '
-                    'Can be specified multiple times. Example: --arch x86_64'),
+                    'Prefix an architecture with "!" to exclude it instead. '
+                    'Can be specified multiple times. '
+                    'Examples: --arch x86_64, --arch !s390x'),
               )
 @click.option('--fixture',
               'fixtures',
@@ -80,6 +82,13 @@ def cmd_schedule(
     if no_reportportal and rp_launch_uuid:
         ctx.logger.error(
             'ERROR: --no-reportportal and --rp-launch-uuid are mutually exclusive options')
+        sys.exit(1)
+
+    # Validate --arch values early to fail fast with a clear message
+    try:
+        Arch.parse_filters(arch)
+    except ValueError as e:
+        ctx.logger.error(f'ERROR: {e}')
         sys.exit(1)
 
     # Ensure state dir is present and initialized

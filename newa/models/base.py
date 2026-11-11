@@ -13,6 +13,8 @@ except ModuleNotFoundError:
     from attr import asdict, define, evolve
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from typing_extensions import Self
 
 from newa.utils.http import ResponseContentType, get_request
@@ -60,6 +62,35 @@ class Arch(Enum):
         if Arch.MULTI in preset:
             return _default
         return [a for a in preset if a in _valid]
+
+    @classmethod
+    def parse_filters(
+            cls: type['Arch'],
+            options: 'Iterable[str]') -> tuple[list['Arch'], set['Arch']]:
+        """Split ``--arch`` style options into (includes, excludes).
+
+        An option prefixed with ``!`` denotes an architecture to exclude, any
+        other option denotes an architecture to include. Surrounding whitespace
+        is stripped and empty options are ignored. Raises ``ValueError`` for an
+        unknown architecture name.
+        """
+        includes: list[Arch] = []
+        excludes: set[Arch] = set()
+        for raw in options:
+            option = raw.strip()
+            if not option:
+                continue
+            exclude = option.startswith('!')
+            name = option[1:].strip() if exclude else option
+            try:
+                arch = cls(name)
+            except ValueError:
+                raise ValueError(f'Unknown architecture: {name!r}') from None
+            if exclude:
+                excludes.add(arch)
+            else:
+                includes.append(arch)
+        return includes, excludes
 
 
 class ErratumCommentTrigger(Enum):

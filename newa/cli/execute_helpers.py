@@ -11,6 +11,7 @@ import jira
 
 from newa import (
     EXECUTE_FILE_PREFIX,
+    Arch,
     CLIContext,
     ErrataTool,
     ErratumCommentTrigger,
@@ -45,18 +46,29 @@ def filter_schedule_jobs_by_arch(
         schedule_jobs: Sequence[ScheduleJob],
         arches: Sequence[str]) -> list[ScheduleJob]:
     """
-    Restrict schedule jobs to those targeting the given architectures.
+    Restrict schedule jobs to those targeting the requested architectures.
 
-    When ``arches`` is empty all jobs are returned unchanged. Architecture
-    strings are matched against ``request.arch`` after stripping surrounding
-    whitespace.
+    When ``arches`` is empty all jobs are returned unchanged. Each option is
+    matched against ``request.arch``; an option prefixed with ``!`` excludes
+    that architecture (e.g. ``!x86_64`` keeps every architecture but x86_64).
+    When only exclusions are given, all architectures except the excluded ones
+    are kept; when inclusions are given, they act as an allow-list that
+    exclusions are then removed from.
     """
     if not arches:
         return list(schedule_jobs)
-    requested = {a.strip() for a in arches}
-    return [
-        job for job in schedule_jobs
-        if job.request.arch is not None and job.request.arch.value in requested]
+    includes, excludes = Arch.parse_filters(arches)
+    include_values = {a.value for a in includes}
+    exclude_values = {a.value for a in excludes}
+    result = []
+    for job in schedule_jobs:
+        value = job.request.arch.value if job.request.arch is not None else None
+        if include_values and value not in include_values:
+            continue
+        if value is not None and value in exclude_values:
+            continue
+        result.append(job)
+    return result
 
 
 def sanitize_restart_result(ctx: CLIContext, results: Sequence[str]) -> list[RequestResult]:
