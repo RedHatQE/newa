@@ -17,6 +17,7 @@ from newa import (
     RequestResult,
     RoGCommentTrigger,
     RoGTool,
+    ScheduleJob,
     TFRequest,
     )
 from newa.cli.constants import JIRA_NONE_ID
@@ -30,11 +31,17 @@ def execute_jobs_summary(ctx: CLIContext,
                          jira_id: str,
                          execute_jobs: list[ExecuteJob],
                          target: str = 'Jira',
-                         max_length: int = 0) -> list[str]:
+                         max_length: int = 0,
+                         pending_jobs: Optional[list[ScheduleJob]] = None) -> list[str]:
     """
     Prepares a string with a summary of executed jobs.
     Parameter 'target' could be either 'Jira' or 'ReportPortal'.
+    Parameter 'pending_jobs' lists requests that have been scheduled but not yet
+    executed (e.g. when execution was restricted to a subset of architectures).
+    These are rendered as placeholder rows in the 'Jira' target so that the
+    results table reflects the complete set of scheduled requests.
     """
+    pending_jobs = pending_jobs or []
     separator = '<br>' if target == 'ReportPortal' else '\n'
     # an actual list we are going to return
     summaries = []
@@ -74,6 +81,27 @@ def execute_jobs_summary(ctx: CLIContext,
             results[job.request.id]['state'] += ' (not reported to RP)'
             results[job.request.id]['suite_desc'] = desc
             results[job.request.id]['has_rp'] = ''
+    # add placeholder entries for scheduled requests not yet executed
+    for pending_job in pending_jobs:
+        if pending_job.request.id in results:
+            continue
+        pending_desc = getattr(pending_job.request, 'description', '') or ''
+        suite_desc = pending_desc
+        if pending_job.request.reportportal:
+            suite_desc = (pending_desc
+                          or pending_job.request.reportportal.get('suite_description', '')
+                          or '')
+        results[pending_job.request.id] = {
+            'id': pending_job.request.id,
+            'state': 'not executed',
+            'result': '-',
+            'uuid': '',
+            'url': '',
+            'plan': pending_job.request.tmt.get('plan', '') if pending_job.request.tmt else '',
+            'suite_desc': suite_desc,
+            # placeholder rows are never present in ReportPortal
+            'has_rp': '',
+            }
     if not jira_id.startswith(JIRA_NONE_ID):
         jira_url = ctx.settings.jira_url
         issue_url = urllib.parse.urljoin(
@@ -87,7 +115,7 @@ def execute_jobs_summary(ctx: CLIContext,
         rp_count = sum(1 for r in results.values() if r['has_rp'])
         summary += f'{rp_count} request(s) in total:'
     else:
-        summary += f'{len(execute_jobs)} request(s) in total:'
+        summary += f'{len(results)} request(s) in total:'
     for req in sorted(results.keys(), key=lambda x: int(x.split('.')[-1])):
         # it would be nice to use hyperlinks in launch description however we
         # would hit launch description length limit. Therefore using plain text
@@ -98,8 +126,11 @@ def execute_jobs_summary(ctx: CLIContext,
         else:
             # replace "|" with unicode "Fullwidth Vertical Line"
             results[req]['plan'] = results[req]['plan'].replace('|', '｜')  # noqa: RUF001
+            # use a hyperlink only when an execution URL is available;
+            # placeholder (not executed) rows have no URL
+            id_cell = "[{id}|{url}]" if results[req]['url'] else "{id}"
             new_line = (
-                "| [{id}|{url}] | {state} | {result} | {plan} | {suite_desc} |".format(
+                (f"| {id_cell} | {{state}} | {{result}} | {{plan}} | {{suite_desc}} |").format(
                     **results[req])
                 )
         if max_length > 0 and len(
@@ -193,7 +224,8 @@ def _get_rp_launch_details(
 
 
 def _check_test_status(
-        execute_jobs: list[ExecuteJob]) -> tuple[bool, bool]:
+        execute_jobs: list[ExecuteJob],
+        pending_jobs: Optional[list[ScheduleJob]] = None) -> tuple[bool, bool]:
     """Check if all tests have passed and finished."""
     all_tests_passed = True
     all_tests_finished = True
@@ -203,6 +235,12 @@ def _check_test_status(
             all_tests_passed = False
         if job.execution.state not in TF_REQUEST_FINISHED_STATES:
             all_tests_finished = False
+
+    # requests that have been scheduled but not yet executed mean the set of
+    # results is incomplete, so the issue must not be considered passed/finished
+    if pending_jobs:
+        all_tests_passed = False
+        all_tests_finished = False
 
     return all_tests_passed, all_tests_finished
 
@@ -363,7 +401,8 @@ def _process_jira_id_reports(
         et: Optional[ErrataTool],
         rog: Optional[RoGTool],
         jira_comment_limit: int,
-        progress_mode: bool = False) -> None:
+        progress_mode: bool = False,
+        pending_jobs: Optional[list[ScheduleJob]] = None) -> None:
     """Process reporting for a single Jira ID."""
     # Get RP launch details
     launch_uuid, launch_url = _get_rp_launch_details(execute_jobs)
@@ -373,7 +412,7 @@ def _process_jira_id_reports(
         rp.check_for_empty_launch(launch_uuid, logger=ctx.logger)
 
     # Check test status
-    all_tests_passed, all_tests_finished = _check_test_status(execute_jobs)
+    all_tests_passed, all_tests_finished = _check_test_status(execute_jobs, pending_jobs)
 
     # save comment footer if configured
     footer = os.environ.get('NEWA_COMMENT_FOOTER', '').strip()
@@ -384,7 +423,8 @@ def _process_jira_id_reports(
         jira_id,
         execute_jobs,
         target='Jira',
-        max_length=jira_comment_limit - len(footer))
+        max_length=jira_comment_limit - len(footer),
+        pending_jobs=pending_jobs)
 
     # Finalize RP launch if needed (skip in progress mode)
     if launch_uuid and rp and not progress_mode:
