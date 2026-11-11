@@ -36,6 +36,36 @@ class TestDetermineArchitectures:
         # riscv64 is filtered out, x86_64 kept
         assert result == [Arch.X86_64]
 
+    # --- exclusions (--arch !<arch>) -------------------------------------
+
+    def test_exclude_from_compose_defaults(self):
+        # only exclusions given: start from defaults and drop the excluded arch
+        job = _plain_job()
+        result = _determine_architectures(None, ['!x86_64'], job, None)
+        assert result == [Arch.S390X, Arch.PPC64LE, Arch.AARCH64]
+
+    def test_multiple_exclusions(self):
+        job = _plain_job()
+        result = _determine_architectures(None, ['!x86_64', '!aarch64'], job, None)
+        assert result == [Arch.S390X, Arch.PPC64LE]
+
+    def test_exclude_from_erratum_archs(self):
+        # exclusions apply to the artifact-provided arch set as well
+        job = _erratum_job([Arch.X86_64, Arch.S390X])
+        result = _determine_architectures(None, ['!s390x'], job, None)
+        assert result == [Arch.X86_64]
+
+    def test_include_and_exclude_combined(self):
+        # inclusions form the base, exclusions are then removed from it
+        job = _plain_job()
+        result = _determine_architectures(None, ['x86_64', 'aarch64', '!aarch64'], job, None)
+        assert result == [Arch.X86_64]
+
+    def test_unknown_arch_raises(self):
+        job = _plain_job()
+        with pytest.raises(ValueError, match='Unknown architecture'):
+            _determine_architectures(None, ['!bogus'], job, None)
+
     # --- erratum ---------------------------------------------------------
 
     def test_erratum_defined_arch(self):

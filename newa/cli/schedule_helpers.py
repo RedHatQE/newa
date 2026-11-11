@@ -29,19 +29,26 @@ def _determine_architectures(
         jira_job: JiraJob,
         compose: Optional[str]) -> list[Arch]:
     """Determine which architectures to use for scheduling."""
-    if arch_options:
-        return Arch.architectures([Arch(a.strip()) for a in arch_options], compose=compose)
+    includes, excludes = Arch.parse_filters(arch_options)
 
+    if includes:
+        architectures = Arch.architectures(includes, compose=compose)
     # When the artifact carries architecture metadata, honor it verbatim - even
     # when it is empty. An empty list is not missing metadata; it means the
     # artifact targets only unsupported architectures (e.g. riscv64) and so must
     # not fall back to the defaults below.
-    if jira_job.erratum:
-        return jira_job.erratum.archs
-    if jira_job.rog:
-        return jira_job.rog.archs
+    elif jira_job.erratum:
+        architectures = jira_job.erratum.archs
+    elif jira_job.rog:
+        architectures = jira_job.rog.archs
+    else:
+        architectures = Arch.architectures(compose=compose)
 
-    return Arch.architectures(compose=compose)
+    # Drop any explicitly excluded architectures (--arch !<arch>)
+    if excludes:
+        architectures = [a for a in architectures if a not in excludes]
+
+    return architectures
 
 
 def _prepare_initial_config(

@@ -6,6 +6,7 @@ import click
 
 from newa import (
     EXECUTE_FILE_PREFIX,
+    Arch,
     CLIContext,
     EventType,
     RoGTool,
@@ -68,6 +69,8 @@ from newa.cli.utils import initialize_state_dir, test_patterns_match
               default=[],
               multiple=True,
               help=('Execute only scheduled requests targeting the given architecture. '
+                    'Prefix an architecture with "!" to exclude it instead '
+                    '(e.g. --arch !x86_64 executes every architecture but x86_64). '
                     'The ReportPortal launch is still prepared for all scheduled '
                     'architectures, so separate per-architecture runs (using --continue) '
                     'merge into a single results table. '
@@ -104,6 +107,13 @@ def cmd_execute(
     It handles ReportPortal launch creation, Jira updates, and parallel execution.
     """
     ctx.enter_command('execute')
+
+    # Validate --arch values early to fail fast with a clear message
+    try:
+        Arch.parse_filters(arch)
+    except ValueError as e:
+        ctx.logger.error(f'ERROR: {e}')
+        raise click.Abort from None
 
     # Initialize state directory
     initialize_state_dir(ctx)
