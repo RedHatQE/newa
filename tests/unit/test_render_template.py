@@ -22,6 +22,53 @@ def test_render_template_bad():
             )
 
 
+def test_render_template_blocks_sandbox_escape():
+    """A classic Jinja sandbox-escape payload must not be rendered.
+
+    Untrusted values (e.g. RoG MR titles/labels, erratum summaries) are
+    interpolated into templates, so dunder-based escapes that reach
+    ``__class__``/``__subclasses__`` must raise instead of executing.
+    """
+    with pytest.raises(Exception, match='Could not render template'):
+        render_template(
+            "{{ ''.__class__.__mro__[1].__subclasses__() }}",
+            )
+
+
+def test_render_template_blocks_dunder_on_variable():
+    """Unsafe attribute access on a supplied variable must not leak the object.
+
+    The sandbox turns unsafe attribute access into an undefined value (which
+    renders empty) rather than exposing the real ``__class__``, so the escape
+    chain cannot be bootstrapped from an untrusted variable.
+    """
+    rendered = render_template(
+        "{{ LABEL.__class__ }}",
+        LABEL="untrusted-label",
+        )
+
+    assert rendered == ""
+    assert 'class' not in rendered
+
+    # And attempting to walk the chain to reach subclasses raises.
+    with pytest.raises(Exception, match='Could not render template'):
+        render_template(
+            "{{ LABEL.__class__.__mro__[1].__subclasses__() }}",
+            LABEL="untrusted-label",
+            )
+
+
+def test_render_template_allows_normal_string_operations():
+    """Normal, legitimate template operations must still work under the sandbox."""
+    rendered = render_template(
+        "{{ ROG_LABELS | join(',') }} {{ NAME.replace('-', '_') }}",
+        ROG_LABELS=['bugfix', 'needs-testing'],
+        NAME="x86-64",
+        )
+
+    assert rendered == "bugfix,needs-testing x86_64"
+
+
 def test_render_template_recursive():
     """Test that render_template performs recursive rendering (late rendering / method 1)."""
     # This tests that nested template variables are expanded through multiple iterations
