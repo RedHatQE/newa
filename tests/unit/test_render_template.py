@@ -1,3 +1,4 @@
+import jinja2
 import pytest
 
 from newa import RecipeConfig, render_template
@@ -67,6 +68,35 @@ def test_render_template_allows_normal_string_operations():
         )
 
     assert rendered == "bugfix,needs-testing x86_64"
+
+
+def test_render_template_blocks_mutating_method():
+    """A crafted value must not mutate exposed model data during rendering.
+
+    With the immutable sandbox, a label like ``{{ ROG_LABELS.clear() }}``
+    re-parsed on a recursive pass must raise rather than emptying the list
+    that later template consumers rely on.
+    """
+    labels = ['bugfix', 'needs-testing']
+
+    with pytest.raises(Exception, match='Could not render template'):
+        render_template(
+            "{{ ROG_LABELS.clear() }}",
+            ROG_LABELS=labels,
+            )
+
+    # The list must be untouched.
+    assert labels == ['bugfix', 'needs-testing']
+
+
+def test_render_template_rejects_non_sandboxed_environment():
+    """A caller-supplied plain environment must not bypass the sandbox."""
+    with pytest.raises(Exception, match='requires a sandboxed Jinja environment'):
+        render_template(
+            "{{ LABEL }}",
+            environment=jinja2.Environment(),
+            LABEL="value",
+            )
 
 
 def test_render_template_recursive():

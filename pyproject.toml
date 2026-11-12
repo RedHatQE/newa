@@ -40,6 +40,11 @@ dependencies = [
     "click>=8.0.3,!=8.1.4",
     "attrs>=20.3.0",
     "ruamel.yaml>=0.16.6",
+    # NOTE: kept at >=2.11.3 for older Python environments. Untrusted values
+    # (erratum summaries, RoG MR titles/labels) are rendered via the Jinja
+    # sandbox; newer Jinja releases carry additional SandboxedEnvironment
+    # escape fixes (e.g. CVE-2024-56326, CVE-2025-27516) that cannot be
+    # required here, so that residual risk is knowingly accepted.
     "jinja2>=2.11.3",
     "requests",
     "requests_kerberos",
