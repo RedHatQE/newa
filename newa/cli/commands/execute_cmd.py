@@ -69,8 +69,9 @@ from newa.cli.utils import initialize_state_dir, test_patterns_match
               default=[],
               multiple=True,
               help=('Execute only scheduled requests targeting the given architecture. '
-                    'Prefix an architecture with "!" to exclude it instead '
-                    '(e.g. --arch !x86_64 executes every architecture but x86_64). '
+                    'Prefix an architecture with "!" to exclude it instead; quote it, '
+                    'e.g. --arch \'!x86_64\', so the shell does not interpret "!" '
+                    '(executes every architecture but x86_64). '
                     'The ReportPortal launch is still prepared for all scheduled '
                     'architectures, so separate per-architecture runs (using --continue) '
                     'merge into a single results table. '

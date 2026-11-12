@@ -15,9 +15,11 @@ from newa.cli.utils import initialize_state_dir, test_filtered_file_presence
               default=[],
               multiple=True,
               help=('Restrics system architectures to use when scheduling. '
-                    'Prefix an architecture with "!" to exclude it instead. '
+                    'Prefix an architecture with "!" to exclude it instead '
+                    '(quote it, e.g. --arch \'!s390x\', so the shell does not '
+                    'interpret "!"). '
                     'Can be specified multiple times. '
-                    'Examples: --arch x86_64, --arch !s390x'),
+                    'Examples: --arch x86_64, --arch \'!s390x\''),
               )
 @click.option('--fixture',
               'fixtures',
