@@ -120,6 +120,7 @@ class RoG(Cloneable, Serializable):  # type: ignore[no-untyped-def]
                                   for a in arch_list])
     builds: list[str] = field(factory=list)
     components: list[str] = field(factory=list)
+    labels: list[str] = field(factory=list)
 
     @property
     def mr_number(self) -> str:

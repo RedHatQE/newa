@@ -87,6 +87,8 @@ class RoGTool:
         # git merge request object
         gm = gp.mergerequests.get(number)
         title = gm.title
+        # MR labels, exposed in the event metadata for downstream tooling
+        labels = list(gm.labels or [])
         # get job log
         job = self.get_mr_build_rpm_pipeline_job(url)
         log = job.trace().decode("utf-8")
@@ -152,4 +154,5 @@ class RoGTool:
             build_target=target,
             archs=Arch.architectures(archs),
             builds=builds,
-            components=components)
+            components=components,
+            labels=labels)

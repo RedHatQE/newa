@@ -326,6 +326,49 @@ class TestRoGMrNumber:
             rog.mr_number  # noqa: B018 -- intentionally accessed to trigger the error
 
 
+class TestRoGLabels:
+    """Test suite for RoG.labels event metadata."""
+
+    def _rog(self, labels: list) -> RoG:
+        return RoG(
+            id='https://gitlab.com/redhat/centos-stream/rpms/bash/-/merge_requests/123',
+            content_type=ErratumContentType.RPM,
+            title='Test MR',
+            build_task_id='54321',
+            build_target='c9s-candidate',
+            archs=[],
+            builds=['bash-5.1.8-9.el9'],
+            components=['bash'],
+            labels=labels,
+            )
+
+    def test_labels_default_to_empty_list(self) -> None:
+        rog = RoG(
+            id='https://gitlab.com/redhat/centos-stream/rpms/bash/-/merge_requests/123',
+            content_type=ErratumContentType.RPM,
+            title='Test MR',
+            build_task_id='54321',
+            build_target='c9s-candidate',
+            archs=[],
+            builds=['bash-5.1.8-9.el9'],
+            components=['bash'],
+            )
+
+        assert rog.labels == []
+
+    def test_labels_round_trip_through_yaml(self) -> None:
+        rog = self._rog(['bugfix', 'needs-testing'])
+
+        restored = RoG.from_yaml(rog.to_yaml())
+
+        assert restored.labels == ['bugfix', 'needs-testing']
+
+    def test_labels_serialized_to_yaml(self) -> None:
+        rog = self._rog(['bugfix'])
+
+        assert 'labels' in rog.to_yaml()
+
+
 class TestRoGEventShortId:
     """Test suite for RoG Event.short_id property."""
 
