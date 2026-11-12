@@ -21,13 +21,16 @@ def default_template_environment() -> jinja2.Environment:
 
     Adds common filters, and enables block trimming and left strip.
 
-    Uses a :py:class:`jinja2.sandbox.SandboxedEnvironment` so that untrusted
-    values interpolated into templates (e.g. erratum summaries, RoG MR titles
-    and labels) cannot escape the template to execute arbitrary code on the
-    runner via unsafe attribute access such as ``__class__``/``__globals__``.
+    Uses a :py:class:`jinja2.sandbox.ImmutableSandboxedEnvironment` so that
+    untrusted values interpolated into templates (e.g. erratum summaries, RoG
+    MR titles and labels) cannot escape the template to execute arbitrary code
+    on the runner via unsafe attribute access such as ``__class__``/
+    ``__globals__``. The immutable variant additionally blocks calls to
+    mutating methods (e.g. ``list.clear()``/``append()``), so a crafted value
+    rendered recursively cannot modify exposed model data.
     """
 
-    environment = jinja2.sandbox.SandboxedEnvironment()
+    environment = jinja2.sandbox.ImmutableSandboxedEnvironment()
 
     environment.trim_blocks = True
     environment.lstrip_blocks = True
@@ -51,7 +54,17 @@ def render_template(
     :param limit: if iterations not set, maximum iterations before raising exception (default 50).
     :param variables: variables to pass to the template.
     """
-    environment = default_template_environment() if environment is None else environment.overlay()
+    if environment is None:
+        environment = default_template_environment()
+    else:
+        # Never render untrusted templates outside the sandbox: a plain
+        # Environment would re-expose unsafe attribute access and code
+        # execution on the runner.
+        if not isinstance(environment, jinja2.sandbox.SandboxedEnvironment):
+            raise Exception(
+                "render_template requires a sandboxed Jinja environment; "
+                "use default_template_environment()")
+        environment = environment.overlay()
 
     old = template
 
