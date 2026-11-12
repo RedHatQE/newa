@@ -1853,7 +1853,7 @@ request:
 
 By default, tests are scheduled for all relevant architectures. This option can be used to limit scheduling to a particular architecture. This option can be used multiple times.
 
-An architecture prefixed with `!` is *excluded* instead. When only exclusions are given, scheduling starts from the full set of relevant architectures and removes the excluded ones; when inclusions are given, they act as an allow-list that exclusions are then removed from.
+An architecture prefixed with `!` is *excluded* instead (quote the value, e.g. `--arch '!s390x'`, so that interactive shells do not interpret `!`). When only exclusions are given, scheduling starts from the full set of relevant architectures and removes the excluded ones; when inclusions are given, they act as an allow-list that exclusions are then removed from.
 
 Example (limit to two architectures):
 ```
@@ -1862,7 +1862,7 @@ $ newa event --compose CentOS-Stream-9 job-recipe path/to/recipe.yaml schedule -
 
 Example (schedule all relevant architectures except s390x):
 ```
-$ newa event --compose CentOS-Stream-9 job-recipe path/to/recipe.yaml schedule --arch !s390x execute report
+$ newa event --compose CentOS-Stream-9 job-recipe path/to/recipe.yaml schedule --arch '!s390x' execute report
 ```
 
 #### Option `--fixture`
@@ -2170,7 +2170,7 @@ newa --prev-state-dir schedule execute --request REQ-1.2.1 report
 
 This option restricts execution to scheduled requests targeting the given architecture. All other scheduled requests are skipped. This option can be used multiple times.
 
-An architecture prefixed with `!` is *excluded* instead (e.g. `--arch !x86_64` executes every scheduled architecture but x86_64). When only exclusions are given, all scheduled architectures except the excluded ones are executed; when inclusions are given, they act as an allow-list that exclusions are then removed from.
+An architecture prefixed with `!` is *excluded* instead (e.g. `--arch '!x86_64'` executes every scheduled architecture but x86_64). Quote the value so that interactive shells do not interpret `!`. When only exclusions are given, all scheduled architectures except the excluded ones are executed; when inclusions are given, they act as an allow-list that exclusions are then removed from.
 
 Crucially, the ReportPortal launch (and the related Jira/Errata bookkeeping) is still prepared for **all** scheduled architectures, not just the one being executed. This means you can schedule multiple architectures at once and then execute them in separate passes while still having all results merged into a single ReportPortal launch and results table. Use `--continue` on the follow-up passes so `newa` reuses the existing launch.
 
