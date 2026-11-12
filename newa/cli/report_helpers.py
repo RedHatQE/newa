@@ -346,7 +346,8 @@ def _add_erratum_comment_for_report(
         jira_connection: Any,
         jira_id: str,
         execute_job: ExecuteJob,
-        launch_url: Optional[str]) -> None:
+        launch_url: Optional[str],
+        pending_count: int = 0) -> None:
     """Add comment to Errata Tool about test execution completion."""
     if (ctx.settings.et_enable_comments and
             ErratumCommentTrigger.REPORT in execute_job.jira.erratum_comment_triggers and
@@ -360,6 +361,9 @@ def _add_erratum_comment_for_report(
                    f'{issue_url}\n')
         if launch_url:
             comment += f'{launch_url}\n'
+        if pending_count:
+            comment += (f'Note: {pending_count} scheduled request(s) have not been '
+                        'executed as requested and are still pending.\n')
         et.add_comment(execute_job.erratum.id, comment)
         ctx.logger.info(
             f"Erratum {execute_job.erratum.id} was updated "
@@ -372,7 +376,8 @@ def _add_rog_comment_for_report(
         jira_connection: Any,
         jira_id: str,
         execute_job: ExecuteJob,
-        launch_url: Optional[str]) -> None:
+        launch_url: Optional[str],
+        pending_count: int = 0) -> None:
     """Add comment to RoG merge request about test execution completion."""
     if (ctx.settings.rog_enable_comments and
             RoGCommentTrigger.REPORT in execute_job.jira.rog_comment_triggers and
@@ -386,6 +391,9 @@ def _add_rog_comment_for_report(
                    f'{issue_url}')
         if launch_url:
             comment += f'\n\n{launch_url}'
+        if pending_count:
+            comment += (f'\n\nNote: {pending_count} scheduled request(s) have not been '
+                        'executed as requested and are still pending.')
         rog.add_comment(execute_job.rog.id, comment)
         ctx.logger.info(
             f"RoG MR {execute_job.rog.id} was updated "
@@ -464,9 +472,11 @@ def _process_jira_id_reports(
         # Add Errata Tool comment if needed (skip in progress mode)
         if et and not progress_mode:
             _add_erratum_comment_for_report(
-                ctx, et, jira_connection, jira_id, execute_jobs[0], launch_url)
+                ctx, et, jira_connection, jira_id, execute_jobs[0], launch_url,
+                pending_count=len(pending_jobs or []))
 
         # Add RoG comment if needed (skip in progress mode)
         if rog and not progress_mode:
             _add_rog_comment_for_report(
-                ctx, rog, jira_connection, jira_id, execute_jobs[0], launch_url)
+                ctx, rog, jira_connection, jira_id, execute_jobs[0], launch_url,
+                pending_count=len(pending_jobs or []))

@@ -1,10 +1,15 @@
 """Tests for report rendering of scheduled-but-not-executed (pending) requests."""
 
+from types import SimpleNamespace
 from unittest import mock
 
-from newa import Event, ExecuteJob, Execution, Issue, Request, ScheduleJob
+from newa import ErratumCommentTrigger, Event, ExecuteJob, Execution, Issue, Request, ScheduleJob
 from newa.cli.constants import JIRA_NONE_ID
-from newa.cli.report_helpers import _check_test_status, execute_jobs_summary
+from newa.cli.report_helpers import (
+    _add_erratum_comment_for_report,
+    _check_test_status,
+    execute_jobs_summary,
+    )
 
 
 def _execute_job(request_id: str, arch: str, result: str, state: str) -> ExecuteJob:
@@ -72,3 +77,37 @@ def test_check_test_status_pending_blocks_finished():
     assert _check_test_status(executed) == (True, True)
     # with pending requests, the set is neither passed nor finished
     assert _check_test_status(executed, pending) == (False, False)
+
+
+def _erratum_report_setup():
+    ctx = mock.MagicMock()
+    ctx.settings.et_enable_comments = True
+    ctx.settings.jira_url = 'https://jira.example.com/'
+    et = mock.MagicMock()
+    jira_connection = mock.MagicMock()
+    jira_connection.issue.return_value.fields.summary = 'Test advisory'
+    execute_job = SimpleNamespace(
+        jira=SimpleNamespace(
+            erratum_comment_triggers=[ErratumCommentTrigger.REPORT],
+            group=None),
+        erratum=SimpleNamespace(id='RHSA-2024:12345'))
+    return ctx, et, jira_connection, execute_job
+
+
+def test_erratum_comment_notes_pending_requests():
+    ctx, et, jira_connection, execute_job = _erratum_report_setup()
+    _add_erratum_comment_for_report(
+        ctx, et, jira_connection, 'TEST-1', execute_job,
+        'https://rp.example.com/launch', pending_count=2)
+    comment = et.add_comment.call_args[0][1]
+    assert 'has finished' in comment
+    assert '2 scheduled request(s) have not been executed' in comment
+
+
+def test_erratum_comment_without_pending_has_no_note():
+    ctx, et, jira_connection, execute_job = _erratum_report_setup()
+    _add_erratum_comment_for_report(
+        ctx, et, jira_connection, 'TEST-1', execute_job,
+        'https://rp.example.com/launch', pending_count=0)
+    comment = et.add_comment.call_args[0][1]
+    assert 'not been executed' not in comment
