@@ -6,6 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 import jinja2
+import jinja2.sandbox
 
 if TYPE_CHECKING:
     from newa.models.events import Event
@@ -19,9 +20,14 @@ def default_template_environment() -> jinja2.Environment:
     Create a Jinja2 environment with default settings.
 
     Adds common filters, and enables block trimming and left strip.
+
+    Uses a :py:class:`jinja2.sandbox.SandboxedEnvironment` so that untrusted
+    values interpolated into templates (e.g. erratum summaries, RoG MR titles
+    and labels) cannot escape the template to execute arbitrary code on the
+    runner via unsafe attribute access such as ``__class__``/``__globals__``.
     """
 
-    environment = jinja2.Environment()
+    environment = jinja2.sandbox.SandboxedEnvironment()
 
     environment.trim_blocks = True
     environment.lstrip_blocks = True
