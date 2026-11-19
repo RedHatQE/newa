@@ -2052,6 +2052,16 @@ Each result is annotated with where its credential (or URL) was resolved from â€
 `not configured` â€” so a stale environment variable shadowing an updated config
 file value is immediately visible.
 
+By default all integrations are checked. Individual integrations can be skipped
+with `--no-<section>` options, named after the corresponding config-file
+sections: `--no-erratatool`, `--no-jira`, `--no-reportportal`,
+`--no-testingfarm`, and `--no-rog`. For example, to validate everything except
+Jira and RoG:
+
+```
+$ newa validate-auth --no-jira --no-rog
+```
+
 **Key features:**
 - Returns non-zero exit code if validation fails (useful for CI/scripts)
 - Reports clear error messages for troubleshooting
