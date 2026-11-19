@@ -2024,11 +2024,11 @@ Using --state-dir=/var/tmp/newa/run-XX
 NEWA Configuration Validation
 ======================================================================
 
-Testing Errata Tool... ✓ OK
-Testing Jira...        ✓ OK
-Testing ReportPortal...✓ OK
-Testing Testing Farm...✓ OK
-Testing RoG (GitLab)...✗ FAIL
+Testing Errata Tool... ✓ OK  (URL from config file [erratatool] url)
+Testing Jira...        ✓ OK  (token from config file [jira] token; email not configured)
+Testing ReportPortal...✓ OK  (token from config file [reportportal] token)
+Testing Testing Farm...✓ OK  (token from environment variable $TESTING_FARM_API_TOKEN)
+Testing RoG (GitLab)...✗ FAIL  (token not configured)
 
 ======================================================================
 Summary
@@ -2036,21 +2036,28 @@ Summary
 Passed: 4/5
 
 Services tested:
-  • Errata Tool: https://errata.devel.redhat.com
-  • Jira: https://redhat.atlassian.net
-  • ReportPortal: https://reportportal-rhel.apps.dno.ocp-hub.prod.psi.redhat.com
-  • Testing Farm: https://api.testing-farm.io/v0.1/whoami
+  • Errata Tool: https://errata.devel.redhat.com (URL from config file [erratatool] url)
+  • Jira: https://redhat.atlassian.net (token from config file [jira] token; email not configured)
+  • ReportPortal: https://reportportal-rhel.apps.dno.ocp-hub.prod.psi.redhat.com (token from config file [reportportal] token)
+  • Testing Farm: https://api.testing-farm.io/v0.1/whoami (token from environment variable $TESTING_FARM_API_TOKEN)
 
 Failed services:
-  • RoG (GitLab): Token not configured (optional)
+  • RoG (GitLab): Token not configured (optional) [token not configured]
 
 Error: Configuration validation failed
 ```
+
+Each result is annotated with where its credential (or URL) was resolved from —
+`environment variable $VAR`, `config file [section] key`, `built-in default`, or
+`not configured` — so a stale environment variable shadowing an updated config
+file value is immediately visible.
 
 **Key features:**
 - Returns non-zero exit code if validation fails (useful for CI/scripts)
 - Reports clear error messages for troubleshooting
 - Shows tested service URLs in summary
+- Reports the resolved source of each credential/URL to spot a stale
+  environment variable shadowing the config file
 - Reports missing RoG credentials in the failure summary
 
 **Use cases:**
