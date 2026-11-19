@@ -33,61 +33,34 @@ STATEDIR_TOPDIR = Path('/var/tmp/newa')
 
 SettingsT = TypeVar('SettingsT', bound='Settings')
 
-# First version support BitWarden only
+# Prefix marking a settings value that should be fetched from Bitwarden,
+# e.g. `token = bw://GitLab/token` (item name/field name).
 BW_PREFIX = 'bw://'
-_BITWARDEN = None
-_BITWARDEN_LOADED = False
 
 
-def _bitwarden():  # type: ignore[no-untyped-def]
-    """Return the bw_credentials module if it can be found, else None."""
-    global _BITWARDEN, _BITWARDEN_LOADED
-    if _BITWARDEN_LOADED:
-        return _BITWARDEN
-    _BITWARDEN_LOADED = True
+def resolve_bitwarden(value: str) -> str:
+    """Resolve a ``bw://<item>/<field>`` value from Bitwarden.
 
-    here = Path(__file__).resolve().parent
-    candidates = []
-    env_dir = os.environ.get('BW_CREDENTIALS_DIR')
-    if env_dir:
-        candidates.append(Path(env_dir))
-    candidates.extend([here, here / 'script'])
-    for directory in candidates:
-        if (directory / 'bw_credentials.py').is_file():
-            sys.path.insert(0, str(directory))
-            try:
-                import bw_credentials
-            except Exception:
-                continue
-            _BITWARDEN = bw_credentials
-            return _BITWARDEN
-    return None
-
-
-def _resolve_bw(value: str) -> str:
-    """Resolve a 'bw://Item/Field' value; return anything else unchanged."""
+    Values without the ``bw://`` prefix are returned unchanged. The item may
+    contain spaces, e.g. ``bw://Gitlab user1/token``; the field is the last
+    path component.
+    """
     if not value.startswith(BW_PREFIX):
         return value
 
-    module = _bitwarden()
-    if module is None:
-        raise RuntimeError(
-            'cannot resolve %r: bw_credentials.py not found '
-            '(set BW_CREDENTIALS_DIR)' % value)
-
     ref = value[len(BW_PREFIX):].strip()
-    item, sep, field = ref.rpartition('/')
-    if not sep:
-        item, field = ref, 'password'
-    item, field = item.strip(), field.strip()
-    if not item or not field:
-        raise RuntimeError('invalid Bitwarden reference: %r' % value)
+    item, _, fieldname = ref.rpartition('/')
+    item, fieldname = item.strip(), fieldname.strip()
+    if not item or not fieldname:
+        raise ValueError(
+            f'invalid Bitwarden reference {value!r}, '
+            'expected the form bw://<item>/<field>')
 
     try:
-        return module.credential(item, field)
-    except Exception as exc:
-        raise RuntimeError(
-            'cannot resolve %r: %s' % (value, exc)) from exc
+        from .bw_credentials import credential
+    except ImportError:
+        from bw_credentials import credential
+    return credential(item, fieldname)
 
 
 @define
@@ -113,19 +86,19 @@ class Settings:  # type: ignore[no-untyped-def]
     rog_enable_comments: bool = False
     jira_enable_comments: bool = True
     rp_url: str = ''
-    rp_token: str = ''
+    rp_token: str = field(default='', repr=False)
     rp_project: str = ''
     rp_test_param_filter: str = ''
     rp_launch_descr_chars_limit: str = ''
     jira_url: str = ''
-    jira_token: str = ''
-    jira_email: str = ''
+    jira_token: str = field(default='', repr=False)
+    jira_email: str = field(default='', repr=False)
     jira_project: str = ''
-    tf_token: str = ''
+    tf_token: str = field(default='', repr=False)
     tf_recheck_delay: str = ''
-    rog_token: str = ''
+    rog_token: str = field(default='', repr=False)
     ai_api_url: str = ''
-    ai_api_token: str = ''
+    ai_api_token: str = field(default='', repr=False)
     ai_api_model: str = ''
     ai_system_prompt: str = ''
     ai_oauth2_client_secret_file: str = ''
@@ -148,6 +121,18 @@ class Settings:  # type: ignore[no-untyped-def]
         """
         return self.value_sources.get(path, 'built-in default')
 
+    def __getattribute__(self, name: str):  # type: ignore[no-untyped-def]
+        """Resolve ``bw://`` references lazily, when the value is first used.
+
+        The secret is written back to the attribute, so the vault is contacted
+        at most once per value instead of on every access.
+        """
+        value = object.__getattribute__(self, name)
+        if isinstance(value, str) and value.startswith(BW_PREFIX):
+            value = resolve_bitwarden(value)
+            object.__setattr__(self, name, value)
+        return value
+
     @classmethod
     def load(cls: type[SettingsT], config_file: Path) -> 'Settings':
         cp = ConfigParser()
@@ -165,9 +150,22 @@ class Settings:  # type: ignore[no-untyped-def]
             # first attemp to read environment variable
             env = os.environ.get(envvar, None) if envvar else None
             # then attempt to use the value from config file, use fallback value otherwise
-            value = env if env else cp.get(
-                section, key, fallback=str(default))
-            return _resolve_bw(value)
+            if env:
+                value_sources[path] = f'environment variable ${envvar}'
+                return env
+            if cp.has_option(section, key):
+                # has_option() also matches values inherited from the [DEFAULT]
+                # section; report the real origin so the hint points users at
+                # the right place in their config file.
+                origin = 'DEFAULT' if key in cp.defaults() else section
+                value_sources[path] = f'config file [{origin}] {key}'
+                # Values written as bw://<item>/<field> are kept verbatim here
+                # and resolved from Bitwarden on first access (see
+                # Settings.__getattribute__), so loading settings never
+                # unlocks the vault.
+                return cp.get(section, key)
+            value_sources[path] = 'built-in default'
+            return str(default)
 
         def _str_to_bool(value: str) -> bool:
             return value.strip().lower() in ['1', 'true']

@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """Bitwarden credential access for the scripts in this directory.
 
-Version: 1.0.8
+Version: 1.0.7
 
 No credential is read from environment variables. Scripts ask for a named
 secret, which is fetched from Bitwarden through the official `bw` CLI.
 
 Vault layout assumed by SECRETS below — edit the names/fields to match yours:
 
-    Jira user1     custom field "email" = your email, "PAT" = API token user1
-    Jira user2     custom field "PAT" = API token user2
+    Jira user1     custom field "email" = your email, "PAT" = API token
+    Jira user2     custom field "PAT" = API token (user2 account)
     GitLab            custom field "PAT" = personal access token
-    Testing Farm user1      custom field "PAT" = Testing Farm API token user1
-    ReportPortal      custom field "PAT" = ReportPortal API token user1
-    ROG               custom field "PAT" = ROG API token    user1
-    AI                custom field "PAT" = AI API token     user1
+    Testing Farm      custom field "PAT" = Testing Farm API token
+    ReportPortal      custom field "PAT" = ReportPortal API token
 
 Session handling, in order:
     1. $BW_SESSION, if set and still valid
@@ -59,18 +57,16 @@ import sys
 import tempfile
 import time
 
-__version__ = "1.0.8"
+__version__ = "1.0.7"
 
 # env-var name -> (Bitwarden item name, item field)
 SECRETS = {
     "JIRA_EMAIL": ("Jira user1", "email"),
     "JIRA_API_TOKEN": ("Jira user1", "PAT"),
-    "JIRA_API_TOKEN_SE": ("Jira user2", "PAT"),
+    "JIRA_API_TOKEN_SE": ("Jira se-security", "PAT"),
     "GITLAB_TOKEN": ("GitLab", "PAT"),
     "TESTING_FARM_API_TOKEN": ("Testing Farm user1", "PAT"),
     "RP_TOKEN": ("ReportPortal", "PAT"),
-    "ROG_TOKEN": ("ROG", "PAT"),
-    "AI_API_TOKEN": ("AI", "PAT"),
 }
 
 BUILTIN_FIELDS = ("password", "username", "totp", "notes", "uri")
@@ -389,7 +385,7 @@ def _read_field(item_id, item, field):
     if not matches:
         matches = find(lambda name: name.lower() == wanted)
     if not matches:
-        # Tolerate legacy names such as "Jira user1" for field "PAT".
+        # Tolerate legacy names such as "Jira user1 PAT" for field "PAT".
         matches = find(lambda name: name.lower().endswith(" " + wanted))
     if len(matches) == 1:
         value = matches[0].get("value") or ""
