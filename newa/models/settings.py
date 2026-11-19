@@ -7,6 +7,8 @@ from configparser import ConfigParser
 from pathlib import Path
 from re import Pattern
 from typing import TYPE_CHECKING, Optional, TypeVar
+import sys
+import threading
 
 try:
     from attrs import define, field
@@ -32,6 +34,69 @@ EXECUTE_FILE_PREFIX = 'execute-'
 STATEDIR_TOPDIR = Path('/var/tmp/newa')
 
 SettingsT = TypeVar('SettingsT', bound='Settings')
+
+# First version support BitWarden only
+BW_PREFIX = 'bw://'
+_BITWARDEN = None
+_BITWARDEN_LOADED = False
+_BITWARDEN_LOCK = threading.Lock()
+
+
+def _bitwarden():  # type: ignore[no-untyped-def]
+    """Return the bw_credentials module if it can be found, else None."""
+    global _BITWARDEN, _BITWARDEN_LOADED
+    if _BITWARDEN_LOADED:
+        return _BITWARDEN
+
+    with _BITWARDEN_LOCK:
+        # Another caller may have completed discovery while we waited.
+        if _BITWARDEN_LOADED:
+            return _BITWARDEN
+
+        here = Path(__file__).resolve().parent
+        candidates = []
+        env_dir = os.environ.get('BW_CREDENTIALS_DIR')
+        if env_dir:
+            candidates.append(Path(env_dir))
+        candidates.extend([here, here / 'script'])
+        for directory in candidates:
+            if (directory / 'bw_credentials.py').is_file():
+                sys.path.insert(0, str(directory))
+                try:
+                    import bw_credentials
+                except Exception:
+                    continue
+                _BITWARDEN = bw_credentials
+                _BITWARDEN_LOADED = True
+                return _BITWARDEN
+
+        # Leave the cache unset so a later call can retry discovery.
+        return None
+
+def _resolve_bw(value: str) -> str:
+    """Resolve a 'bw://Item/Field' value; return anything else unchanged."""
+    if not value.startswith(BW_PREFIX):
+        return value
+
+    module = _bitwarden()
+    if module is None:
+        raise RuntimeError(
+            'cannot resolve %r: bw_credentials.py not found '
+            '(set BW_CREDENTIALS_DIR)' % value)
+
+    ref = value[len(BW_PREFIX):].strip()
+    item, sep, field = ref.rpartition('/')
+    if not sep:
+        item, field = ref, 'password'
+    item, field = item.strip(), field.strip()
+    if not item or not field:
+        raise RuntimeError('invalid Bitwarden reference: %r' % value)
+
+    try:
+        return module.credential(item, field)
+    except Exception as exc:
+        raise RuntimeError(
+            'cannot resolve %r: %s' % (value, exc)) from exc
 
 
 @define
@@ -109,18 +174,9 @@ class Settings:  # type: ignore[no-untyped-def]
             # first attemp to read environment variable
             env = os.environ.get(envvar, None) if envvar else None
             # then attempt to use the value from config file, use fallback value otherwise
-            if env:
-                value_sources[path] = f'environment variable ${envvar}'
-                return env
-            if cp.has_option(section, key):
-                # has_option() also matches values inherited from the [DEFAULT]
-                # section; report the real origin so the hint points users at
-                # the right place in their config file.
-                origin = 'DEFAULT' if key in cp.defaults() else section
-                value_sources[path] = f'config file [{origin}] {key}'
-                return cp.get(section, key)
-            value_sources[path] = 'built-in default'
-            return str(default)
+            value = env if env else cp.get(
+                section, key, fallback=str(default))
+            return _resolve_bw(value)
 
         def _str_to_bool(value: str) -> bool:
             return value.strip().lower() in ['1', 'true']
