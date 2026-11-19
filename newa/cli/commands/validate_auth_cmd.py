@@ -1,6 +1,6 @@
 """Validate-auth command for NEWA CLI."""
 
-from typing import Optional
+from typing import Callable, Optional
 
 import click
 import requests
@@ -111,19 +111,63 @@ def _test_rog(ctx: CLIContext) -> tuple[bool, str, Optional[str], str]:
         return False, str(e), "https://gitlab.com", source
 
 
+TestFunc = Callable[[CLIContext], tuple[bool, str, Optional[str], str]]
+
+# Maps a config-file section name to its display name and test function. The
+# order here is the order in which services are validated and reported.
+TESTS: list[tuple[str, str, TestFunc]] = [
+    ("erratatool", "Errata Tool", _test_errata_tool),
+    ("jira", "Jira", _test_jira),
+    ("reportportal", "ReportPortal", _test_reportportal),
+    ("testingfarm", "Testing Farm", _test_testing_farm),
+    ("rog", "RoG (GitLab)", _test_rog),
+    ]
+
+
 @click.command(name='validate-auth')
+@click.option('--no-erratatool', 'no_erratatool', is_flag=True,
+              help='Skip the Errata Tool check.')
+@click.option('--no-jira', 'no_jira', is_flag=True,
+              help='Skip the Jira check.')
+@click.option('--no-reportportal', 'no_reportportal', is_flag=True,
+              help='Skip the ReportPortal check.')
+@click.option('--no-testingfarm', 'no_testingfarm', is_flag=True,
+              help='Skip the Testing Farm check.')
+@click.option('--no-rog', 'no_rog', is_flag=True,
+              help='Skip the RoG (GitLab) check.')
 @click.pass_obj
-def cmd_validate_auth(ctx: CLIContext) -> None:
-    """Check configured service connectivity and supported authentication."""
+def cmd_validate_auth(
+        ctx: CLIContext,
+        no_erratatool: bool,
+        no_jira: bool,
+        no_reportportal: bool,
+        no_testingfarm: bool,
+        no_rog: bool,
+        ) -> None:
+    """Check configured service connectivity and supported authentication.
+
+    By default every integration is checked. Use the ``--no-<section>`` options
+    (named after the config-file sections) to skip individual integrations.
+    """
     ctx.enter_command('validate-auth')
 
+    skipped = {
+        'erratatool': no_erratatool,
+        'jira': no_jira,
+        'reportportal': no_reportportal,
+        'testingfarm': no_testingfarm,
+        'rog': no_rog,
+        }
+    # Default to not-skipped for any section missing from the map so that a
+    # future TESTS entry added without a matching --no-<section> option still
+    # gets checked rather than crashing the whole command.
     tests = [
-        ("Errata Tool", _test_errata_tool),
-        ("Jira", _test_jira),
-        ("ReportPortal", _test_reportportal),
-        ("Testing Farm", _test_testing_farm),
-        ("RoG (GitLab)", _test_rog),
+        (name, test_func)
+        for section, name, test_func in TESTS
+        if not skipped.get(section, False)
         ]
+    if not tests:
+        raise click.ClickException("All integrations were skipped; nothing to validate")
 
     click.echo("=" * 70)
     click.echo("NEWA Configuration Validation")
