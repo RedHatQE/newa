@@ -7,6 +7,8 @@ from configparser import ConfigParser
 from pathlib import Path
 from re import Pattern
 from typing import TYPE_CHECKING, Optional, TypeVar
+import sys
+import threading
 
 try:
     from attrs import define, field
@@ -37,6 +39,7 @@ SettingsT = TypeVar('SettingsT', bound='Settings')
 BW_PREFIX = 'bw://'
 _BITWARDEN = None
 _BITWARDEN_LOADED = False
+_BITWARDEN_LOCK = threading.Lock()
 
 
 def _bitwarden():  # type: ignore[no-untyped-def]
@@ -44,25 +47,31 @@ def _bitwarden():  # type: ignore[no-untyped-def]
     global _BITWARDEN, _BITWARDEN_LOADED
     if _BITWARDEN_LOADED:
         return _BITWARDEN
-    _BITWARDEN_LOADED = True
 
-    here = Path(__file__).resolve().parent
-    candidates = []
-    env_dir = os.environ.get('BW_CREDENTIALS_DIR')
-    if env_dir:
-        candidates.append(Path(env_dir))
-    candidates.extend([here, here / 'script'])
-    for directory in candidates:
-        if (directory / 'bw_credentials.py').is_file():
-            sys.path.insert(0, str(directory))
-            try:
-                import bw_credentials
-            except Exception:
-                continue
-            _BITWARDEN = bw_credentials
+    with _BITWARDEN_LOCK:
+        # Another caller may have completed discovery while we waited.
+        if _BITWARDEN_LOADED:
             return _BITWARDEN
-    return None
 
+        here = Path(__file__).resolve().parent
+        candidates = []
+        env_dir = os.environ.get('BW_CREDENTIALS_DIR')
+        if env_dir:
+            candidates.append(Path(env_dir))
+        candidates.extend([here, here / 'script'])
+        for directory in candidates:
+            if (directory / 'bw_credentials.py').is_file():
+                sys.path.insert(0, str(directory))
+                try:
+                    import bw_credentials
+                except Exception:
+                    continue
+                _BITWARDEN = bw_credentials
+                _BITWARDEN_LOADED = True
+                return _BITWARDEN
+
+        # Leave the cache unset so a later call can retry discovery.
+        return None
 
 def _resolve_bw(value: str) -> str:
     """Resolve a 'bw://Item/Field' value; return anything else unchanged."""
