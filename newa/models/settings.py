@@ -75,14 +75,30 @@ class Settings:  # type: ignore[no-untyped-def]
     ai_oauth2_client_secret_file: str = ''
     ai_oauth2_scopes: str = ''
     ai_oauth2_token_file: str = ''
+    # Provenance of each loaded value, keyed by config path (e.g. 'testingfarm/token').
+    # Populated by Settings.load(); empty when Settings is constructed directly.
+    value_sources: dict[str, str] = field(factory=dict)
 
     def get(self, key: str, default: str = '') -> str:
         return str(getattr(self, key, default))
+
+    def describe_source(self, path: str) -> str:
+        """Human-readable description of where a setting's value came from.
+
+        ``path`` is the config path passed to the loader (e.g.
+        ``'testingfarm/token'``). Returns a string such as
+        ``environment variable $TESTING_FARM_API_TOKEN``,
+        ``config file [testingfarm] token`` or ``built-in default``.
+        """
+        return self.value_sources.get(path, 'built-in default')
 
     @classmethod
     def load(cls: type[SettingsT], config_file: Path) -> 'Settings':
         cp = ConfigParser()
         cp.read(config_file)
+
+        # Records where each value was resolved from, keyed by config path.
+        value_sources: dict[str, str] = {}
 
         def _get(
                 cp: ConfigParser,
@@ -93,7 +109,18 @@ class Settings:  # type: ignore[no-untyped-def]
             # first attemp to read environment variable
             env = os.environ.get(envvar, None) if envvar else None
             # then attempt to use the value from config file, use fallback value otherwise
-            return env if env else cp.get(section, key, fallback=str(default))
+            if env:
+                value_sources[path] = f'environment variable ${envvar}'
+                return env
+            if cp.has_option(section, key):
+                # has_option() also matches values inherited from the [DEFAULT]
+                # section; report the real origin so the hint points users at
+                # the right place in their config file.
+                origin = 'DEFAULT' if key in cp.defaults() else section
+                value_sources[path] = f'config file [{origin}] {key}'
+                return cp.get(section, key)
+            value_sources[path] = 'built-in default'
+            return str(default)
 
         def _str_to_bool(value: str) -> bool:
             return value.strip().lower() in ['1', 'true']
@@ -216,6 +243,7 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'ai/oauth2_token_file',
                 'NEWA_AI_OAUTH2_TOKEN_FILE'),
+            value_sources=value_sources,
             )
 
 
