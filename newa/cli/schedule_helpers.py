@@ -21,6 +21,7 @@ from newa import (
     yaml_parser,
     )
 from newa.cli.constants import JIRA_NONE_ID
+from newa.cli.jira_helpers import jira_fields_to_template_vars
 
 
 def _determine_architectures(
@@ -200,8 +201,11 @@ def _get_issue_fields_for_jira(
     """Get Jira issue fields if available, otherwise return empty dict."""
     if jira_job.jira.id and (not jira_job.jira.id.startswith(JIRA_NONE_ID)):
         jira_connection = ctx.get_jira_connection()
-        issue_fields = jira_connection.get_connection().issue(jira_job.jira.id).fields
-        issue_fields.id = jira_job.jira.id
+        # Templates must only see plain data: live jira library objects carry
+        # the authenticated session and callable update()/delete() methods.
+        issue_fields = jira_fields_to_template_vars(
+            jira_connection.get_connection().issue(jira_job.jira.id).fields)
+        issue_fields['id'] = jira_job.jira.id
         short_sleep()
         return issue_fields
     return {}
