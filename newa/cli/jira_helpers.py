@@ -64,14 +64,32 @@ def _create_jira_fake_id_generator() -> Generator[str, int, None]:
         n += 1
 
 
+_JINJA_BLOCK_START_RE = re.compile(r'\{([%#])')
+_JINJA_BLOCK_END_RE = re.compile(r'([%#])\}')
+
+
+def _sanitize_jira_string(value: str) -> str:
+    """
+    Neutralize Jinja2 delimiters in a string coming from Jira.
+
+    Jira uses {{ }} for code formatting, which conflicts with Jinja2 syntax,
+    so these braces are replaced with double quotes. Statement and comment
+    delimiters ({% %} and {# #}) are broken up with a space ("{ %", "% }")
+    so the text is kept readable but is no longer parsed by Jinja2.
+    """
+    value = value.replace('{{', '"').replace('}}', '"')
+    value = _JINJA_BLOCK_START_RE.sub(r'{ \1', value)
+    return _JINJA_BLOCK_END_RE.sub(r'\1 }', value)
+
+
 def _sanitize_jira_field_value(value: Any) -> Any:
     """
     Convert a Jira field value into plain, template-safe data.
 
-    Jira uses {{ }} for code formatting, which conflicts with Jinja2 syntax,
-    so the braces in strings are replaced with double quotes. This also stops
-    Jira content (editable by anyone with access to the issue) from being
-    evaluated as a template during recursive rendering.
+    Jira content (editable by anyone with access to the issue) must never be
+    evaluated as a template during recursive rendering, so Jinja delimiters
+    in strings and mapping keys are neutralized, see
+    :py:func:`_sanitize_jira_string`.
 
     Objects returned by the ``jira`` library (``Resource``, ``PropertyHolder``)
     are converted to plain dicts. Resources hold the authenticated Jira session
@@ -80,14 +98,16 @@ def _sanitize_jira_field_value(value: Any) -> Any:
     authenticated requests with NEWA's credentials.
     """
     if isinstance(value, str):
-        # Replace {{ and }} with double quotes
-        return value.replace('{{', '"').replace('}}', '"')
+        return _sanitize_jira_string(value)
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, (list, tuple)):
         return [_sanitize_jira_field_value(item) for item in value]
     if isinstance(value, dict):
-        return {str(k): _sanitize_jira_field_value(v) for k, v in value.items()}
+        return {
+            _sanitize_jira_string(str(k)): _sanitize_jira_field_value(v)
+            for k, v in value.items()
+            }
     # jira.resources.Resource keeps the original JSON in 'raw'; its keys
     # match the attribute names the library exposes.
     raw = getattr(value, 'raw', None)
@@ -100,7 +120,7 @@ def _sanitize_jira_field_value(value: Any) -> Any:
         # Unknown type (no __dict__); never hand the object itself to templates
         return _sanitize_jira_field_value(str(value))
     return {
-        name: _sanitize_jira_field_value(attr)
+        _sanitize_jira_string(name): _sanitize_jira_field_value(attr)
         for name, attr in attrs.items()
         if not name.startswith('_') and not callable(attr)
         }
