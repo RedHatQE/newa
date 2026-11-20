@@ -115,4 +115,27 @@ def test_jira_content_is_not_evaluated_as_template() -> None:
     rendered = render_template('{{ ISSUE.summary }}', ISSUE=fields)
     assert session.calls == []
     assert 'SECRET-TOKEN' not in rendered
-    assert '{{' not in rendered
+    assert rendered == '" ISSUE.assignee.update(name=\'pwn\') "'
+
+
+@pytest.mark.parametrize(('summary', 'expected'), [
+    ('{% if true %}YES{% endif %}', '{ % if true % }YES{ % endif % }'),
+    ('{% for i in range(3) %}x{% endfor %}', '{ % for i in range(3) % }x{ % endfor % }'),
+    ('keep {# hidden #} text', 'keep { # hidden # } text'),
+    ('{#}', '{ # }'),
+    ('{{% raw %}}', '"% raw %"'),
+    ('plain {code} text', 'plain {code} text'),
+    ])
+def test_jinja_statements_and_comments_are_neutralized(summary: str, expected: str) -> None:
+    fields = jira_fields_to_template_vars(_issue_fields(_RecordingSession(), summary=summary))
+    assert fields['summary'] == expected
+    assert render_template('{{ ISSUE.summary }}', ISSUE=fields) == expected
+
+
+def test_mapping_keys_are_sanitized() -> None:
+    fields = jira_fields_to_template_vars({
+        'customfield_1': {'{% if true %}k{% endif %}': '{{ v }}'},
+        })
+    assert fields == {'customfield_1': {'{ % if true % }k{ % endif % }': '" v "'}}
+    rendered = render_template('{{ ISSUE.customfield_1 | tojson }}', ISSUE=fields)
+    assert rendered == '{"{ % if true % }k{ % endif % }": "\\" v \\""}'
