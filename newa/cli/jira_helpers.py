@@ -66,20 +66,55 @@ def _create_jira_fake_id_generator() -> Generator[str, int, None]:
 
 def _sanitize_jira_field_value(value: Any) -> Any:
     """
-    Sanitize Jira field values to prevent Jinja2 template conflicts.
+    Convert a Jira field value into plain, template-safe data.
 
-    Jira uses {{ }} for code formatting, which conflicts with Jinja2 syntax.
-    This function replaces the braces with double quotes.
+    Jira uses {{ }} for code formatting, which conflicts with Jinja2 syntax,
+    so the braces in strings are replaced with double quotes. This also stops
+    Jira content (editable by anyone with access to the issue) from being
+    evaluated as a template during recursive rendering.
+
+    Objects returned by the ``jira`` library (``Resource``, ``PropertyHolder``)
+    are converted to plain dicts. Resources hold the authenticated Jira session
+    and expose public methods such as ``update()``/``delete()``/``find()``,
+    which the Jinja sandbox would otherwise let a template call, issuing
+    authenticated requests with NEWA's credentials.
     """
     if isinstance(value, str):
         # Replace {{ and }} with double quotes
         return value.replace('{{', '"').replace('}}', '"')
-    if isinstance(value, list):
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, (list, tuple)):
         return [_sanitize_jira_field_value(item) for item in value]
     if isinstance(value, dict):
-        return {k: _sanitize_jira_field_value(v) for k, v in value.items()}
-    # Return other types unchanged (int, bool, None, objects, etc.)
-    return value
+        return {str(k): _sanitize_jira_field_value(v) for k, v in value.items()}
+    # jira.resources.Resource keeps the original JSON in 'raw'; its keys
+    # match the attribute names the library exposes.
+    raw = getattr(value, 'raw', None)
+    if isinstance(raw, dict):
+        return _sanitize_jira_field_value(raw)
+    # PropertyHolder and similar plain attribute containers
+    try:
+        attrs = vars(value)
+    except TypeError:
+        # Unknown type (no __dict__); never hand the object itself to templates
+        return _sanitize_jira_field_value(str(value))
+    return {
+        name: _sanitize_jira_field_value(attr)
+        for name, attr in attrs.items()
+        if not name.startswith('_') and not callable(attr)
+        }
+
+
+def jira_fields_to_template_vars(fields: Any) -> dict[str, Any]:
+    """
+    Convert a Jira issue ``fields`` object into a plain dict for Jinja templates.
+
+    See :py:func:`_sanitize_jira_field_value` for why live ``jira`` library
+    objects must never be passed to templates.
+    """
+    result = _sanitize_jira_field_value(fields)
+    return result if isinstance(result, dict) else {}
 
 
 def _get_jira_event_fields(
@@ -89,29 +124,7 @@ def _get_jira_event_fields(
     """Get Jira event fields for Jinja template usage."""
     if artifact_job.event.type_ is EventType.JIRA:
         jira_fields_obj = jira_handler.get_details(Issue(artifact_job.event.id)).fields
-
-        # Convert fields object to dictionary and sanitize values
-        jira_event_fields: dict[str, Any] = {}
-
-        # Iterate through all attributes of the fields object
-        try:
-            obj_dict = vars(jira_fields_obj)
-            for attr_name, attr_value in obj_dict.items():
-                # Skip private/protected attributes
-                if not attr_name.startswith('_'):
-                    jira_event_fields[attr_name] = _sanitize_jira_field_value(attr_value)
-        except TypeError:
-            # If vars() doesn't work, fall back to using dir()
-            for attr_name in dir(jira_fields_obj):
-                if not attr_name.startswith('_'):
-                    try:
-                        attr_value = getattr(jira_fields_obj, attr_name)
-                        # Skip methods
-                        if not callable(attr_value):
-                            jira_event_fields[attr_name] = _sanitize_jira_field_value(attr_value)
-                    except (AttributeError, TypeError):
-                        # Skip attributes that can't be accessed
-                        pass
+        jira_event_fields = jira_fields_to_template_vars(jira_fields_obj)
 
         # Add the event ID
         jira_event_fields['id'] = artifact_job.event.id
