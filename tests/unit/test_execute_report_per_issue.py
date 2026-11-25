@@ -85,6 +85,8 @@ class _FakeResults:
 
     def __init__(self, items: list[Any]) -> None:
         self.items = list(items)
+        # number of results handed out so far
+        self.consumed = 0
 
     def __iter__(self) -> '_FakeResults':
         return self
@@ -93,6 +95,7 @@ class _FakeResults:
         if not self.items:
             raise StopIteration
         item = self.items.pop(0)
+        self.consumed += 1
         if isinstance(item, Exception):
             raise item
         return item
@@ -100,12 +103,13 @@ class _FakeResults:
 
 def _run_pool(jobs: list[ScheduleJob],
               order: list[Any],
-              on_issue_finished: Any) -> None:
+              on_issue_finished: Any,
+              results: Optional[_FakeResults] = None) -> None:
     ctx = mock.MagicMock()
     ctx.get_schedule_job_filepath.side_effect = lambda job: Path(
         f'/state/schedule-{job.jira.id}-{job.request.id}.yaml')
     pool = mock.MagicMock()
-    pool.imap_unordered.return_value = _FakeResults(order)
+    pool.imap_unordered.return_value = results or _FakeResults(order)
     with mock.patch('multiprocessing.Pool', return_value=pool), \
             mock.patch('time.sleep'):
         _execute_worker_pool(ctx, jobs, 0, on_issue_finished=on_issue_finished)
@@ -114,14 +118,21 @@ def _run_pool(jobs: list[ScheduleJob],
 def test_issue_reported_as_soon_as_its_requests_finish() -> None:
     jobs = [_schedule_job('A', 'REQ-1.1'), _schedule_job('A', 'REQ-1.2'),
             _schedule_job('B', 'REQ-2.1')]
-    calls: list[str] = []
     order = [Path('/state/schedule-A-REQ-1.1.yaml'),
              Path('/state/schedule-B-REQ-2.1.yaml'),
              Path('/state/schedule-A-REQ-1.2.yaml')]
 
-    _run_pool(jobs, order, calls.append)
-    # B finishes (its only request) before A's second request
-    assert calls == ['B', 'A']
+    results = _FakeResults(order)
+    # (jira_id, number of finished requests seen by the pool at callback time)
+    calls: list[tuple[str, int]] = []
+
+    def on_finished(jira_id: str) -> None:
+        calls.append((jira_id, results.consumed))
+
+    _run_pool(jobs, order, on_finished, results=results)
+    # B is reported right after its only request finishes, i.e. while A's
+    # second request is still running, not once all requests have finished
+    assert calls == [('B', 2), ('A', 3)]
 
 
 def test_worker_error_reraised_and_other_issues_still_reported() -> None:
@@ -178,11 +189,15 @@ def test_issue_reporter_reports_executed_and_pending(tmp_path: Path) -> None:
 
 def test_issue_reporter_failure_leaves_issue_for_report(tmp_path: Path) -> None:
     ctx = _reporter_ctx(tmp_path)
+    execute_file = tmp_path / 'execute-A-REQ-1.1.yaml'
+    # persist saved execute jobs for real, so premature marking would be visible
+    ctx.save_execute_job.side_effect = lambda job: job.to_yaml_file(execute_file)
     schedule_jobs = [_schedule_job('A', 'REQ-1.1')]
-    _execute_job('A', 'REQ-1.1').to_yaml_file(tmp_path / 'execute-A-REQ-1.1.yaml')
+    _execute_job('A', 'REQ-1.1').to_yaml_file(execute_file)
 
+    # fail inside the real _report_jira_id, which is where jobs get marked reported
     with mock.patch.object(report_helpers, '_update_all_tf_request_statuses'), \
-            mock.patch.object(report_helpers, '_report_jira_id',
+            mock.patch.object(report_helpers, '_process_jira_id_reports',
                               side_effect=RuntimeError('jira down')):
         reporter = IssueReporter(ctx, schedule_jobs, mock.MagicMock(), None, None)
         reporter('A')  # must not raise
@@ -190,6 +205,9 @@ def test_issue_reporter_failure_leaves_issue_for_report(tmp_path: Path) -> None:
     assert ctx.reported_jira_ids == set()
     assert reporter.finalized_launches == set()
     ctx.logger.warning.assert_called_once()
+    # the request must stay unreported so that the following `report` handles it
+    ctx.save_execute_job.assert_not_called()
+    assert ExecuteJob.from_yaml_file(execute_file).execution.reported is False
 
 
 def test_finalize_rp_launches_skips_finalized() -> None:
