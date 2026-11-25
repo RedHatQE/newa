@@ -27,7 +27,7 @@ from newa.cli.event_helpers import parse_event_filter, should_filter_by_event
 from newa.cli.filter_helpers import should_filter_by_action_tags
 from newa.cli.metadata import setup_state_metadata
 from newa.cli.tag_filter import TagFilter, parse_tag_filter
-from newa.cli.utils import get_state_dir, initialize_state_dir
+from newa.cli.utils import get_state_dir, initialize_state_dir, record_chained_command
 
 if TYPE_CHECKING:
     from newa.models.settings import EventFilter
@@ -113,7 +113,25 @@ def _should_filter_yaml_file(
     return False  # File matches all filters, keep it
 
 
-@click.group(chain=True, invoke_without_command=True)
+class NewaGroup(click.Group):
+    """
+    Chained command group remembering the resolved chain of subcommands.
+
+    Click resolves all chained subcommands before invoking any of them, so a
+    subcommand can find out which subcommands follow it (e.g. ``execute`` checks
+    whether ``report`` is chained after it).
+    """
+
+    def resolve_command(
+            self,
+            ctx: click.Context,
+            args: list[str]) -> tuple[Optional[str], Optional[click.Command], list[str]]:
+        cmd_name, cmd, rest = super().resolve_command(ctx, args)
+        record_chained_command(ctx, cmd.name if cmd else cmd_name, cmd, rest)
+        return cmd_name, cmd, rest
+
+
+@click.group(cls=NewaGroup, chain=True, invoke_without_command=True)
 @click.option(
     '--state-dir',
     '-D',

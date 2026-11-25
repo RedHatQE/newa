@@ -31,6 +31,20 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
         raise SystemExit(0) from None
 
 
+def worker_entry(args: tuple[CLIContext, Path]) -> Path:
+    """
+    Single-argument worker wrapper for ``Pool.imap_unordered``.
+
+    Returns the processed schedule file path, which serves as the completion
+    signal for the parent process. Invariant: the worker's last state-dir write
+    (the final execute job) happens before it returns, so the parent can safely
+    read the execute file once it receives the path.
+    """
+    ctx, schedule_file = args
+    worker(ctx, schedule_file)
+    return schedule_file
+
+
 def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -> None:
     """Worker function for Testing Farm execution."""
     # modify log message so it contains name of the processed file

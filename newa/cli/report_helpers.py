@@ -7,6 +7,8 @@ from typing import Any, Optional
 import jira
 
 from newa import (
+    EXECUTE_FILE_PREFIX,
+    SCHEDULE_FILE_PREFIX,
     TF_REQUEST_FINISHED_STATES,
     CLIContext,
     ErrataTool,
@@ -480,3 +482,130 @@ def _process_jira_id_reports(
             _add_rog_comment_for_report(
                 ctx, rog, jira_connection, jira_id, execute_jobs[0], launch_url,
                 pending_count=len(pending_jobs or []))
+
+
+def _report_jira_id(
+        ctx: CLIContext,
+        jira_id: str,
+        execute_jobs: list[ExecuteJob],
+        schedule_jobs: list[ScheduleJob],
+        rp: Optional[ReportPortal],
+        jira_connection: Any,
+        et: Optional[ErrataTool],
+        rog: Optional[RoGTool],
+        jira_comment_limit: int,
+        progress_mode: bool = False) -> None:
+    """
+    Report results of a single Jira ID.
+
+    ``schedule_jobs`` are all scheduled jobs of the Jira ID; those without an
+    execute job (e.g. when execution was restricted to a subset of architectures)
+    are shown as placeholder "not executed" rows in the results table.
+    """
+    executed_request_ids = {job.request.id for job in execute_jobs}
+    pending_jobs = [job for job in schedule_jobs
+                    if job.request.id not in executed_request_ids]
+    _process_jira_id_reports(
+        ctx, jira_id, execute_jobs, rp, jira_connection, et, rog, jira_comment_limit,
+        progress_mode=progress_mode, pending_jobs=pending_jobs)
+    if not progress_mode:
+        _mark_jobs_reported(ctx, execute_jobs)
+
+
+def _mark_jobs_reported(ctx: CLIContext, execute_jobs: list[ExecuteJob]) -> None:
+    """Persist that the final results of the finished execute jobs have been reported."""
+    for job in execute_jobs:
+        if job.execution.result != RequestResult.NONE and not job.execution.reported:
+            job.execution.reported = True
+            ctx.save_execute_job(job)
+
+
+def _all_jobs_reported(execute_jobs: list[ExecuteJob]) -> bool:
+    """True if final results of all execute jobs have been reported already."""
+    return bool(execute_jobs) and all(job.execution.reported for job in execute_jobs)
+
+
+class IssueReporter:
+    """
+    Report a Jira ID from within ``execute`` as soon as all its requests finish.
+
+    Used when ``report`` is chained after ``execute``. Runs in the main process
+    (the worker pool only signals finished requests), so a single Jira connection
+    is used and the reporting never races with itself.
+
+    Successfully reported Jira IDs are recorded in ``ctx.reported_jira_ids`` so
+    that the following ``report`` command skips them. A Jira ID whose reporting
+    fails is left to the ``report`` command; a failure never fails ``execute``.
+    """
+
+    def __init__(
+            self,
+            ctx: CLIContext,
+            schedule_jobs: list[ScheduleJob],
+            rp: Optional[ReportPortal],
+            et: Optional[ErrataTool],
+            rog: Optional[RoGTool]) -> None:
+        self.ctx = ctx
+        self.rp = rp
+        self.et = et
+        self.rog = rog
+        # all scheduled jobs (not only those executed by this run) grouped by Jira ID
+        self.schedule_jobs: dict[str, list[ScheduleJob]] = {}
+        for job in schedule_jobs:
+            self.schedule_jobs.setdefault(job.jira.id, []).append(job)
+        # RP launches finalized by this reporter
+        self.finalized_launches: set[str] = set()
+
+    def __call__(self, jira_id: str) -> None:
+        try:
+            # Log as `report` so that users find reporting output where they expect it
+            with self.ctx.command_scope('report'):
+                self.report(jira_id)
+        except Exception as e:
+            self.ctx.logger.warning(
+                f'Warning: Failed to report results of {jira_id} during execution, '
+                f'leaving it to the report command: {e!r}')
+
+    def _load_execute_jobs(self, jira_id: str) -> list[ExecuteJob]:
+        """Load execute jobs of the Jira ID (including those from previous runs)."""
+        execute_jobs = []
+        for schedule_job in self.schedule_jobs.get(jira_id, []):
+            schedule_file = self.ctx.get_schedule_job_filepath(schedule_job)
+            execute_file = schedule_file.with_name(
+                schedule_file.name.replace(SCHEDULE_FILE_PREFIX, EXECUTE_FILE_PREFIX, 1))
+            if execute_file.exists():
+                execute_jobs.append(self.ctx.load_execute_job(execute_file))
+        return execute_jobs
+
+    def report(self, jira_id: str) -> None:
+        """Report results of the Jira ID; exceptions are propagated."""
+        execute_jobs = self._load_execute_jobs(jira_id)
+        if not execute_jobs:
+            self.ctx.logger.debug(f'No execute jobs found for {jira_id}, nothing to report')
+            return
+        launch_uuid, _ = _get_rp_launch_details(execute_jobs)
+        if _all_jobs_reported(execute_jobs):
+            # e.g. `execute --continue` after an interrupted run which has
+            # already reported this issue; nothing has changed since then
+            self.ctx.logger.info(
+                f'Results of {jira_id} have been reported already, skipping')
+            if launch_uuid and self.rp:
+                self.finalized_launches.add(launch_uuid)
+            self.ctx.reported_jira_ids.add(jira_id)
+            return
+        self.ctx.logger.info(f'All requests of {jira_id} have finished, reporting results')
+        _update_all_tf_request_statuses(self.ctx, execute_jobs)
+        jira_conn_wrapper = self.ctx.get_jira_connection()
+        _report_jira_id(
+            self.ctx,
+            jira_id,
+            execute_jobs,
+            self.schedule_jobs.get(jira_id, []),
+            self.rp,
+            jira_conn_wrapper.get_connection(),
+            self.et,
+            self.rog,
+            jira_conn_wrapper.get_comment_length_limit())
+        if launch_uuid and self.rp:
+            self.finalized_launches.add(launch_uuid)
+        self.ctx.reported_jira_ids.add(jira_id)

@@ -5,7 +5,7 @@ import os
 import sys
 import urllib.parse
 from collections.abc import Sequence
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import jira
 
@@ -413,13 +413,25 @@ def _process_rp_launches_and_jira_updates(
 def _execute_worker_pool(
         ctx: CLIContext,
         schedule_job_list: list[ScheduleJob],
-        workers: int) -> None:
-    """Execute the worker pool for processing schedule jobs."""
+        workers: int,
+        on_issue_finished: Optional[Callable[[str], None]] = None) -> None:
+    """
+    Execute the worker pool for processing schedule jobs.
+
+    When ``on_issue_finished`` is given, it is called with a Jira ID (in the
+    main process) as soon as all requests of that Jira ID submitted by this run
+    have finished, while requests of other Jira IDs may still be running.
+
+    A failing worker does not stop processing of the remaining requests; the
+    first worker exception is re-raised once all workers have finished. Jira IDs
+    with a failed request are never passed to ``on_issue_finished``.
+    """
     import multiprocessing
     import signal
     import time
+    from collections import Counter
 
-    from newa.cli.workers import worker
+    from newa.cli.workers import worker_entry
 
     # Initialize worker_pool to avoid UnboundLocalError during error handling
     worker_pool = None
@@ -434,12 +446,33 @@ def _execute_worker_pool(
     finally:
         signal.signal(signal.SIGINT, original_sigint_handler)
 
+    # Number of not yet finished requests per Jira ID and request -> Jira ID mapping
+    remaining = Counter(job.jira.id for job in schedule_job_list)
+    filepath_to_jira_id = {path: job.jira.id
+                           for (_, path), job in zip(schedule_list, schedule_job_list)}
+    first_error: Optional[Exception] = None
+
     # Track whether pool was terminated to avoid invalid state transitions
     pool_terminated = False
     try:
-        for _ in worker_pool.starmap(worker, schedule_list):
+        results = worker_pool.imap_unordered(worker_entry, schedule_list)
+        while True:
+            try:
+                schedule_file = next(results)
+            except StopIteration:
+                break
+            except Exception as e:
+                # A worker failed; keep processing the other requests and
+                # re-raise once all of them have finished.
+                if first_error is None:
+                    first_error = e
+                continue
             # small sleep to avoid race conditions inside tmt code
             time.sleep(0.1)
+            jira_id = filepath_to_jira_id[schedule_file]
+            remaining[jira_id] -= 1
+            if remaining[jira_id] == 0 and on_issue_finished is not None:
+                on_issue_finished(jira_id)
     except KeyboardInterrupt:
         ctx.logger.info('\nInterrupted by user, cleaning up...')
         # Mark as terminated before calling terminate()/join() to avoid
@@ -454,12 +487,16 @@ def _execute_worker_pool(
             worker_pool.close()
             worker_pool.join()
 
+    if first_error is not None:
+        raise first_error
+
 
 def _finalize_rp_launches(
         ctx: CLIContext,
         rp: ReportPortal,
-        launch_list: list[str]) -> None:
-    """Finalize ReportPortal launches after execution."""
+        launch_list: list[str],
+        skip_launches: Optional[set[str]] = None) -> None:
+    """Finalize ReportPortal launches after execution, except ``skip_launches``."""
     from typing import cast
 
     # Group execute jobs by Jira ID
@@ -506,6 +543,9 @@ def _finalize_rp_launches(
     # Finish all RP launches if not using --no-wait
     if not ctx.no_wait:
         for uuid in launch_list:
+            if skip_launches and uuid in skip_launches:
+                ctx.logger.debug(f'Launch {uuid} has been finished already')
+                continue
             ctx.logger.info(f'Finishing launch {uuid}')
             rp.finish_launch(uuid, logger=ctx.logger)
             rp.check_for_empty_launch(uuid, logger=ctx.logger)

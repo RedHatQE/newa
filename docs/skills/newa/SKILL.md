@@ -180,6 +180,8 @@ newa -D /path/to/state-dir --action-id-filter 'task_regression_swtpm' report
 
 **When unscoped `report` is acceptable:** only on the first report run when all tests have completed and no partial reports have been done.
 
+**Chained `execute report`** (without `--no-wait`): each Jira issue is reported as soon as all its requests finish; the trailing `report` only handles issues not reported yet.
+
 **Progress reporting:** use `report --progress` to post interim "in progress" updates to Jira without finalizing anything.
 
 ## Cancelling Testing Farm Requests

@@ -394,6 +394,9 @@ class Execution(Cloneable, Serializable):  # type: ignore [no-untyped-def]
     request_api: Optional[str] = None
     artifacts_url: Optional[str] = None
     command: Optional[str] = None
+    # Set once the final result of this request has been reported (Jira etc.).
+    # A restarted request gets a new execution, which resets the flag.
+    reported: bool = False
 
     def fetch_details(self) -> None:
         raise NotImplementedError
