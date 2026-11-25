@@ -11,7 +11,7 @@ from newa.cli.initialization import (
     initialize_rp_connection,
     )
 from newa.cli.report_helpers import (
-    _process_jira_id_reports,
+    _report_jira_id,
     _update_all_tf_request_statuses,
     )
 from newa.cli.utils import initialize_state_dir
@@ -46,6 +46,17 @@ def cmd_report(ctx: CLIContext, progress: bool) -> None:
     if not all_execute_jobs:
         ctx.logger.warning('Warning: There are no previously executed jobs to report')
         return
+
+    # Skip Jira IDs already reported by a preceding `execute` in the same chain
+    if ctx.reported_jira_ids:
+        ctx.logger.info(
+            'Skipping Jira issue(s) already reported during execution: '
+            f'{", ".join(sorted(ctx.reported_jira_ids))}')
+        all_execute_jobs = [job for job in all_execute_jobs
+                            if job.jira.id not in ctx.reported_jira_ids]
+        if not all_execute_jobs:
+            ctx.logger.info('All Jira issues have been reported already')
+            return
 
     # Initialize connections
     rp = initialize_rp_connection(ctx) if ctx.settings.rp_url else None
@@ -86,10 +97,6 @@ def cmd_report(ctx: CLIContext, progress: bool) -> None:
 
     # Process reports for each Jira ID
     for jira_id, execute_jobs in jira_execute_job_mapping.items():
-        executed_request_ids = {job.request.id for job in execute_jobs}
-        pending_jobs = [
-            job for job in jira_schedule_job_mapping.get(jira_id, [])
-            if job.request.id not in executed_request_ids]
-        _process_jira_id_reports(
-            ctx, jira_id, execute_jobs, rp, jira_connection, et, rog, jira_comment_limit,
-            progress_mode=progress, pending_jobs=pending_jobs)
+        _report_jira_id(
+            ctx, jira_id, execute_jobs, jira_schedule_job_mapping.get(jira_id, []),
+            rp, jira_connection, et, rog, jira_comment_limit, progress_mode=progress)
