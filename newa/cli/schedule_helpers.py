@@ -85,7 +85,7 @@ def _process_fixtures(
         r = re.fullmatch(r'([^\s=]+)=(.*)', fixture)
         if not r:
             raise Exception(
-                f"Fixture {fixture} does not having expected format 'name=value'")
+                f"Fixture {fixture} does not have expected format 'name=value'")
 
         fixture_name, fixture_value = r.groups()
         fixture_config = cli_config

@@ -40,7 +40,7 @@ def _parse_issue_mapping(map_issue: list[str], config: IssueConfig) -> dict[str,
     for m in map_issue:
         r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
         if not r:
-            raise Exception(f"Mapping {m} does not having expected format 'key=value'")
+            raise Exception(f"Mapping {m} does not have expected format 'key=value'")
         key, value = r.groups()
         issue_mapping[key] = value
 
