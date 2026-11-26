@@ -55,6 +55,14 @@ class Arch(Enum):
 
         if not preset:
             return _default
+        # Brew/Koji call the 32-bit x86 arch 'i686' while Testing Farm uses
+        # 'i386'; normalize it (dropping duplicates) before filtering
+        normalized: list[Arch] = []
+        for a in preset:
+            a = Arch.I386 if a == Arch.I686 else a
+            if a not in normalized:
+                normalized.append(a)
+        preset = normalized
         # 'noarch' should be tested on all architectures
         if Arch.NOARCH in preset:
             return _default
