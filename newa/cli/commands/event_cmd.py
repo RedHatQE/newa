@@ -7,8 +7,14 @@ from typing import Optional
 
 import click
 
+try:
+    from attrs import evolve
+except ModuleNotFoundError:
+    from attr import evolve
+
 from newa import (
     EVENT_FILE_PREFIX,
+    Arch,
     ArtifactJob,
     CLIContext,
     Compose,
@@ -154,6 +160,23 @@ def process_event_rog_urls(
     for url in rog_urls:
         mr = rog_tool.get_mr(url)
         compose_id = derive_compose(mr.build_target, compose_mapping, ctx.logger)
+        # skip MR if its build target has been transformed to an empty compose
+        if not compose_id:
+            ctx.logger.info(
+                f'RoG build target {mr.build_target} transformed to an empty string, skipping')
+            continue
+        # narrow the built architectures to those supported for the compose
+        # (e.g. i386 is valid only for RHEL-6), like it is done for errata
+        archs = Arch.architectures(mr.archs, compose=compose_id)
+        ctx.logger.info(
+            f'RoG build target {mr.build_target} transformed to a compose {compose_id}, '
+            f'built archs {[a.value for a in mr.archs]} narrowed to '
+            f'{[a.value for a in archs]}')
+        if not archs:
+            ctx.logger.warning(
+                f'RoG MR {url} has no architectures supported for compose {compose_id}, '
+                f'it will not be scheduled unless --arch is used')
+        mr = evolve(mr, archs=archs)
         event = Event(type_=EventType.ROG, id=url)
         artifact_job = ArtifactJob(
             event=event,

@@ -1,7 +1,8 @@
 """RoG (GitLab) service integration."""
 
+import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import gitlab
 
@@ -16,6 +17,8 @@ from newa.utils.parsers import NVRParser
 
 if TYPE_CHECKING:
     pass
+
+logger = logging.getLogger(__name__)
 
 
 @frozen
@@ -80,6 +83,28 @@ class RoGTool:
         # return job
         return gp.jobs.get(job.id)
 
+    @staticmethod
+    def _konflux_arch_skipped(
+            job: 'gitlab.v4.objects.ProjectJob',
+            arch: str) -> Optional[bool]:
+        """Tell whether a Konflux per-arch rpmbuild task was skipped.
+
+        Reads the ``build_logs/rpmbuild-<arch>.log`` artifact of the job.
+        Returns ``None`` when the artifact does not exist (e.g. it has expired),
+        other GitLab errors are propagated.
+        """
+        try:
+            content = job.artifact(f'build_logs/rpmbuild-{arch}.log')
+        except gitlab.exceptions.GitlabGetError as e:
+            if e.response_code == 404:
+                return None
+            raise
+        if isinstance(content, bytes):
+            content = content.decode('utf-8', errors='replace')
+        if not isinstance(content, str):
+            return None
+        return 'Step skipped - architecture' in content
+
     def get_mr(self, url: str) -> RoG:
         (project, number) = self.parse_mr_project_and_number(url)
         # get project object
@@ -117,20 +142,47 @@ class RoGTool:
                 r'buildArch \((.*?.src.rpm), (.*?)\): open.*-> closed', log)
         if not build_reqs:
             raise Exception(
-                r'Failed to parse SRPM and build tasks from "build_rpm" job "{job.web_url}"')
-        archs = []
+                f'Failed to parse SRPM and build tasks from "build_rpm" job "{job.web_url}"')
+        # architectures the Konflux pipeline was asked to build for, used when
+        # the per-arch rpmbuild log is not available; None when unknown
+        requested_archs: Optional[list[str]] = None
+        requested = re.search(
+            r'- name: build-architectures\s*\n\s*value: \[([^\]]*)\]', log)
+        if requested:
+            requested_archs = [
+                a.strip().strip('\'"').replace('-', '_')
+                for a in requested.group(1).split(',') if a.strip()] or None
+        archs: list[Arch] = []
         srpm = ''
         build = ''
         for r in build_reqs:
-            if r:
-                # replace x86-64 with x86_64
-                archs.append(Arch(r[1].replace('-', '_')))
-                # for Brew build read SRPM right away
-                if not konflux_build:
-                    srpm = r[0]
+            # for Brew build read SRPM right away
+            if not konflux_build:
+                srpm = r[0]
+            # replace x86-64 with x86_64
+            arch_name = r[1].replace('-', '_')
+            # the Konflux task status table lists every per-arch rpmbuild
+            # task as Succeeded, including those skipped for arches not
+            # selected for the build; consult the task log to tell them apart
+            if konflux_build:
+                skipped = self._konflux_arch_skipped(job, r[1])
+                if skipped is None:
+                    skipped = (requested_archs is not None
+                               and arch_name not in requested_archs)
+                    logger.warning(
+                        f'Log of rpmbuild-{r[1]} is not available in "build_rpm" '
+                        f'job "{job.web_url}", treating {arch_name} as '
+                        f'{"skipped" if skipped else "built"}')
+                elif skipped:
+                    logger.debug(f'Konflux task rpmbuild-{r[1]} was skipped')
+                if skipped:
+                    continue
+            arch = Arch(arch_name)
+            if arch not in archs:
+                archs.append(arch)
         if not archs:
             raise Exception(
-                r'Failed to parse architectures from "build_rpm" job "{job.web_url}"')
+                f'Failed to parse architectures from "build_rpm" job "{job.web_url}"')
         if konflux_build:
             # parse NVR from the pipeline log
             # it is mentioned multiple times in the log and we need its last occurence
@@ -142,17 +194,20 @@ class RoGTool:
             build = srpm.replace('.src.rpm', '')
         if not build:
             raise Exception(
-                r'Failed to parse build NVR from "build_rpm" job "{job.web_url}"')
+                f'Failed to parse build NVR from "build_rpm" job "{job.web_url}"')
         nvr = NVRParser(build)
         builds = [build]
         components = [nvr.name]
+        # Architectures are returned as built; release-specific filtering
+        # (Arch.architectures) needs the Testing Farm compose and is done by
+        # the caller once the compose has been derived from the build target.
         return RoG(
             id=url,
             content_type=ErratumContentType.RPM,
             title=title,
             build_task_id=task_id,
             build_target=target,
-            archs=Arch.architectures(archs),
+            archs=archs,
             builds=builds,
             components=components,
             labels=labels)

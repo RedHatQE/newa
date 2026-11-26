@@ -1,0 +1,37 @@
+Submitting build of httpd#81bce06a6c694c54d8db27b25c63ebf3fd8bb5af, using target rhel-6.10-z-draft, target label latest, build type --draft
+[0Ksection_start:1794485895:konflux_build_prepare[collapsed=true]
+[0K[37;1mPreparing Konflux build (click to expand)...[0m
+    - name: build-platforms
+      value: [linux-mxlarge/arm64, linux-mxlarge/amd64, linux/ppc64le, linux/s390x]
+    - name: build-architectures
+      value: [x86_64, s390x, s390, i686]
+Build imported as https://brewweb.engineering.redhat.com/brew/taskinfo?taskID=72431196
+BUILD_ID=4161030
+DRAFT_BUILD_NVR=httpd-2.2.15-71.el6_10.3,draft_4161030
+[92mSucceeded [94mBuild pipeline per task status and logs:[0m
+store-start-time         [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/store-start-time.log
+init                     [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/init.log
+clone-repository         [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/clone-repository.log
+process-sources          [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/process-sources.log
+get-build-target         [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/get-build-target.log
+calculate-deps-x86-64    [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/calculate-deps-x86-64.log
+rpmbuild-x86-64          [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/rpmbuild-x86-64.log
+calculate-deps-i686      [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/calculate-deps-i686.log
+rpmbuild-i686            [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/rpmbuild-i686.log
+calculate-deps-aarch64   [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/calculate-deps-aarch64.log
+rpmbuild-aarch64         [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/rpmbuild-aarch64.log
+calculate-deps-riscv64   [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/calculate-deps-riscv64.log
+rpmbuild-riscv64         [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/rpmbuild-riscv64.log
+calculate-deps-s390x     [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/calculate-deps-s390x.log
+rpmbuild-s390x           [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/rpmbuild-s390x.log
+calculate-deps-s390      [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/calculate-deps-s390.log
+rpmbuild-s390            [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/rpmbuild-s390.log
+calculate-deps-ppc64le   [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/calculate-deps-ppc64le.log
+rpmbuild-ppc64le         [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/rpmbuild-ppc64le.log
+calculate-deps-noarch    [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/calculate-deps-noarch.log
+rpmbuild-noarch          [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/rpmbuild-noarch.log
+upload-to-quay           [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/upload-to-quay.log
+check-noarch-rpms        [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/check-noarch-rpms.log
+[92mCompleted [94mBrew/Koji import pipeline per task status and logs:[0m
+verify-access-to-resourc [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/brewkoji_import_verify-access-to-resourc.log
+collect-data             [92mSucceeded [0m   https://gitlab.com/api/v4/projects/73784993/jobs/17967451988/artifacts/build_logs/brewkoji_import_collect-data.log
