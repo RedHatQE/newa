@@ -113,25 +113,28 @@ def apply_release_mapping(string: str,
             r'$=-Nightly',
             # ugly hack to narrow weird TF compose naming for RHEL-6 and RHEL-7
             r'RHEL-6-ELS-EXTENSION-Nightly=RHEL-6.10-ZStream',
+            # there is no RHEL-6.10-Nightly compose (e.g. for rhel-6.10-z-draft)
+            r'^RHEL-6\.10-Nightly$=RHEL-6.10-ZStream',
             r'RHEL-7-ELS-Nightly=RHEL-7.9-ZStream',
             ]
     new_string = string
     for m in mapping:
         r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
         if not r:
-            raise Exception(f"Mapping {m} does not having expected format 'patten=value'")
+            raise Exception(f"Mapping {m} does not have expected format 'pattern=value'")
         pattern, value = r.groups()
         # for regexp=True apply each matching regexp
         if regexp and re.search(pattern, new_string):
+            old_string = new_string
             new_string = re.sub(pattern, value, new_string)
             if logger:
                 logger.debug(  # type: ignore[attr-defined]
-                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+                    f'Found match in {old_string} for mapping {m}, new value {new_string}')
         # for string matching return the first match
         if (not regexp) and new_string == pattern:
             if logger:
                 logger.debug(  # type: ignore[attr-defined]
-                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+                    f'Found match in {new_string} for mapping {m}, new value {value}')
             return value
     return new_string
 
