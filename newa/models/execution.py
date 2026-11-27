@@ -248,18 +248,15 @@ class Request(Cloneable, Serializable):
         env = build_clean_environment(additional_vars=environment)
         if not command:
             raise Exception("Failed to generate testing-farm command")
-        try:
-            process = subprocess.run(
-                ' '.join(command),
-                env=env,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                shell=True)
-            output = process.stdout
-        except subprocess.CalledProcessError as e:
-            output = e.stdout
+        process = subprocess.run(
+            ' '.join(command),
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            shell=True)
+        output = process.stdout
         r = re.search('api (https://[\\S]*)', output)
         if not r:
             # the shell may echo the whole command line, including tokens
@@ -366,9 +363,11 @@ class TFRequest(Cloneable, Serializable):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True)
-            output = process.stdout
-        except subprocess.CalledProcessError as e:
-            output = e.stdout
+        except OSError as e:
+            # e.g. the testing-farm CLI is not installed
+            ctx.logger.error(f'Failed cancelling TF request {self.uuid}: {e}')
+            return
+        output = process.stdout
         if 'cancellation requested' in output:
             ctx.logger.info(f'Cancellation of TF request {self.uuid} requested.')
         elif 'already canceled' in output:
@@ -392,18 +391,15 @@ def check_tf_cli_version(ctx: 'CLIContext') -> None:
     # build clean environment with only whitelisted variables
     env = build_clean_environment()
     command: list[str] = ['testing-farm', 'version']
-    try:
-        process = subprocess.run(
-            ' '.join(command),
-            env=env,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            shell=True)
-        output = process.stdout
-    except subprocess.CalledProcessError as e:
-        raise Exception("Cannot get testing-farm CLI version") from e
+    process = subprocess.run(
+        ' '.join(command),
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        shell=True)
+    output = process.stdout
     output = output.strip()
     m = re.search(r'([0-9]+)\.([0-9]+)\.([0-9]+)', output)
     if m:
