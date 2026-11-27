@@ -13,6 +13,7 @@ from newa import (
     RequestResult,
     ScheduleJob,
     TFRequest,
+    redact_secrets,
     )
 from newa.cli.utils import test_patterns_match
 
@@ -112,7 +113,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
         command_args, environment = schedule_job.request.generate_tf_exec_command(ctx)
         command = ' '.join(command_args)
         # hide tokens
-        command = command.replace(ctx.settings.rp_token, '***')
+        command = redact_secrets(command, ctx)
         # export Execution to YAML so that we can report it even later
         # we won't report 'return_code' since it is not known yet
         # This is something to be implemented later
@@ -198,7 +199,7 @@ def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) 
         command += f'{e}="{v}" '
     command += ' '.join(command_args)
     # hide tokens
-    command = command.replace(ctx.settings.rp_token, '***')
+    command = redact_secrets(command, ctx)
     # export Execution to YAML so that we can report it even later
     # we won't report 'return_code' since it is not known yet
     # This is something to be implemented later
