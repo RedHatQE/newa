@@ -3,11 +3,16 @@
 import contextlib
 import logging
 import os
+import shlex
+import subprocess
 from collections.abc import Iterable, Iterator
 from configparser import ConfigParser
+from importlib.metadata import entry_points
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from re import Pattern
-from typing import TYPE_CHECKING, Optional, TypeVar
+from types import ModuleType
+from typing import TYPE_CHECKING, Optional, Protocol, TypeVar, Union
 
 try:
     from attrs import define, field
@@ -35,6 +40,303 @@ STATEDIR_TOPDIR = Path('/var/tmp/newa')
 SettingsT = TypeVar('SettingsT', bound='Settings')
 
 
+class SecretError(RuntimeError):
+    """Raised when an external secret reference cannot be resolved."""
+
+
+class SecretBackend(Protocol):
+    """A store able to resolve one scheme of secret reference."""
+
+    scheme: str
+
+    def resolve(self, ref: str) -> str:
+        """Resolve ``ref`` (the part after ``<scheme>:``) to a secret."""
+        ...
+
+
+class SecretResolver(Protocol):
+    """Resolve a complete secret reference such as ``bw://Item/Field``."""
+
+    def resolve(self, ref: str) -> str:
+        ...
+
+
+@define(frozen=True, repr=False)
+class Secret:
+    """A setting that is resolved from an external store on first use.
+
+    ``raw`` is either a literal value or a reference such as
+    ``file:///run/secrets/jira`` or ``cmd:pass show newa/rp``.  Literal
+    values are stored with ``resolver=None`` and returned unchanged, so a
+    secret is contacted only when the code that needs it calls :meth:`get`.
+    Neither ``repr()`` nor ``str()`` ever shows the value.
+    """
+
+    raw: str
+    source: str
+    resolver: Optional[SecretResolver] = field(default=None, repr=False)
+    _value: Optional[str] = field(default=None, init=False, repr=False, eq=False)
+
+    def get(self) -> str:
+        """Return the secret value, resolving and memoizing it on first use."""
+        value = self._value
+        if value is None:
+            if self.resolver is None:
+                value = self.raw
+            else:
+                value = self.resolver.resolve(self.raw)
+            object.__setattr__(self, '_value', value)
+        return value
+
+    def __repr__(self) -> str:
+        return 'Secret(***)'
+
+    def __str__(self) -> str:
+        return 'Secret(***)'
+
+
+@define
+class FileBackend:
+    """Read a secret from a file, e.g. ``file:///run/secrets/jira``.
+
+    This covers secrets mounted by k8s, podman or OpenShift.
+    """
+
+    scheme: str = field(default='file', init=False)
+
+    def resolve(self, ref: str) -> str:
+        path = ref[2:] if ref.startswith('//') else ref
+        if not path:
+            raise SecretError('empty file: secret reference')
+        try:
+            value = Path(path).read_text(encoding='utf-8')
+        except OSError as exc:
+            raise SecretError(
+                f'cannot read secret file {path!r}: {exc}') from exc
+        value = value.rstrip('\r\n')
+        if not value:
+            raise SecretError(f'secret file {path!r} is empty')
+        return value
+
+
+@define
+class CommandBackend:
+    """Run a command and use its stdout, e.g. ``cmd:pass show newa/rp``.
+
+    The command is split with :func:`shlex.split` and run without a shell, so
+    quoting works as usual but shell metacharacters are not interpreted.
+    """
+
+    scheme: str = field(default='cmd', init=False)
+
+    def resolve(self, ref: str) -> str:
+        argv = shlex.split(ref)
+        if not argv:
+            raise SecretError('empty cmd: secret reference')
+        try:
+            proc = subprocess.run(
+                argv, capture_output=True, text=True, check=False)
+        except OSError as exc:
+            raise SecretError(f'cannot run {argv[0]!r}: {exc}') from exc
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout).strip()
+            raise SecretError(
+                f'command {argv[0]!r} exited with {proc.returncode}: '
+                f'{detail}')
+        value = proc.stdout.rstrip('\r\n')
+        if not value:
+            raise SecretError(f'command {argv[0]!r} produced no output')
+        return value
+
+
+_bw_module: Optional[ModuleType] = None
+
+
+def _bw_credentials_path() -> Path:
+    """Find the user's ``bw_credentials.py`` without touching ``sys.path``."""
+    explicit = os.environ.get('BW_CREDENTIALS_FILE')
+    if explicit:
+        path = Path(explicit)
+        if not path.is_file():
+            raise SecretError(
+                f'BW_CREDENTIALS_FILE={explicit!r} is not a file')
+        return path
+
+    here = Path(__file__).resolve().parent
+    candidates: list[Path] = []
+    directory = os.environ.get('BW_CREDENTIALS_DIR')
+    if directory:
+        candidates.append(Path(directory) / 'bw_credentials.py')
+    candidates.extend([
+        here / 'bw_credentials.py',
+        here / 'script' / 'bw_credentials.py',
+        # Source checkout: newa/models/settings.py -> repository root.
+        here.parent.parent / 'bw_credentials.py',
+        ])
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise SecretError(
+        'bw_credentials.py not found; point BW_CREDENTIALS_FILE or '
+        'BW_CREDENTIALS_DIR at it')
+
+
+def _load_bw_credentials() -> ModuleType:
+    """Import the user's ``bw_credentials.py`` lazily and safely.
+
+    The module is loaded under a private name, so it cannot shadow standard
+    library or third-party modules.  Import errors are reported instead of
+    being swallowed as "file not found".
+    """
+    global _bw_module
+    if _bw_module is not None:
+        return _bw_module
+
+    path = _bw_credentials_path()
+    spec = spec_from_file_location('_newa_bw_credentials', path)
+    if spec is None or spec.loader is None:
+        raise SecretError(f'cannot load bw_credentials.py from {path}')
+    module = module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        raise SecretError(f'cannot import {path}: {exc}') from exc
+    if not callable(getattr(module, 'credential', None)):
+        raise SecretError(
+            f'{path} does not define a callable credential(item, field)')
+    _bw_module = module
+    return module
+
+
+@define
+class BitwardenBackend:
+    """Read a secret through the user's ``bw_credentials.py`` helper.
+
+    The reference has the form ``bw://<item>/<field>`` and both parts are
+    passed to the helper unchanged.  The helper is imported only when this
+    backend is used, so commands that do not need a credential never unlock
+    the vault.
+    """
+
+    scheme: str = field(default='bw', init=False)
+
+    def resolve(self, ref: str) -> str:
+        target = ref[2:] if ref.startswith('//') else ref
+        item, sep, field_name = target.rpartition('/')
+        item, field_name = item.strip(), field_name.strip()
+        if not sep or not item or not field_name:
+            raise SecretError(
+                f'invalid Bitwarden reference {ref!r}; '
+                'expected bw://<item>/<field>')
+        module = _load_bw_credentials()
+        try:
+            value = module.credential(item, field_name)
+        except Exception as exc:
+            raise SecretError(
+                f'cannot read {item!r}/{field_name!r} from Bitwarden: '
+                f'{exc}') from exc
+        if not value:
+            raise SecretError(
+                f'Bitwarden field {field_name!r} on {item!r} is empty')
+        return str(value)
+
+
+_SECRET_BACKENDS: dict[str, SecretBackend] = {
+    backend.scheme: backend
+    for backend in (FileBackend(), CommandBackend(), BitwardenBackend())
+    }
+
+
+def register_secret_backend(backend: SecretBackend) -> None:
+    """Register or replace the backend for ``backend.scheme``."""
+    _SECRET_BACKENDS[backend.scheme] = backend
+
+
+ENTRY_POINT_GROUP = 'newa.secret_backends'
+_entry_points_loaded: bool = False
+
+
+def _load_entry_point_backends() -> None:
+    """Register backends advertised through ``newa.secret_backends``.
+
+    Entry points are inspected only when an otherwise unknown scheme is used,
+    so a broken third-party backend cannot affect commands that never resolve
+    a secret, or that use a built-in backend.
+    """
+    global _entry_points_loaded
+    if _entry_points_loaded:
+        return
+    _entry_points_loaded = True
+
+    try:
+        discovered = entry_points()
+    except Exception as exc:
+        raise SecretError(
+            f'cannot enumerate {ENTRY_POINT_GROUP} entry points: '
+            f'{exc}') from exc
+
+    # importlib.metadata exposes EntryPoints.select() on Python 3.10+ and a
+    # mapping on 3.9; support both without a version check.
+    select = getattr(discovered, 'select', None)
+    if callable(select):
+        selected = select(group=ENTRY_POINT_GROUP)
+    else:
+        getter = getattr(discovered, 'get', None)
+        selected = getter(ENTRY_POINT_GROUP, []) if callable(getter) else []
+
+    for entry_point in selected:
+        try:
+            backend = entry_point.load()
+        except Exception as exc:
+            raise SecretError(
+                f'cannot load secret backend {entry_point.name!r} '
+                f'({entry_point.value}): {exc}') from exc
+        scheme = getattr(backend, 'scheme', None)
+        if not isinstance(scheme, str) or \
+                not callable(getattr(backend, 'resolve', None)):
+            raise SecretError(
+                f'secret backend {entry_point.name!r} must define a string '
+                '"scheme" and a resolve(ref) method')
+        register_secret_backend(backend)
+
+
+class _RegistryResolver:
+    """Dispatch a reference to the backend registered for its scheme."""
+
+    def resolve(self, ref: str) -> str:
+        scheme, sep, target = ref.partition(':')
+        if not sep:
+            raise SecretError(
+                f'invalid secret reference {ref!r}: missing <scheme>: '
+                'prefix')
+        backend = _SECRET_BACKENDS.get(scheme)
+        if backend is None:
+            # Built-ins are looked up first; plugins are only consulted for
+            # an unknown scheme.
+            _load_entry_point_backends()
+            backend = _SECRET_BACKENDS.get(scheme)
+        if backend is None:
+            known = ', '.join(sorted(_SECRET_BACKENDS))
+            raise SecretError(
+                f'unknown secret scheme {scheme!r} in {ref!r}; '
+                f'known schemes: {known}')
+        return backend.resolve(target)
+
+
+_RESOLVER: SecretResolver = _RegistryResolver()
+
+
+def _coerce_secret(value: Union[Secret, str]) -> Secret:
+    """Let ``Settings(jira_token='literal')`` keep working."""
+    if isinstance(value, Secret):
+        return value
+    return Secret(raw=value, source='direct assignment', resolver=None)
+
+
+def _default_secret() -> Secret:
+    return Secret(raw='', source='built-in default', resolver=None)
+
+
 @define
 class EventFilter:
     """Represents a single event/artifact filter."""
@@ -58,19 +360,25 @@ class Settings:  # type: ignore[no-untyped-def]
     rog_enable_comments: bool = False
     jira_enable_comments: bool = True
     rp_url: str = ''
-    rp_token: str = ''
+    _rp_token: Secret = field(
+        factory=_default_secret, converter=_coerce_secret, repr=False)
     rp_project: str = ''
     rp_test_param_filter: str = ''
     rp_launch_descr_chars_limit: str = ''
     jira_url: str = ''
-    jira_token: str = ''
-    jira_email: str = ''
+    _jira_token: Secret = field(
+        factory=_default_secret, converter=_coerce_secret, repr=False)
+    _jira_email: Secret = field(
+        factory=_default_secret, converter=_coerce_secret, repr=False)
     jira_project: str = ''
-    tf_token: str = ''
+    _tf_token: Secret = field(
+        factory=_default_secret, converter=_coerce_secret, repr=False)
     tf_recheck_delay: str = ''
-    rog_token: str = ''
+    _rog_token: Secret = field(
+        factory=_default_secret, converter=_coerce_secret, repr=False)
     ai_api_url: str = ''
-    ai_api_token: str = ''
+    _ai_api_token: Secret = field(
+        factory=_default_secret, converter=_coerce_secret, repr=False)
     ai_api_model: str = ''
     ai_system_prompt: str = ''
     ai_oauth2_client_secret_file: str = ''
@@ -79,6 +387,33 @@ class Settings:  # type: ignore[no-untyped-def]
     # Provenance of each loaded value, keyed by config path (e.g. 'testingfarm/token').
     # Populated by Settings.load(); empty when Settings is constructed directly.
     value_sources: dict[str, str] = field(factory=dict)
+
+    # Credentials stay unresolved until these properties are read.  Code that
+    # needs a token (e.g. building the Jira connection) gets it here, while
+    # commands that never touch it never contact the external store.
+    @property
+    def rp_token(self) -> str:
+        return self._rp_token.get()
+
+    @property
+    def jira_token(self) -> str:
+        return self._jira_token.get()
+
+    @property
+    def jira_email(self) -> str:
+        return self._jira_email.get()
+
+    @property
+    def tf_token(self) -> str:
+        return self._tf_token.get()
+
+    @property
+    def rog_token(self) -> str:
+        return self._rog_token.get()
+
+    @property
+    def ai_api_token(self) -> str:
+        return self._ai_api_token.get()
 
     def get(self, key: str, default: str = '') -> str:
         return str(getattr(self, key, default))
@@ -90,6 +425,8 @@ class Settings:  # type: ignore[no-untyped-def]
         ``'testingfarm/token'``). Returns a string such as
         ``environment variable $TESTING_FARM_API_TOKEN``,
         ``config file [testingfarm] token`` or ``built-in default``.
+        For references the target is included too, e.g.
+        ``config file [jira] token_ref -> bw://Jira/PAT``.
         """
         return self.value_sources.get(path, 'built-in default')
 
@@ -101,27 +438,79 @@ class Settings:  # type: ignore[no-untyped-def]
         # Records where each value was resolved from, keyed by config path.
         value_sources: dict[str, str] = {}
 
+        def _origin(section: str, key: str) -> str:
+            # has_option() also matches values inherited from the [DEFAULT]
+            # section; report the real origin so the hint points users at
+            # the right place in their config file.
+            return 'DEFAULT' if key in cp.defaults() else section
+
         def _get(
                 cp: ConfigParser,
                 path: str,
                 envvar: str,
                 default: Optional[str] = '') -> str:
             section, key = path.split('/', 1)
-            # first attemp to read environment variable
+            # first attempt to read environment variable
             env = os.environ.get(envvar, None) if envvar else None
             # then attempt to use the value from config file, use fallback value otherwise
             if env:
                 value_sources[path] = f'environment variable ${envvar}'
                 return env
             if cp.has_option(section, key):
-                # has_option() also matches values inherited from the [DEFAULT]
-                # section; report the real origin so the hint points users at
-                # the right place in their config file.
-                origin = 'DEFAULT' if key in cp.defaults() else section
-                value_sources[path] = f'config file [{origin}] {key}'
+                value_sources[path] = (
+                    f'config file [{_origin(section, key)}] {key}')
                 return cp.get(section, key)
             value_sources[path] = 'built-in default'
             return str(default)
+
+        def _secret(
+                cp: ConfigParser,
+                path: str,
+                envvar: str,
+                default: str = '') -> Secret:
+            """Load a credential, which may be a literal or a ``*_ref``.
+
+            Only the credential fields use this helper, so ``bw://`` or any
+            other scheme is never interpreted in a non-secret setting.  A
+            reference is stored unresolved and fetched on first use.
+            """
+            section, key = path.split('/', 1)
+            ref_key = f'{key}_ref'
+
+            has_config_value = cp.has_option(section, key)
+            has_config_ref = cp.has_option(section, ref_key)
+            if has_config_value and has_config_ref:
+                raise ValueError(
+                    f'{path}: set either "{key}" or "{ref_key}" in '
+                    f'[{section}], not both')
+
+            env_value = os.environ.get(envvar) if envvar else None
+            env_ref = os.environ.get(f'{envvar}_REF') if envvar else None
+            if env_value and env_ref:
+                raise ValueError(
+                    f'set either ${envvar} or ${envvar}_REF, not both')
+
+            # The environment overrides the config file; within one level a
+            # literal value and a reference are mutually exclusive.
+            if env_value:
+                value_sources[path] = f'environment variable ${envvar}'
+                return Secret(env_value, value_sources[path])
+            if env_ref:
+                value_sources[path] = (
+                    f'environment variable ${envvar}_REF -> {env_ref}')
+                return Secret(env_ref, value_sources[path], _RESOLVER)
+            if has_config_value:
+                value_sources[path] = (
+                    f'config file [{_origin(section, key)}] {key}')
+                return Secret(cp.get(section, key), value_sources[path])
+            if has_config_ref:
+                ref = cp.get(section, ref_key)
+                value_sources[path] = (
+                    f'config file [{_origin(section, ref_key)}] '
+                    f'{ref_key} -> {ref}')
+                return Secret(ref, value_sources[path], _RESOLVER)
+            value_sources[path] = 'built-in default'
+            return Secret(str(default), 'built-in default')
 
         def _str_to_bool(value: str) -> bool:
             return value.strip().lower() in ['1', 'true']
@@ -170,7 +559,7 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'reportportal/url',
                 'NEWA_REPORTPORTAL_URL').rstrip('/'),
-            rp_token=_get(
+            rp_token=_secret(
                 cp,
                 'reportportal/token',
                 'NEWA_REPORTPORTAL_TOKEN'),
@@ -194,15 +583,15 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'jira/url',
                 'NEWA_JIRA_URL').rstrip('/'),
-            jira_token=_get(
+            jira_token=_secret(
                 cp,
                 'jira/token',
                 'NEWA_JIRA_TOKEN'),
-            jira_email=_get(
+            jira_email=_secret(
                 cp,
                 'jira/email',
                 'NEWA_JIRA_EMAIL'),
-            tf_token=_get(
+            tf_token=_secret(
                 cp,
                 'testingfarm/token',
                 'TESTING_FARM_API_TOKEN'),
@@ -211,7 +600,7 @@ class Settings:  # type: ignore[no-untyped-def]
                 'testingfarm/recheck_delay',
                 'NEWA_TF_RECHECK_DELAY',
                 "60"),
-            rog_token=_get(
+            rog_token=_secret(
                 cp,
                 'rog/token',
                 'NEWA_ROG_TOKEN'),
@@ -219,7 +608,7 @@ class Settings:  # type: ignore[no-untyped-def]
                 cp,
                 'ai/api_url',
                 'NEWA_AI_API_URL').rstrip('/'),
-            ai_api_token=_get(
+            ai_api_token=_secret(
                 cp,
                 'ai/api_token',
                 'NEWA_AI_API_TOKEN'),
