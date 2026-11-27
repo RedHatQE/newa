@@ -45,6 +45,40 @@ def global_request_counter() -> Iterator[int]:
 gen_global_request_counter = global_request_counter()
 
 
+def _shell_escape_quotes(value: str) -> str:
+    """Return how ``value`` appears inside a single-quoted shell string."""
+    return value.replace("'", "'\"'\"'")
+
+
+def redact_secrets(text: str, ctx: 'CLIContext') -> str:
+    """
+    Replace known secrets (ReportPortal and Testing Farm tokens) with ``***``.
+
+    In generated commands a secret may be shell-quoted once or twice, which
+    changes how any ``'`` in it is written, and shells or other tools may echo
+    it with backslash-escaped quotes (``\\'``, ``\\"``, ``$'...'``), so those
+    forms are redacted too.
+    """
+    forms: set[str] = set()
+    for secret in (ctx.settings.rp_token, ctx.settings.tf_token):
+        # an unset secret is an empty string, replacing it would mangle the text
+        if secret:
+            once = _shell_escape_quotes(secret)
+            backslashed = secret.replace("'", "\\'")
+            forms.update({
+                secret,
+                once,
+                _shell_escape_quotes(once),
+                backslashed,
+                secret.replace('"', '\\"'),
+                backslashed.replace('"', '\\"'),
+                })
+    # longest first, so a secret containing another one is not left partially visible
+    for form in sorted(forms, key=len, reverse=True):
+        text = text.replace(form, '***')
+    return text
+
+
 def build_clean_environment(additional_vars: Optional[dict[str, str]] = None) -> dict[str, str]:
     """
     Build a clean environment for subprocess execution with only whitelisted variables.
@@ -228,7 +262,8 @@ class Request(Cloneable, Serializable):
             output = e.stdout
         r = re.search('api (https://[\\S]*)', output)
         if not r:
-            raise Exception(f"TF request failed:\n{output}\n")
+            # the shell may echo the whole command line, including tokens
+            raise Exception(f"TF request failed:\n{redact_secrets(output, ctx)}\n")
         api = r.group(1).strip()
         request_uuid = api.split('/')[-1]
         return TFRequest(api=api, uuid=request_uuid)
