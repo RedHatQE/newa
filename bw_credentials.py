@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
-"""Bitwarden credential access for the scripts in this directory.
+"""Bitwarden credential access through the official ``bw`` CLI.
 
-Version: 1.0.7
+Version: 1.1.0
 
-No credential is read from environment variables. Scripts ask for a named
-secret, which is fetched from Bitwarden through the official `bw` CLI.
+NEWA resolves a ``bw://<item>/<field>`` secret reference by importing this
+module and calling ``credential(item, field)``.  Item names and custom field
+names are matched exactly; an inexact or ambiguous match is an error rather
+than a guess.
 
-Vault layout assumed by SECRETS below — edit the names/fields to match yours:
-
-    Jira user1     custom field "email" = your email, "PAT" = API token
-    Jira user2     custom field "PAT" = API token (user2 account)
-    GitLab            custom field "PAT" = personal access token
-    Testing Farm      custom field "PAT" = Testing Farm API token
-    ReportPortal      custom field "PAT" = ReportPortal API token
+No credential is read from environment variables.  The caller names the
+Bitwarden item and field, and the value is fetched through ``bw``.
 
 Session handling, in order:
     1. $BW_SESSION, if set and still valid
-    2. a session cached in $XDG_RUNTIME_DIR/bw-session-<uid>, if younger than
-       $BW_CACHE_TTL seconds (default 600)
+    2. a session cached in $XDG_RUNTIME_DIR/bw-session-<uid>, if that
+       directory is set and the cache is younger than $BW_CACHE_TTL seconds
+       (default 600).  Without XDG_RUNTIME_DIR nothing is cached: a session
+       key unlocks the whole vault, so it never goes to a shared /tmp.
     3. one master-password prompt, whose session is then cached
+
+In a non-interactive context (CI, cron, containers) a missing or locked
+session is an error rather than a prompt.
 
 If `bw status` reports unauthenticated, the user is first prompted for the
 account email and master password; `bw login` itself prompts for a 2FA code
@@ -33,18 +35,19 @@ Switches:
     BW_LOCK_AFTER=1    run `bw lock` and drop the cache when the process exits
 
 Library use:
-    from bw_credentials import BwError, get_secret
-    token = get_secret("JIRA_API_TOKEN")
+    from bw_credentials import BwError, credential
+    token = credential("Jira", "PAT")
 
-Command line (useful for checking the mapping):
+Command line (useful for checking a reference):
     ./bw_credentials.py --version
-    ./bw_credentials.py --list
     ./bw_credentials.py --fields "GitLab"
-    ./bw_credentials.py JIRA_API_TOKEN
+    ./bw_credentials.py "Jira" PAT
 
 Field names: username/password/totp/notes/uri are built-in item fields; any
-other value in SECRETS is treated as the name of a custom field, e.g.
-    "GITLAB_TOKEN": ("GitLab", "pat"),
+other value is the exact (case-sensitive) name of a custom field.
+
+Item names are matched exactly as well; an inexact or ambiguous match is an
+error instead of silently using a possibly wrong credential.
 """
 
 import atexit
@@ -57,17 +60,7 @@ import sys
 import tempfile
 import time
 
-__version__ = "1.0.7"
-
-# env-var name -> (Bitwarden item name, item field)
-SECRETS = {
-    "JIRA_EMAIL": ("Jira user1", "email"),
-    "JIRA_API_TOKEN": ("Jira user1", "PAT"),
-    "JIRA_API_TOKEN_SE": ("Jira se-security", "PAT"),
-    "GITLAB_TOKEN": ("GitLab", "PAT"),
-    "TESTING_FARM_API_TOKEN": ("Testing Farm user1", "PAT"),
-    "RP_TOKEN": ("ReportPortal", "PAT"),
-}
+__version__ = "1.1.0"
 
 BUILTIN_FIELDS = ("password", "username", "totp", "notes", "uri")
 DEFAULT_CACHE_TTL = 600
@@ -131,7 +124,11 @@ def _read_cache(cache_path, ttl):
 
 
 def _default_cache_path():
-    cache_dir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    cache_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if not cache_dir:
+        # A session key unlocks the whole vault.  If there is no per-user
+        # runtime directory, do not cache at all instead of using /tmp.
+        return None
     return os.path.join(cache_dir, f"bw-session-{os.getuid()}")
 
 
@@ -245,6 +242,11 @@ def ensure_session(cache_path=None):
     # Ask for the master password once. getpass writes its prompt to the
     # terminal and does not echo; the password reaches bw through the
     # environment, never argv.
+    if not sys.stdin.isatty():
+        raise BwError(
+            "Bitwarden vault is locked and no terminal is available for a "
+            "master-password prompt; run 'bw unlock' or provide BW_SESSION"
+        )
     try:
         password = getpass.getpass("Bitwarden master password: ")
     except (EOFError, KeyboardInterrupt):
@@ -308,36 +310,39 @@ def _resolve_item(item):
     exact = [
         candidate
         for candidate in items
-        if isinstance(candidate, dict) and candidate.get("name") == item
+        if isinstance(candidate, dict)
+        and candidate.get("name") == item
+        and candidate.get("id")
     ]
     if len(exact) == 1:
         _item_ids[item] = exact[0]["id"]
         return exact[0]["id"]
+    if exact:
+        lines = "\n".join(
+            f"  {c.get('id')}  {c.get('name')}  "
+            f"[{(c.get('login') or {}).get('username') or '-'}]"
+            for c in exact
+        )
+        raise BwError(
+            f"multiple Bitwarden items named '{item}'; "
+            f"use the id you want instead of the name:"
+            f"\n{lines}"
+        )
 
-    matches = [
+    # Never fall back to an inexact match.  Using the wrong credential
+    # silently is worse than failing; similar names are only a hint.
+    near = [
         candidate
         for candidate in items
         if isinstance(candidate, dict) and candidate.get("id")
     ]
-    if not exact and len(matches) == 1:
-        # A single search hit is unambiguous even if the name differs slightly.
-        _item_ids[item] = matches[0]["id"]
-        return matches[0]["id"]
-
-    candidates = exact or matches
-    if candidates:
+    if near:
         lines = "\n".join(
-            f"  {c.get('id')}  {c.get('name')}  "
-            f"[{(c.get('login') or {}).get('username') or '-'}]"
-            for c in candidates
-        )
-        reason = (
-            f"multiple Bitwarden items named '{item}'"
-            if exact
-            else f"multiple Bitwarden items match '{item}'"
+            f"  {c.get('id')}  {c.get('name')}" for c in near
         )
         raise BwError(
-            f"{reason}; put the id you want in BW_SECRETS instead of the name:"
+            f"Bitwarden item '{item}' not found; the search matched similar "
+            f"items, use the exact name or an id:"
             f"\n{lines}"
         )
 
@@ -376,25 +381,27 @@ def _read_field(item_id, item, field):
         f for f in data.get("fields") or [] if isinstance(f, dict)
     ]
     available = [f.get("name") for f in fields if f.get("name")]
-    wanted = field.strip().lower()
+    wanted = field.strip()
 
-    def find(predicate):
-        return [f for f in fields if predicate((f.get("name") or "").strip())]
-
-    matches = find(lambda name: name == field.strip())
-    if not matches:
-        matches = find(lambda name: name.lower() == wanted)
-    if not matches:
-        # Tolerate legacy names such as "Jira user1 PAT" for field "PAT".
-        matches = find(lambda name: name.lower().endswith(" " + wanted))
+    # Exact names only: a case-insensitive or suffix match can pick up a
+    # stale field such as "Old PAT" when "PAT" is requested.
+    matches = [
+        f for f in fields if (f.get("name") or "").strip() == wanted
+    ]
     if len(matches) == 1:
         value = matches[0].get("value") or ""
         if value:
             return value
+        raise BwError(f"field '{wanted}' is empty on item '{item}'")
+    if matches:
+        raise BwError(
+            f"multiple fields named '{wanted}' on '{item}'; "
+            "rename them so the name is unambiguous"
+        )
 
     listed = ", ".join(available) if available else "none"
     raise BwError(
-        f"no field '{field}' on '{item}' "
+        f"no field '{wanted}' on '{item}' "
         f"(custom fields: {listed}; built-in: username, password, totp, notes, uri)"
     )
 
@@ -424,18 +431,9 @@ def credential(item, field="password"):
     return value
 
 
-def get_secret(name):
-    """Fetch a named secret from Bitwarden using the SECRETS mapping."""
-    try:
-        item, field = SECRETS[name]
-    except KeyError:
-        raise BwError(f"no Bitwarden mapping for {name!r}") from None
-    return credential(item, field)
-
-
 def main():
     usage = (
-        "usage: bw_credentials.py <secret-name> | --list | --fields <item> "
+        "usage: bw_credentials.py <item> [field] | --fields <item> "
         "| --sync | --version"
     )
     args = sys.argv[1:]
@@ -461,11 +459,6 @@ def main():
         print("Bitwarden vault synced.")
         return 0
 
-    if args[0] in ("-l", "--list"):
-        for name, (item, field) in SECRETS.items():
-            print(f"{name}\t{item}\t{field}")
-        return 0
-
     if args[0] == "--fields":
         if len(args) != 2:
             print(usage, file=sys.stderr)
@@ -488,12 +481,18 @@ def main():
         print("custom:  " + (" ".join(names) if names else "(none)"))
         return 0
 
-    if len(args) != 1:
+    if args[0].startswith('-'):
         print(usage, file=sys.stderr)
         return 1
 
+    if len(args) not in (1, 2):
+        print(usage, file=sys.stderr)
+        return 1
+
+    item = args[0]
+    field = args[1] if len(args) == 2 else "password"
     try:
-        print(get_secret(args[0]))
+        print(credential(item, field))
     except BwError as exc:
         print(f"bw_credentials: {exc}", file=sys.stderr)
         return 1
