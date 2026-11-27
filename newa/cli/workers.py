@@ -1,6 +1,7 @@
 """Worker functions for parallel test execution."""
 
 import os
+import shlex
 import time
 from functools import partial
 from pathlib import Path
@@ -196,7 +197,7 @@ def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) 
     command_args, environment = schedule_job.request.generate_tmt_exec_command(ctx)
     command = ''
     for e, v in environment.items():
-        command += f'{e}="{v}" '
+        command += f'{e}={shlex.quote(str(v))} '
     command += ' '.join(command_args)
     # hide tokens
     command = redact_secrets(command, ctx)

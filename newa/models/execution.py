@@ -2,6 +2,7 @@
 
 import os
 import re
+import shlex
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -131,6 +132,23 @@ def build_clean_environment(additional_vars: Optional[dict[str, str]] = None) ->
     return env
 
 
+def _quote(value: object) -> str:
+    """Quote a single value for the shell."""
+    return shlex.quote(str(value))
+
+
+def _quote_assignment(key: str, value: object) -> str:
+    """
+    Quote a ``KEY=VALUE`` assignment for ``-c``/``-e``-style options.
+
+    Both the testing-farm and tmt CLIs pass each such option through
+    ``shlex.split()`` once more, so the assignment is quoted twice: once for
+    that split and once for the shell. The value then arrives unchanged,
+    even when it contains spaces or quote characters.
+    """
+    return shlex.quote(shlex.quote(f'{key}={value}'))
+
+
 @define
 class Request(Cloneable, Serializable):
     """A test job request configuration"""
@@ -158,7 +176,7 @@ class Request(Cloneable, Serializable):
         command: list[str] = [
             'testing-farm', 'request', '--no-wait',
             '--context',
-            f"""newa_batch={self.get_hash(ctx.timestamp)}""",
+            _quote_assignment('newa_batch', self.get_hash(ctx.timestamp)),
             ]
         # set ReportPortal related parameters only when reportportal attribute is not empty
         if self.reportportal:
@@ -176,18 +194,19 @@ class Request(Cloneable, Serializable):
             if not self.reportportal.get('launch_name', None):
                 raise Exception('ERROR: ReportPortal launch name is not specified')
             command += ['--tmt-environment',
-                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN="{rp_token}"'""",
+                        _quote_assignment('TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN', rp_token),
                         '--tmt-environment',
-                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_URL="{rp_url}"'""",
+                        _quote_assignment('TMT_PLUGIN_REPORT_REPORTPORTAL_URL', rp_url),
                         '--tmt-environment',
-                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT="{rp_project}"'""",
+                        _quote_assignment('TMT_PLUGIN_REPORT_REPORTPORTAL_PROJECT', rp_project),
                         '--tmt-environment',
-                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH="{rp_launch}"'""",
+                        _quote_assignment('TMT_PLUGIN_REPORT_REPORTPORTAL_UPLOAD_TO_LAUNCH',
+                                          rp_launch),
                         '--tmt-environment',
-                        f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH="{
-                            self.reportportal["launch_name"]}"'""",
+                        _quote_assignment('TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH',
+                                          self.reportportal["launch_name"]),
                         '--tmt-environment',
-                        """TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1""",
+                        'TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1',
                         '--context',
                         'newa_report_rp=1',
                         ]
@@ -200,45 +219,48 @@ class Request(Cloneable, Serializable):
                 # https://github.com/teemtee/tmt/issues/2990 is implemented
                 command += [
                     '--tmt-environment',
-                    f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION="{desc}"'"""]
+                    _quote_assignment('TMT_PLUGIN_REPORT_REPORTPORTAL_LAUNCH_DESCRIPTION', desc)]
             if rp_test_param_filter:
                 command += ['--tmt-environment',
-                            f"""'TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES="{rp_test_param_filter}"'"""]
+                            _quote_assignment('TMT_PLUGIN_REPORT_REPORTPORTAL_EXCLUDE_VARIABLES',
+                                              rp_test_param_filter)]
         # check compose
         if not self.compose:
             raise Exception('ERROR: compose is not specified for the request')
-        command += ['--compose', self.compose]
+        command += ['--compose', _quote(self.compose)]
         # process tmt related settings
         if not self.tmt:
             raise Exception('ERROR: tmt settings is not specified for the request')
         if not self.tmt.get("url", None):
             raise Exception('ERROR: tmt "url" is not specified for the request')
         if self.tmt['url']:
-            command += ['--git-url', self.tmt['url']]
+            command += ['--git-url', _quote(self.tmt['url'])]
         if self.tmt.get("ref") and self.tmt['ref']:
-            command += ['--git-ref', self.tmt['ref']]
+            command += ['--git-ref', _quote(self.tmt['ref'])]
         if self.tmt.get("path") and self.tmt['path']:
-            command += ['--path', self.tmt['path']]
+            command += ['--path', _quote(self.tmt['path'])]
         if self.tmt.get("plan") and self.tmt['plan']:
-            command += ['--plan', self.tmt['plan']]
+            command += ['--plan', _quote(self.tmt['plan'])]
         if self.tmt.get("plan_filter") and self.tmt['plan_filter']:
-            command += ['--plan-filter', f"""'{self.tmt['plan_filter']}'"""]
+            command += ['--plan-filter', _quote(self.tmt['plan_filter'])]
         # process Testing Farm related settings
+        # cli_args is intentionally a raw shell fragment carrying any number
+        # of extra options, so it is not quoted
         if self.testingfarm and self.testingfarm['cli_args']:
             command += [self.testingfarm['cli_args']]
         # process arch
         if self.arch:
-            command += ['--arch', self.arch.value]
+            command += ['--arch', _quote(self.arch.value)]
         # newa request ID
-        command += ['-c', f"""'newa_req="{self.id}"'"""]
+        command += ['-c', _quote_assignment('newa_req', self.id)]
         # process context
         if self.context:
             for k, v in self.context.items():
-                command += ['-c', f"""'{k}="{v}"'"""]
+                command += ['-c', _quote_assignment(k, v)]
         # process environment
         if self.environment:
             for k, v in self.environment.items():
-                command += ['-e', f"""'{k}="{v}"'"""]
+                command += ['-e', _quote_assignment(k, v)]
 
         return command, environment
 
@@ -272,12 +294,12 @@ class Request(Cloneable, Serializable):
         # beginning of the tmt command
         command: list[str] = ['tmt']
         # newa request ID
-        command += ['-c', f'newa_req="{self.id}"']
-        command += ['-c', f'newa_batch="{self.get_hash(ctx.timestamp)}"']
+        command += ['-c', _quote_assignment('newa_req', self.id)]
+        command += ['-c', _quote_assignment('newa_batch', self.get_hash(ctx.timestamp))]
         # process context
         if self.context:
             for k, v in self.context.items():
-                command += ['-c', f'{k}="{v}"']
+                command += ['-c', _quote_assignment(k, v)]
         # process envvars
         environment: dict[str, str] = {}
         if self.reportportal:
@@ -325,7 +347,7 @@ class Request(Cloneable, Serializable):
                 if k.startswith('TMT_'):
                     environment[k] = v
                 else:
-                    command += ['-e', f'{k}="{v}"']
+                    command += ['-e', _quote_assignment(k, v)]
         # process tmt related settings
         if not self.tmt:
             raise Exception('ERROR: tmt settings is not specified for the request')
@@ -334,9 +356,9 @@ class Request(Cloneable, Serializable):
         if self.tmt.get("plan", None) or self.tmt.get("plan_filter", None):
             command += ['plan']
             if self.tmt.get("plan", None):
-                command += ['--name', f"""'{self.tmt["plan"]}'"""]
+                command += ['--name', _quote(self.tmt["plan"])]
             if self.tmt.get("plan_filter", None):
-                command += ['--filter', f"""'{self.tmt["plan_filter"]}'"""]
+                command += ['--filter', _quote(self.tmt["plan_filter"])]
         # add tmt cmd args
         if self.tmt.get("cli_args", None):
             command += [f'{self.tmt["cli_args"]}']
