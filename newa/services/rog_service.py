@@ -21,13 +21,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _extract_build(text: str, last: bool) -> str:
-    """Extract a build name from one side of a 'source -> target' line.
+def _extract_build(text: str) -> str:
+    """Extract a build name from the source side of a 'source -> target' line.
 
     Ignores any markdown decoration around the build name (bullets, bold
     labels, links): when the text contains a markdown link, its label is
-    used; otherwise the first (or last) whitespace-separated token is used,
-    stripped of markdown decoration characters.
+    used; otherwise the last whitespace-separated token is used, stripped
+    of markdown decoration characters.
     """
     # a markdown link label, e.g. "[build](url)"
     match = re.search(r'\[([^\[\]]+)\]', text)
@@ -36,8 +36,7 @@ def _extract_build(text: str, last: bool) -> str:
     tokens = text.split()
     if not tokens:
         return ''
-    token = tokens[-1] if last else tokens[0]
-    return token.strip('*`').strip()
+    return tokens[-1].strip('*`').strip()
 
 
 @frozen
@@ -125,8 +124,8 @@ class RoGTool:
         return 'Step skipped - architecture' in content
 
     def get_mr_promoted_builds(
-            self, gm: 'gitlab.v4.objects.ProjectMergeRequest') -> dict[str, str]:
-        """Extract build promotions from OSCI Bot comments on a merge request.
+            self, gm: 'gitlab.v4.objects.ProjectMergeRequest') -> set[str]:
+        """Extract promoted builds from OSCI Bot comments on a merge request.
 
         Once a merge request is merged and its build is promoted, OSCI Bot
         leaves a comment similar to this one:
@@ -137,10 +136,22 @@ class RoGTool:
                     -> opencryptoki-3.27.0-1.el10_3.1
 
         The draft build gets renamed, the ',draft_N' suffix is dropped.
-        Returns a mapping of the original (draft) build to the promoted one.
+        Returns the set of draft builds that were promoted. The promoted
+        name itself is intentionally not taken from the comment - callers
+        should derive it locally by stripping the draft suffix.
         """
-        promotions: dict[str, str] = {}
-        for note in gm.notes.list(get_all=True):
+        promotions: set[str] = set()
+        try:
+            notes = gm.notes.list(get_all=True)
+        except Exception as error:
+            # promotion data is an optional enhancement, do not let a
+            # transient failure to read MR notes abort event processing,
+            # fall back to the build parsed from the pipeline log
+            logging.warning(
+                'Failed to read notes from MR %s (%s), ignoring possible build promotions',
+                gm.web_url, error)
+            return promotions
+        for note in notes:
             body = getattr(note, 'body', '') or ''
             if 'Promoted Build' not in body:
                 continue
@@ -160,10 +171,9 @@ class RoGTool:
                 if '->' not in line:
                     continue
                 (left, _, right) = line.partition('->')
-                source = _extract_build(left, last=True)
-                target = _extract_build(right, last=False)
-                if source and target:
-                    promotions[source] = target
+                source = _extract_build(left)
+                if source:
+                    promotions.add(source)
         logging.debug('Promoted builds found on MR %s: %s', gm.web_url, promotions)
         return promotions
 
@@ -258,13 +268,18 @@ class RoGTool:
             raise Exception(
                 f'Failed to parse build NVR from "build_rpm" job "{job.web_url}"')
         # once the MR is merged and the build is promoted, the ',draft_N'
-        # suffix is dropped; OSCI Bot leaves a comment about the promotion,
-        # use the promoted (renamed) build instead of the draft one
+        # suffix is dropped; OSCI Bot leaves a comment about the promotion.
+        # The comment is used only as a signal that the promotion happened -
+        # the promoted build name is derived locally by stripping the
+        # draft suffix, so that a forged comment cannot introduce an
+        # arbitrary build name
         promotions = self.get_mr_promoted_builds(gm)
         if build in promotions:
-            logging.debug('Using promoted build "%s" instead of "%s"',
-                          promotions[build], build)
-            build = promotions[build]
+            promoted_build = re.sub(r',draft_[0-9]+$', '', build)
+            if promoted_build != build:
+                logging.debug('Using promoted build "%s" instead of "%s"',
+                              promoted_build, build)
+                build = promoted_build
         nvr = NVRParser(build)
         builds = [build]
         components = [nvr.name]
