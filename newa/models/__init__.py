@@ -24,6 +24,7 @@ from newa.models.execution import (
     RequestResult,
     TFRequest,
     check_tf_cli_version,
+    redact_secrets,
     )
 from newa.models.issues import (
     Issue,
@@ -108,4 +109,5 @@ __all__ = [
     'Settings',
     'TFRequest',
     'check_tf_cli_version',
+    'redact_secrets',
     ]

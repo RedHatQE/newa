@@ -25,7 +25,12 @@ from newa.cli.execute_helpers import (
     normalize_request_ids,
     )
 from newa.cli.initialization import initialize_et_connection, initialize_rp_connection
-from newa.cli.utils import initialize_state_dir, test_patterns_match
+from newa.cli.report_helpers import IssueReporter
+from newa.cli.utils import (
+    get_chained_command_params,
+    initialize_state_dir,
+    test_patterns_match,
+    )
 
 
 @click.command(name='execute')
@@ -140,6 +145,8 @@ def cmd_execute(
 
     # Load schedule jobs and validate there are jobs to execute
     schedule_job_list = list(ctx.load_schedule_jobs(filter_actions=True))
+    # Keep all scheduled jobs (before --request filtering) for per-issue reporting
+    all_schedule_jobs = list(schedule_job_list)
 
     # Filter by --request if specified
     if request:
@@ -198,12 +205,28 @@ def cmd_execute(
     launch_list = _process_rp_launches_and_jira_updates(
         ctx, rp, et, rog, jira_schedule_job_mapping)
 
+    # When `report` is chained after `execute`, report each Jira issue as soon as
+    # all its requests have finished instead of waiting for all requests.
+    # Not done for --no-wait (nothing is awaited) or `report --progress`
+    # (which must not finalize anything).
+    issue_reporter = None
+    report_params = get_chained_command_params('report', after='execute')
+    if report_params is not None and not no_wait and not report_params.get('progress'):
+        ctx.logger.info('Results will be reported per Jira issue as soon as '
+                        'all its requests finish')
+        issue_reporter = IssueReporter(
+            ctx, all_schedule_jobs, rp if ctx.settings.rp_url else None, et, rog)
+
     # Execute worker pool to process the selected schedule jobs
     try:
-        _execute_worker_pool(ctx, execute_job_list, workers)
+        _execute_worker_pool(ctx, execute_job_list, workers,
+                             on_issue_finished=issue_reporter)
     except KeyboardInterrupt:
         # Let _execute_worker_pool handle user-facing logging; just translate to Click's Abort.
         raise click.Abort from None
 
-    # Finalize RP launches after execution
-    _finalize_rp_launches(ctx, rp, launch_list)
+    # Finalize RP launches after execution (except those already finalized
+    # by per-issue reporting)
+    _finalize_rp_launches(
+        ctx, rp, launch_list,
+        skip_launches=issue_reporter.finalized_launches if issue_reporter else None)

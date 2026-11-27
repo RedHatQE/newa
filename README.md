@@ -2135,6 +2135,24 @@ request:
   when: null
 ```
 
+#### Per-issue reporting when chained with `report`
+
+When `report` is chained after `execute` in the same command (e.g. `... schedule execute report`),
+each Jira issue is reported as soon as all its requests submitted by `execute` have finished,
+without waiting for requests of other Jira issues. The report is the same as the one produced by
+`report`: Jira comment, Jira transition, Errata Tool / RoG comment and ReportPortal launch
+finalization. The subsequent `report` step then only processes Jira issues which have not been
+reported yet (e.g. those whose reporting failed during execution, or with a failed request).
+
+Reported requests are marked with `reported: true` in their `execute-` files (both by this
+per-issue reporting and by the `report` command, but not by `report --progress`). When resuming
+with `execute --continue report`, a Jira issue whose requests have all been reported already is
+skipped; restarting any of its requests (`--restart-request`, `--restart-result`) or executing
+its pending requests makes the issue get reported again.
+
+Per-issue reporting is not used with `execute --no-wait` or `report --progress`, or when
+`execute` and `report` are run as separate `newa` invocations.
+
 #### Option `--continue`, `-C`
 
 This option is useful e.g. when a user wants to continue with a previously terminated `newa execute` session. It is assumed that a user will use this option together with `--state-dir` option because `newa` is going to re-use former data.

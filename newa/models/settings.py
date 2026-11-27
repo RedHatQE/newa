@@ -1,5 +1,6 @@
 """Settings and CLI context models."""
 
+import contextlib
 import logging
 import os
 import shlex
@@ -666,6 +667,11 @@ class CLIContext:  # type: ignore[no-untyped-def]
     issue_id_filter_pattern: Optional[Pattern[str]] = None
     event_filter_pattern: Optional[EventFilter] = None
     action_tag_filter_pattern: Optional['TagFilter'] = None
+    # Jira IDs already fully reported by `execute` (when chained with `report`),
+    # so that the subsequent `report` command does not report them again.
+    reported_jira_ids: set[str] = field(factory=set)
+    # Name of the currently running subcommand (used in log messages)
+    current_command: str = ''
 
     # Jira connection instance (lazy initialized)
     jira_connection: Optional['JiraConnection'] = field(default=None, init=False, repr=False)
@@ -686,9 +692,20 @@ class CLIContext:  # type: ignore[no-untyped-def]
         return should_filter_by_event(self.event_filter_pattern, job, self.logger)
 
     def enter_command(self, command: str) -> None:
+        self.current_command = command
         self.logger.handlers[0].formatter = logging.Formatter(
             f'[%(asctime)s] [{command.ljust(8, " ")}] %(message)s',
             )
+
+    @contextlib.contextmanager
+    def command_scope(self, command: str) -> Iterator[None]:
+        """Temporarily log as ``command``, then restore the current command label."""
+        previous = self.current_command
+        self.enter_command(command)
+        try:
+            yield
+        finally:
+            self.enter_command(previous)
 
     def load_initial_erratum(self, filepath: Path) -> InitialErratum:
         erratum = InitialErratum.from_yaml_file(filepath)

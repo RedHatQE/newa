@@ -6,8 +6,10 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import click
+
 from newa import CLIContext
-from newa.cli.constants import STATEDIR_NAME_PATTERN
+from newa.cli.constants import CHAIN_META_KEY, STATEDIR_NAME_PATTERN
 
 
 def get_state_dir(topdir: Path, use_ppid: bool = False) -> Path:
@@ -113,25 +115,28 @@ def apply_release_mapping(string: str,
             r'$=-Nightly',
             # ugly hack to narrow weird TF compose naming for RHEL-6 and RHEL-7
             r'RHEL-6-ELS-EXTENSION-Nightly=RHEL-6.10-ZStream',
+            # there is no RHEL-6.10-Nightly compose (e.g. for rhel-6.10-z-draft)
+            r'^RHEL-6\.10-Nightly$=RHEL-6.10-ZStream',
             r'RHEL-7-ELS-Nightly=RHEL-7.9-ZStream',
             ]
     new_string = string
     for m in mapping:
         r = re.fullmatch(r'([^\s=]+)=([^=]*)', m)
         if not r:
-            raise Exception(f"Mapping {m} does not having expected format 'patten=value'")
+            raise Exception(f"Mapping {m} does not have expected format 'pattern=value'")
         pattern, value = r.groups()
         # for regexp=True apply each matching regexp
         if regexp and re.search(pattern, new_string):
+            old_string = new_string
             new_string = re.sub(pattern, value, new_string)
             if logger:
                 logger.debug(  # type: ignore[attr-defined]
-                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+                    f'Found match in {old_string} for mapping {m}, new value {new_string}')
         # for string matching return the first match
         if (not regexp) and new_string == pattern:
             if logger:
                 logger.debug(  # type: ignore[attr-defined]
-                    f'Found match in {new_string} for mapping {m}, new value {new_string}')
+                    f'Found match in {new_string} for mapping {m}, new value {value}')
             return value
     return new_string
 
@@ -156,3 +161,50 @@ def test_patterns_match(s: str, patterns: list[str]) -> tuple[bool, str]:
         if s.strip() == pattern.strip():
             return (True, pattern)
     return (False, '')
+
+
+def record_chained_command(
+        click_ctx: click.Context,
+        cmd_name: Optional[str],
+        cmd: Optional[click.Command],
+        args: list[str]) -> None:
+    """Remember a resolved chained subcommand together with its remaining arguments."""
+    if cmd_name is None or cmd is None:
+        return
+    click_ctx.meta.setdefault(CHAIN_META_KEY, []).append((cmd_name, cmd, list(args)))
+
+
+def get_chained_command_params(
+        command: str,
+        after: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """
+    Return parsed parameters of a subcommand present in the current command chain.
+
+    Click resolves all chained subcommands before invoking the first of them,
+    so a running subcommand can inspect the whole chain. When ``after`` is given,
+    only an occurrence of ``command`` following ``after`` is considered.
+
+    Returns ``None`` when the command is not part of the chain.
+    """
+    click_ctx = click.get_current_context(silent=True)
+    if click_ctx is None:
+        return None
+    chain = click_ctx.meta.get(CHAIN_META_KEY, [])
+    seen_after = after is None
+    for name, cmd, args in chain:
+        if not seen_after:
+            seen_after = name == after
+            continue
+        if name == command:
+            # Parse leniently: no callbacks, no errors; the remaining arguments
+            # also contain the following subcommands, which end up as extra args.
+            sub_ctx = cmd.make_context(
+                name,
+                list(args),
+                parent=click_ctx.find_root(),
+                resilient_parsing=True,
+                allow_extra_args=True,
+                allow_interspersed_args=False,
+                )
+            return dict(sub_ctx.params)
+    return None

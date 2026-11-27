@@ -1,6 +1,7 @@
 """Worker functions for parallel test execution."""
 
 import os
+import shlex
 import time
 from functools import partial
 from pathlib import Path
@@ -13,6 +14,7 @@ from newa import (
     RequestResult,
     ScheduleJob,
     TFRequest,
+    redact_secrets,
     )
 from newa.cli.utils import test_patterns_match
 
@@ -29,6 +31,20 @@ def worker(ctx: CLIContext, schedule_file: Path) -> None:
     except KeyboardInterrupt:
         # Silently exit on keyboard interrupt - cleanup is handled by parent
         raise SystemExit(0) from None
+
+
+def worker_entry(args: tuple[CLIContext, Path]) -> Path:
+    """
+    Single-argument worker wrapper for ``Pool.imap_unordered``.
+
+    Returns the processed schedule file path, which serves as the completion
+    signal for the parent process. Invariant: the worker's last state-dir write
+    (the final execute job) happens before it returns, so the parent can safely
+    read the execute file once it receives the path.
+    """
+    ctx, schedule_file = args
+    worker(ctx, schedule_file)
+    return schedule_file
 
 
 def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -> None:
@@ -98,7 +114,7 @@ def tf_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) -
         command_args, environment = schedule_job.request.generate_tf_exec_command(ctx)
         command = ' '.join(command_args)
         # hide tokens
-        command = command.replace(ctx.settings.rp_token, '***')
+        command = redact_secrets(command, ctx)
         # export Execution to YAML so that we can report it even later
         # we won't report 'return_code' since it is not known yet
         # This is something to be implemented later
@@ -181,10 +197,10 @@ def tmt_worker(ctx: CLIContext, schedule_file: Path, schedule_job: ScheduleJob) 
     command_args, environment = schedule_job.request.generate_tmt_exec_command(ctx)
     command = ''
     for e, v in environment.items():
-        command += f'{e}="{v}" '
+        command += f'{e}={shlex.quote(str(v))} '
     command += ' '.join(command_args)
     # hide tokens
-    command = command.replace(ctx.settings.rp_token, '***')
+    command = redact_secrets(command, ctx)
     # export Execution to YAML so that we can report it even later
     # we won't report 'return_code' since it is not known yet
     # This is something to be implemented later

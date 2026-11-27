@@ -54,6 +54,7 @@ from newa.models import (
     Settings,
     TFRequest,
     check_tf_cli_version,
+    redact_secrets,
     )
 
 # Import all services
@@ -160,6 +161,7 @@ __all__ = [
     'get_request',
     'get_url_basename',
     'post_request',
+    'redact_secrets',
     'render_template',
     'short_sleep',
     'yaml_parser',
